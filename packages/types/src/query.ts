@@ -3,6 +3,7 @@ import { SegmentKeySchema } from './segments.js';
 
 export const SORT_DIRECTIONS = ['asc', 'desc'] as const;
 export const SortDirectionSchema = z.enum(SORT_DIRECTIONS);
+export type SortDirection = (typeof SORT_DIRECTIONS)[number];
 
 export const ACCOUNT_SORT_FIELDS = [
   'latestAssessedValue',
@@ -15,6 +16,24 @@ export const ACCOUNT_SORT_FIELDS = [
 
 export const AccountSortFieldSchema = z.enum(ACCOUNT_SORT_FIELDS);
 export type AccountSortField = (typeof ACCOUNT_SORT_FIELDS)[number];
+
+/**
+ * Sortable columns on the owner rollup.
+ *
+ * Enumerated rather than accepting a column name, because the value reaches an
+ * ORDER BY clause. A closed set is also what lets the table header offer sorting
+ * only where the server can actually deliver it.
+ */
+export const OWNER_SORT_FIELDS = [
+  'estimatedAnnualPenalty',
+  'totalAssessedValue',
+  'accountCount',
+  'unfiledAccountCount',
+  'ownerName',
+] as const;
+
+export const OwnerSortFieldSchema = z.enum(OWNER_SORT_FIELDS);
+export type OwnerSortField = (typeof OWNER_SORT_FIELDS)[number];
 
 /**
  * The one filter object every account-facing endpoint accepts. The web app

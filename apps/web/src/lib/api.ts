@@ -8,8 +8,10 @@ import type {
   MarketOverview,
   OpportunityModel,
   OwnerRollup,
+  OwnerSortField,
   Paginated,
   SegmentDefinition,
+  SortDirection,
   StartIngestRequest,
   YearTrendPoint,
 } from '@tangible/types';
@@ -120,6 +122,8 @@ export const api = {
     segments?: string[];
     minAccounts?: number;
     search?: string;
+    sortBy?: OwnerSortField;
+    sortDir?: SortDirection;
     limit?: number;
     offset?: number;
   }) => request<Paginated<OwnerRollup>>(`/owners?${toSearchParams(query as never)}`),

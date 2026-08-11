@@ -42,14 +42,12 @@ function Accounts() {
     enabled,
   });
 
-  const handleSort = (field: AccountQuery['sortBy']) => {
-    const sortDir = query.sortBy === field && query.sortDir === 'desc' ? 'asc' : 'desc';
-    update({ sortBy: field, sortDir });
+  /** Sorting changes the whole result, so page 3 of the old order is meaningless. */
+  const handleSort = (sortBy: AccountQuery['sortBy'], sortDir: AccountQuery['sortDir']) => {
+    update({ sortBy, sortDir, offset: 0 });
   };
 
   const total = accounts.data?.total ?? 0;
-  const pageStart = total === 0 ? 0 : query.offset + 1;
-  const pageEnd = Math.min(query.offset + pageSize, total);
 
   const pagePenalty = (accounts.data?.items ?? []).reduce(
     (sum, a) => sum + (a.estimatedAnnualPenalty ?? 0),
@@ -175,34 +173,14 @@ function Accounts() {
             ))}
           </div>
         ) : (
-          <>
-            <AccountsTable
-              accounts={accounts.data.items}
-              query={query}
-              onSort={handleSort}
-              scopeQuery={scopeQuery}
-            />
-
-            <footer className="flex items-center justify-between gap-4 border-t border-[var(--color-hairline)] px-5 py-3">
-              <p className="tabular text-xs text-[var(--color-ink-secondary)]">
-                {count(pageStart)}–{count(pageEnd)} of {count(total)}
-              </p>
-              <div className="flex gap-2">
-                <Button
-                  disabled={query.offset === 0}
-                  onClick={() => update({ offset: Math.max(0, query.offset - pageSize) })}
-                >
-                  Previous
-                </Button>
-                <Button
-                  disabled={pageEnd >= total}
-                  onClick={() => update({ offset: query.offset + pageSize })}
-                >
-                  Next
-                </Button>
-              </div>
-            </footer>
-          </>
+          <AccountsTable
+            accounts={accounts.data.items}
+            query={query}
+            total={total}
+            onSortChange={handleSort}
+            onOffsetChange={(offset) => update({ offset })}
+            scopeQuery={scopeQuery}
+          />
         )}
       </Card>
     </div>

@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft, Check, Minus, X } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { Suspense } from 'react';
@@ -16,6 +16,7 @@ import {
 } from 'recharts';
 import { SEGMENTS, type SegmentKey } from '@tangible/types';
 import { AXIS, ChartFrame, GRID, TooltipCard } from '@/components/charts/chart-parts';
+import { HistoryTable } from '@/components/history-table';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { useScope } from '@/hooks/use-scope';
 import { api } from '@/lib/api';
@@ -142,40 +143,7 @@ function AccountDetail() {
           title="Year by year"
           description="The same data as the chart, in a form you can read exactly."
         />
-        <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-[var(--color-hairline)]">
-                {['Tax year', 'Assessed value', 'Estimated tax', 'Rendition', 'Penalty'].map((h, i) => (
-                  <th
-                    key={h}
-                    scope="col"
-                    className={`px-5 py-2.5 text-[11px] font-medium tracking-wide text-[var(--color-ink-secondary)] uppercase ${i === 0 || i === 3 ? 'text-left' : 'text-right'}`}
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {data.history.map((point) => (
-                <tr key={point.taxYear} className="border-b border-[var(--color-hairline)] last:border-0">
-                  <td className="tabular px-5 py-2.5 font-medium">{point.taxYear}</td>
-                  <td className="tabular px-5 py-2.5 text-right">{moneyExact(point.assessedValue)}</td>
-                  <td className="tabular px-5 py-2.5 text-right text-[var(--color-ink-secondary)]">
-                    {moneyExact(point.estimatedTax)}
-                  </td>
-                  <td className="px-5 py-2.5">
-                    <RenditionCell filed={point.renditionFiled} late={point.renditionLate} />
-                  </td>
-                  <td className="tabular px-5 py-2.5 text-right font-medium">
-                    {moneyExact(point.estimatedPenalty)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <HistoryTable history={data.history} />
       </Card>
 
       <p className="px-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
@@ -185,30 +153,6 @@ function AccountDetail() {
         district recorded one.
       </p>
     </div>
-  );
-}
-
-function RenditionCell({ filed, late }: { filed: boolean | null; late: boolean | null }) {
-  if (filed === null) {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-ink-muted)]">
-        <Minus size={13} /> Not published
-      </span>
-    );
-  }
-  if (!filed) {
-    return (
-      <span className="inline-flex items-center gap-1.5 text-xs text-[var(--color-critical)]">
-        <X size={13} strokeWidth={2.5} /> Not filed
-      </span>
-    );
-  }
-  return (
-    <span
-      className={`inline-flex items-center gap-1.5 text-xs ${late ? 'text-[var(--color-serious)]' : 'text-[var(--color-good)]'}`}
-    >
-      <Check size={13} strokeWidth={2.5} /> {late ? 'Filed late' : 'Filed'}
-    </span>
   );
 }
 

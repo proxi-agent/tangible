@@ -1,5 +1,10 @@
 import { listOwners } from '@tangible/analytics';
-import { SegmentKeySchema, type SegmentKey } from '@tangible/types';
+import {
+  OwnerSortFieldSchema,
+  SegmentKeySchema,
+  SortDirectionSchema,
+  type SegmentKey,
+} from '@tangible/types';
 import { handle, params, toArray } from '@/lib/route';
 import { getWarehouse } from '@/lib/warehouse';
 
@@ -25,6 +30,11 @@ export function GET(request: Request): Promise<Response> {
       segments,
       minAccounts: raw.minAccounts ? Number(raw.minAccounts) : 2,
       search: raw.search ? String(raw.search) : undefined,
+      // An unrecognized sort falls back to the default rather than 400ing: a
+      // stale bookmark should still render the list, just not in the order it
+      // asked for.
+      sortBy: OwnerSortFieldSchema.safeParse(raw.sortBy).data,
+      sortDir: SortDirectionSchema.safeParse(raw.sortDir).data,
       limit: Math.min(Number(raw.limit ?? 50), 500),
       offset: Number(raw.offset ?? 0),
     });

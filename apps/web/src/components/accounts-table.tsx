@@ -1,151 +1,159 @@
 'use client';
 
-import { ArrowDown, ArrowUp } from 'lucide-react';
+import type { ColumnDef, SortingState } from '@tanstack/react-table';
 import Link from 'next/link';
-import type { AccountQuery, AccountSeries } from '@tangible/types';
-import { cn } from '@/lib/cn';
+import { useMemo } from 'react';
+import {
+  ACCOUNT_SORT_FIELDS,
+  type AccountQuery,
+  type AccountSeries,
+  type AccountSortField,
+} from '@tangible/types';
 import { count, moneyExact } from '@/lib/format';
-import { Badge, EmptyState } from '@/components/ui/primitives';
+import { Badge } from '@/components/ui/primitives';
+import { DataTable, type ColumnMeta } from '@/components/ui/data-table';
 
-type SortField = AccountQuery['sortBy'];
-
-const COLUMNS: {
-  key: string;
-  label: string;
-  sortBy?: SortField;
-  align?: 'right';
-  className?: string;
-}[] = [
-  { key: 'owner', label: 'Owner', sortBy: 'ownerName' },
-  { key: 'account', label: 'Account' },
-  { key: 'city', label: 'City' },
-  { key: 'class', label: 'Class' },
-  { key: 'value', label: 'Assessed value', sortBy: 'latestAssessedValue', align: 'right' },
-  { key: 'years', label: 'Unfiled / on roll', sortBy: 'yearsUnfiled', align: 'right' },
-  { key: 'penalty', label: 'Penalty / yr', sortBy: 'estimatedAnnualPenalty', align: 'right' },
-  {
-    key: 'lifetime',
-    label: 'Penalty to date',
-    sortBy: 'estimatedLifetimePenalty',
-    align: 'right',
-  },
-  { key: 'flags', label: '' },
-];
+/**
+ * Only these columns can be sorted, because only these can be sorted *by the
+ * server*. City and class are derived from the latest year and have no index or
+ * ORDER BY behind them; offering a header that silently reordered one page
+ * would be worse than not offering it.
+ */
+const SORTABLE = new Set<string>(ACCOUNT_SORT_FIELDS);
 
 export function AccountsTable({
   accounts,
   query,
-  onSort,
+  total,
+  onSortChange,
+  onOffsetChange,
   scopeQuery,
 }: {
   accounts: AccountSeries[];
   query: AccountQuery;
-  onSort: (field: SortField) => void;
+  total: number;
+  onSortChange: (sortBy: AccountSortField, sortDir: 'asc' | 'desc') => void;
+  onOffsetChange: (offset: number) => void;
   scopeQuery: string;
 }) {
-  if (accounts.length === 0) {
-    return (
-      <EmptyState title="No accounts match these filters">
-        Try removing a segment or widening the value range.
-      </EmptyState>
-    );
-  }
+  const columns = useMemo<ColumnDef<AccountSeries, unknown>[]>(
+    () => [
+      {
+        id: 'ownerName',
+        header: 'Owner',
+        enableSorting: SORTABLE.has('ownerName'),
+        meta: { className: 'max-w-[280px]' } satisfies ColumnMeta,
+        cell: ({ row }) => (
+          <Link
+            href={`/accounts/${encodeURIComponent(row.original.accountId)}?${scopeQuery}`}
+            className="block truncate font-medium hover:underline"
+            title={row.original.ownerName ?? undefined}
+          >
+            {row.original.ownerName ?? '—'}
+          </Link>
+        ),
+      },
+      {
+        id: 'accountId',
+        header: 'Account',
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="tabular text-[var(--color-ink-secondary)]">
+            {row.original.accountId}
+          </span>
+        ),
+      },
+      {
+        id: 'siteCity',
+        header: 'City',
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="text-[var(--color-ink-secondary)]">{row.original.siteCity ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'stateClass',
+        header: 'Class',
+        enableSorting: false,
+        cell: ({ row }) => (
+          <span className="text-[var(--color-ink-secondary)]">{row.original.stateClass ?? '—'}</span>
+        ),
+      },
+      {
+        id: 'latestAssessedValue',
+        header: 'Assessed value',
+        meta: { align: 'right' } satisfies ColumnMeta,
+        cell: ({ row }) => moneyExact(row.original.latestAssessedValue),
+      },
+      {
+        id: 'yearsUnfiled',
+        header: 'Unfiled / on roll',
+        meta: { align: 'right' } satisfies ColumnMeta,
+        cell: ({ row }) => (
+          <span className="text-[var(--color-ink-secondary)]">
+            {count(row.original.yearsUnfiled)} / {count(row.original.yearsOnRoll)}
+          </span>
+        ),
+      },
+      {
+        id: 'estimatedAnnualPenalty',
+        header: 'Penalty / yr',
+        meta: { align: 'right' } satisfies ColumnMeta,
+        cell: ({ row }) => (
+          <span className="font-medium">{moneyExact(row.original.estimatedAnnualPenalty)}</span>
+        ),
+      },
+      {
+        id: 'estimatedLifetimePenalty',
+        header: 'Penalty to date',
+        meta: { align: 'right' } satisfies ColumnMeta,
+        cell: ({ row }) => (
+          <span className="text-[var(--color-ink-secondary)]">
+            {moneyExact(row.original.estimatedLifetimePenalty)}
+          </span>
+        ),
+      },
+      {
+        id: 'flags',
+        header: '',
+        enableSorting: false,
+        cell: ({ row }) => (
+          <div className="flex flex-wrap gap-1">
+            {row.original.segments.includes('core_icp') ? <Badge tone="accent">Core ICP</Badge> : null}
+            {row.original.segments.includes('chronic_nonfiler') ? (
+              <Badge tone="critical">Chronic</Badge>
+            ) : null}
+            {row.original.hasAgent ? <Badge>Agent</Badge> : null}
+            {row.original.isFrozen ? <Badge tone="warning">Frozen</Badge> : null}
+          </div>
+        ),
+      },
+    ],
+    [scopeQuery],
+  );
+
+  const sorting: SortingState = [{ id: query.sortBy, desc: query.sortDir === 'desc' }];
 
   return (
-    <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-[var(--color-hairline)]">
-            {COLUMNS.map((column) => {
-              const active = column.sortBy && query.sortBy === column.sortBy;
-              return (
-                <th
-                  key={column.key}
-                  scope="col"
-                  className={cn(
-                    'px-3 py-2.5 text-[11px] font-medium tracking-wide whitespace-nowrap text-[var(--color-ink-secondary)] uppercase',
-                    column.align === 'right' ? 'text-right' : 'text-left',
-                  )}
-                >
-                  {column.sortBy ? (
-                    <button
-                      type="button"
-                      onClick={() => onSort(column.sortBy!)}
-                      className={cn(
-                        'inline-flex items-center gap-1 transition-colors hover:text-[var(--color-ink)]',
-                        active && 'text-[var(--color-ink)]',
-                      )}
-                    >
-                      {column.label}
-                      {active ? (
-                        query.sortDir === 'desc' ? (
-                          <ArrowDown size={12} strokeWidth={2.5} />
-                        ) : (
-                          <ArrowUp size={12} strokeWidth={2.5} />
-                        )
-                      ) : null}
-                    </button>
-                  ) : (
-                    column.label
-                  )}
-                </th>
-              );
-            })}
-          </tr>
-        </thead>
-
-        <tbody>
-          {accounts.map((account) => (
-            <tr
-              key={account.accountId}
-              className="border-b border-[var(--color-hairline)] transition-colors last:border-0 hover:bg-[var(--color-plane)]"
-            >
-              <td className="max-w-[280px] px-3 py-2.5">
-                <Link
-                  href={`/accounts/${encodeURIComponent(account.accountId)}?${scopeQuery}`}
-                  className="block truncate font-medium hover:underline"
-                  title={account.ownerName ?? undefined}
-                >
-                  {account.ownerName ?? '—'}
-                </Link>
-              </td>
-              <td className="tabular px-3 py-2.5 text-[var(--color-ink-secondary)]">
-                {account.accountId}
-              </td>
-              <td className="px-3 py-2.5 text-[var(--color-ink-secondary)]">
-                {account.siteCity ?? '—'}
-              </td>
-              <td className="px-3 py-2.5 text-[var(--color-ink-secondary)]">
-                {account.stateClass ?? '—'}
-              </td>
-              <td className="tabular px-3 py-2.5 text-right">
-                {moneyExact(account.latestAssessedValue)}
-              </td>
-              <td className="tabular px-3 py-2.5 text-right text-[var(--color-ink-secondary)]">
-                {count(account.yearsUnfiled)} / {count(account.yearsOnRoll)}
-              </td>
-              <td className="tabular px-3 py-2.5 text-right font-medium">
-                {moneyExact(account.estimatedAnnualPenalty)}
-              </td>
-              <td className="tabular px-3 py-2.5 text-right text-[var(--color-ink-secondary)]">
-                {moneyExact(account.estimatedLifetimePenalty)}
-              </td>
-              <td className="px-3 py-2.5">
-                <div className="flex flex-wrap gap-1">
-                  {account.segments.includes('core_icp') ? (
-                    <Badge tone="accent">Core ICP</Badge>
-                  ) : null}
-                  {account.segments.includes('chronic_nonfiler') ? (
-                    <Badge tone="critical">Chronic</Badge>
-                  ) : null}
-                  {account.hasAgent ? <Badge>Agent</Badge> : null}
-                  {account.isFrozen ? <Badge tone="warning">Frozen</Badge> : null}
-                </div>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <DataTable
+      columns={columns}
+      data={accounts}
+      getRowId={(account) => account.accountId}
+      sorting={sorting}
+      onSortingChange={(next) => {
+        const first = next[0];
+        // Clicking through to "unsorted" is not a state the server has; fall
+        // back to the default ordering instead of sending no sort at all.
+        if (!first) return onSortChange('estimatedAnnualPenalty', 'desc');
+        if (!SORTABLE.has(first.id)) return;
+        onSortChange(first.id as AccountSortField, first.desc ? 'desc' : 'asc');
+      }}
+      pagination={{ offset: query.offset, limit: query.limit, total }}
+      onOffsetChange={onOffsetChange}
+      empty={{
+        title: 'No accounts match these filters',
+        children: 'Try removing a segment or widening the value range.',
+      }}
+    />
   );
 }

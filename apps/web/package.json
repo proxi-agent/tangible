@@ -16,6 +16,7 @@
     "@tangible/ingest": "workspace:*",
     "@tangible/types": "workspace:*",
     "@tanstack/react-query": "^5.101.4",
+    "@tanstack/react-table": "^8.21.3",
     "clsx": "^2.1.1",
     "lucide-react": "^1.31.0",
     "next": "^16.3.0",

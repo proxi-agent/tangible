@@ -1,4 +1,10 @@
-import type { OwnerRollup, Paginated, SegmentKey } from '@tangible/types';
+import type {
+  OwnerRollup,
+  OwnerSortField,
+  Paginated,
+  SegmentKey,
+  SortDirection,
+} from '@tangible/types';
 import { segmentsPredicate } from '../predicates.js';
 import { accountSeriesCte } from '../series.js';
 import { and, bool, lit, num } from '../sql.js';
@@ -11,9 +17,24 @@ export interface OwnerQuery {
   /** Only entities holding at least this many accounts — the roll-up targets. */
   minAccounts: number;
   search?: string;
+  sortBy?: OwnerSortField;
+  sortDir?: SortDirection;
   limit: number;
   offset: number;
 }
+
+/**
+ * Sortable fields mapped to their SQL. Sorting happens here rather than in the
+ * browser because a page is 50 rows out of thousands — sorting what was
+ * delivered would reorder a page and look like it reordered the result.
+ */
+const OWNER_SORT_SQL: Readonly<Record<OwnerSortField, string>> = {
+  estimatedAnnualPenalty: 'estimated_annual_penalty',
+  totalAssessedValue: 'total_assessed_value',
+  accountCount: 'account_count',
+  unfiledAccountCount: 'unfiled_account_count',
+  ownerName: 'owner_name',
+};
 
 /**
  * Accounts grouped by normalized owner. A single business often holds many
@@ -71,7 +92,9 @@ export async function listOwners(
     -- owner_key breaks the remaining ties. This list is paginated, and an order
     -- that is not total lets rows shift between pages — the same owner appearing
     -- twice, or none.
-    ORDER BY estimated_annual_penalty DESC, total_assessed_value DESC, owner_key ASC
+    ORDER BY ${OWNER_SORT_SQL[query.sortBy ?? 'estimatedAnnualPenalty']} ${
+      query.sortDir === 'asc' ? 'ASC' : 'DESC'
+    } NULLS LAST, total_assessed_value DESC, owner_key ASC
     LIMIT ${lit(query.limit)} OFFSET ${lit(query.offset)};
   `;
 
