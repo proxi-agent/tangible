@@ -35,7 +35,7 @@ export async function getMarketOverview(
   });
 
   const sql = /* sql */ `
-    WITH ${accountSeriesCte(jurisdictionId, taxYear)}
+    WITH ${accountSeriesCte(jurisdictionId, taxYear, warehouse.materializedSeries)}
     SELECT
       count(*)                                                    AS total_accounts,
       count(*) FILTER (WHERE is_taxable)                          AS taxable_accounts,

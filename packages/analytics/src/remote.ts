@@ -1,5 +1,6 @@
 import { tmpdir } from 'node:os';
 import { cacheParquet, type ParquetCacheOptions, type ParquetCacheResult } from './cache.js';
+import { MATERIALIZED_SERIES_TABLE } from './series.js';
 import { lit } from './sql.js';
 import { Warehouse, type WarehouseOptions } from './warehouse.js';
 
@@ -26,6 +27,8 @@ export interface ParquetTable {
   partitionBy?: readonly string[];
   /** SQL type per partition column, so the mounted view matches the DDL. */
   partitionTypes?: Readonly<Record<string, string>>;
+  /** Mount only if the manifest lists it, rather than failing without it. */
+  optional?: boolean;
 }
 
 export const PARQUET_TABLES: readonly ParquetTable[] = [
@@ -33,6 +36,17 @@ export const PARQUET_TABLES: readonly ParquetTable[] = [
     name: 'account_year',
     partitionBy: ['jurisdiction_id', 'tax_year'],
     partitionTypes: { jurisdiction_id: 'VARCHAR', tax_year: 'INTEGER' },
+  },
+  {
+    /**
+     * The series, precomputed per as-of year. Optional: an export written
+     * before this existed simply lacks it, and queries fall back to building
+     * the CTE per request.
+     */
+    name: 'account_series',
+    optional: true,
+    partitionBy: ['jurisdiction_id', 'as_of_year'],
+    partitionTypes: { jurisdiction_id: 'VARCHAR', as_of_year: 'INTEGER' },
   },
   { name: 'jurisdiction' },
   { name: 'tax_policy' },
@@ -185,10 +199,15 @@ export function remoteInitSql(baseUrl: string, options: RemoteWarehouseOptions =
  * without reopening the database or losing the session's settings.
  */
 export function parquetViewSql(baseUrl: string, manifest?: ParquetManifest): string[] {
-  return PARQUET_TABLES.map(
+  return PARQUET_TABLES.filter((table) => !table.optional || hasTable(manifest, table.name)).map(
     (table) =>
       `CREATE OR REPLACE VIEW ${table.name} AS SELECT * FROM ${parquetSourceSql(baseUrl, table, manifest)};`,
   );
+}
+
+/** Whether an export actually carries a table, as opposed to the code knowing of it. */
+export function hasTable(manifest: ParquetManifest | undefined | null, name: string): boolean {
+  return Boolean(manifest?.tables.some((table) => table.name === name && table.files.length > 0));
 }
 
 /**
@@ -285,6 +304,7 @@ export async function openRemoteWarehouse(
     ...warehouseOptions,
     manifest: manifest ?? undefined,
   });
+  warehouse.materializedSeries = hasTable(manifest, MATERIALIZED_SERIES_TABLE);
 
   if (wanted && !blockOnCache) {
     void (async () => {

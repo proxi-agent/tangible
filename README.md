@@ -461,12 +461,42 @@ and it cannot be measured from a laptop.
 `PARQUET_CACHE=off` disables the copy entirely; `PARQUET_CACHE_MAX_MB` changes
 the 400 MB budget (Vercel gives each function 512 MB of temp space).
 
-One thing the cache does not currently do is fetch selectively. Parquet is
-columnar, so reading over HTTP pulls only the columns a query touches — and for
-the segment analysis that is about **35%** of the bytes. The other 65% is owner
-names and mailing addresses, which only the account detail page and the CSV
-export read. The cache copies all of it. Narrowing the cached set is the obvious
-next lever if warm-up time ever matters.
+### The series is precomputed
+
+The export also carries `account_series` — the per-account series, already
+collapsed, one partition per jurisdiction and as-of year.
+
+This is where the time was. Profiling an overview query put **907ms of 976ms in
+the series CTE and 5ms in the scan**: two window functions across every
+account-year in the jurisdiction, rebuilt on every request, though nothing in it
+depends on the request. Moving it into the export:
+
+| query | rebuilt per request | precomputed |
+|---|---|---|
+| overview | 947ms | 104ms |
+| facets | 3051ms | 10ms |
+| owners | 1119ms | 27ms |
+| accounts | 1065ms | 34ms |
+| **total** | **6225ms** | **218ms** |
+
+The materialized table is generated *by running the same CTE the queries would
+have run*, which is what keeps the two column-for-column identical — drift would
+be a silently wrong answer, not an error. An export without it still works;
+`accountSeriesCte` falls back to computing, and the local warehouse always does.
+
+Anything derived from `jurisdiction` or `tax_policy` — the blended rate, the
+exemption threshold — is frozen at export time, so changing a tax rate takes
+effect on the next `pnpm export:parquet` rather than the next request.
+
+It costs 85 MB, taking the export to ~180 MB. That is paid once per instance in
+the background; the queries above are paid on every request.
+
+One thing the cache does not do is fetch selectively. Parquet is columnar, so
+reading over HTTP pulls only the columns a query touches — for the segment
+analysis, about 35% of `account_year`. And with the series precomputed, most
+queries never open `account_year` at all; only the account detail page and the
+CSV export do. Caching just `account_series` is the obvious next saving if
+warm-up ever matters.
 
 ### Function limits
 

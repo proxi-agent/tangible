@@ -92,7 +92,7 @@ export async function getValueDistribution(
   });
 
   const sql = /* sql */ `
-    WITH ${accountSeriesCte(jurisdictionId, taxYear)}
+    WITH ${accountSeriesCte(jurisdictionId, taxYear, warehouse.materializedSeries)}
     SELECT
       CASE ${cases.join(' ')} ELSE NULL END                          AS band_index,
       count(*)                                                       AS account_count,
@@ -131,7 +131,7 @@ export async function getStateClassDistribution(
   taxYear: number,
 ): Promise<DistributionBucket[]> {
   const sql = /* sql */ `
-    WITH ${accountSeriesCte(jurisdictionId, taxYear)}
+    WITH ${accountSeriesCte(jurisdictionId, taxYear, warehouse.materializedSeries)}
     SELECT
       coalesce(state_class_group, 'unclassified')                    AS label,
       count(*)                                                       AS account_count,

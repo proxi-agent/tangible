@@ -36,6 +36,14 @@ export class Warehouse {
   #writeQueue: Promise<unknown> = Promise.resolve();
   readonly options: WarehouseOptions;
 
+  /**
+   * Whether `account_series` is available to read instead of being rebuilt per
+   * request. Set by whoever opens the warehouse, since only they know what the
+   * export contains. False for a plain DuckDB file, which holds facts rather
+   * than precomputed analysis.
+   */
+  materializedSeries = false;
+
   constructor(options: WarehouseOptions) {
     this.options = options;
   }

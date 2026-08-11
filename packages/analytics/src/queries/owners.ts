@@ -32,13 +32,18 @@ export async function listOwners(
   );
 
   const sql = /* sql */ `
-    WITH ${accountSeriesCte(query.jurisdictionId, query.taxYear)},
+    WITH ${accountSeriesCte(query.jurisdictionId, query.taxYear, warehouse.materializedSeries)},
     filtered AS (SELECT * FROM series WHERE ${where}),
     grouped AS (
       SELECT
         jurisdiction_id,
         owner_key,
-        any_value(owner_name)                                          AS owner_name,
+        -- Accounts are grouped by normalized owner_key, so the display name has
+        -- to be chosen from several spellings of the same business — "DEMONTROND
+        -- BUICK CO" and "DEMONTROND BUICK COMPANY". any_value() returned whichever
+        -- the scan reached first, so the name changed between runs. max() is
+        -- deterministic, and in practice picks the fuller spelling.
+        max(owner_name)                                                AS owner_name,
         count(*)                                                       AS account_count,
         count(*) FILTER (WHERE NOT filed_latest_year
                            AND NOT filing_unknown_latest_year)          AS unfiled_account_count,
@@ -63,7 +68,10 @@ export async function listOwners(
     )
     SELECT *, count(*) OVER () AS total_count
     FROM grouped
-    ORDER BY estimated_annual_penalty DESC, total_assessed_value DESC
+    -- owner_key breaks the remaining ties. This list is paginated, and an order
+    -- that is not total lets rows shift between pages — the same owner appearing
+    -- twice, or none.
+    ORDER BY estimated_annual_penalty DESC, total_assessed_value DESC, owner_key ASC
     LIMIT ${lit(query.limit)} OFFSET ${lit(query.offset)};
   `;
 

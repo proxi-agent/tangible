@@ -12,7 +12,9 @@
 import { mkdir, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { join, relative, resolve, sep } from 'node:path';
 import {
+  accountSeriesCte,
   MANIFEST_FILENAME,
+  MATERIALIZED_SERIES_TABLE,
   num,
   openRemoteWarehouse,
   PARQUET_TABLES,
@@ -45,11 +47,6 @@ async function main(): Promise<void> {
 
   await mkdir(outDir, { recursive: true });
 
-  const tables: ParquetManifest['tables'] = [];
-  for (const table of PARQUET_TABLES) {
-    tables.push(await exportTable(warehouse, table, outDir));
-  }
-
   const jurisdictions = await warehouse.query<{
     jurisdiction_id: unknown;
     accounts: unknown;
@@ -66,19 +63,30 @@ async function main(): Promise<void> {
     ORDER BY 2 DESC;
   `);
 
+  const scope = jurisdictions.map((row) => ({
+    id: String(row.jurisdiction_id),
+    accounts: num(row.accounts),
+    years: String(row.years ?? '')
+      .split(',')
+      .filter((year) => year.trim() !== '')
+      .map(Number)
+      .filter(Number.isInteger),
+  }));
+
+  const tables: ParquetManifest['tables'] = [];
+  for (const table of PARQUET_TABLES) {
+    tables.push(
+      table.name === MATERIALIZED_SERIES_TABLE
+        ? await exportSeries(warehouse, table, outDir, scope)
+        : await exportTable(warehouse, table, outDir),
+    );
+  }
+
   const manifest: ParquetManifest = {
     exportedAt: new Date().toISOString(),
     sourceWarehouse: env.DUCKDB_PATH,
     tables,
-    jurisdictions: jurisdictions.map((row) => ({
-      id: String(row.jurisdiction_id),
-      accounts: num(row.accounts),
-      years: String(row.years ?? '')
-        .split(',')
-        .filter((year) => year.trim() !== '')
-        .map(Number)
-        .filter(Number.isInteger),
-    })),
+    jurisdictions: scope,
   };
 
   await writeFile(join(outDir, MANIFEST_FILENAME), `${JSON.stringify(manifest, null, 2)}\n`);
@@ -145,6 +153,64 @@ async function exportTable(
     files,
     bytes: files.reduce((sum, file) => sum + file.bytes, 0),
   };
+}
+
+/**
+ * Precompute the account series, one partition per jurisdiction and as-of year.
+ *
+ * The series is the entire cost of a query — 907ms of a 976ms overview, against
+ * a 5ms scan — because it runs two window functions over every account-year in
+ * the jurisdiction, and it does that again on every request. None of it depends
+ * on the request, so it is done once here.
+ *
+ * Built by running the very CTE the queries would have run, which is what makes
+ * the materialized table and the computed one identical column-for-column. Any
+ * drift would be a silent wrong answer rather than an error.
+ */
+async function exportSeries(
+  warehouse: Warehouse,
+  table: ParquetTable,
+  outDir: string,
+  scope: ParquetManifest['jurisdictions'],
+): Promise<ParquetManifest['tables'][number]> {
+  const target = join(outDir, table.name);
+  await rm(target, { recursive: true, force: true });
+
+  let rows = 0;
+  for (const jurisdiction of scope) {
+    for (const year of jurisdiction.years) {
+      await warehouse.exec(/* sql */ `
+        COPY (
+          WITH ${accountSeriesCte(jurisdiction.id, year)}
+          SELECT series.*, ${year} AS as_of_year FROM series
+        )
+        TO '${target.replace(/'/g, "''")}'
+        (FORMAT PARQUET, COMPRESSION ZSTD, PARTITION_BY (jurisdiction_id, as_of_year),
+         APPEND);
+      `);
+    }
+    process.stdout.write(`\r  building series: ${jurisdiction.id}          `);
+  }
+
+  const files = await Promise.all(
+    (await listFiles(target)).map(async (file) => ({
+      path: relative(outDir, file).split(sep).join('/'),
+      bytes: (await stat(file)).size,
+    })),
+  );
+
+  // Counted from the written files rather than tracked during the loop, so the
+  // manifest describes what is on disk rather than what was intended.
+  rows = num(
+    (
+      await warehouse.queryOne<{ n: unknown }>(
+        `SELECT count(*) AS n FROM read_parquet('${target.replace(/'/g, "''")}/**/*.parquet', hive_partitioning = true);`,
+      )
+    )?.n,
+  );
+
+  process.stdout.write('\r'.padEnd(48) + '\r');
+  return { name: table.name, rows, files, bytes: files.reduce((s, f) => s + f.bytes, 0) };
 }
 
 async function listFiles(dir: string): Promise<string[]> {

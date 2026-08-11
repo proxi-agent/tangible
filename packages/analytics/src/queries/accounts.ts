@@ -76,7 +76,7 @@ export async function listAccounts(
   const where = filterClause(query);
   const orderColumn = SORT_COLUMNS[query.sortBy];
   const direction = query.sortDir === 'asc' ? 'ASC' : 'DESC';
-  const cte = accountSeriesCte(query.jurisdictionId, query.taxYear);
+  const cte = accountSeriesCte(query.jurisdictionId, query.taxYear, warehouse.materializedSeries);
 
   const sql = /* sql */ `
     WITH ${cte},
@@ -104,7 +104,7 @@ export async function listAccounts(
 /** Used when a page comes back empty (offset past the end) and the window count is unavailable. */
 export async function countAccounts(warehouse: Warehouse, query: AccountQuery): Promise<number> {
   const sql = /* sql */ `
-    WITH ${accountSeriesCte(query.jurisdictionId, query.taxYear)}
+    WITH ${accountSeriesCte(query.jurisdictionId, query.taxYear, warehouse.materializedSeries)}
     SELECT count(*) AS n FROM series WHERE ${filterClause(query)};
   `;
   const row = await warehouse.queryOne<{ n: unknown }>(sql);
@@ -119,7 +119,7 @@ export async function getAccount(
   accountId: string,
 ): Promise<AccountSeries | null> {
   const sql = /* sql */ `
-    WITH ${accountSeriesCte(jurisdictionId, taxYear)}
+    WITH ${accountSeriesCte(jurisdictionId, taxYear, warehouse.materializedSeries)}
     SELECT *, ${segmentFlagsSql()}
     FROM series
     WHERE account_id = ${lit(accountId)};
@@ -172,7 +172,7 @@ export async function getFilterFacets(
   jurisdictionId: string,
   taxYear: number,
 ): Promise<FilterFacets> {
-  const cte = accountSeriesCte(jurisdictionId, taxYear);
+  const cte = accountSeriesCte(jurisdictionId, taxYear, warehouse.materializedSeries);
 
   const [cities, classes, range] = await Promise.all([
     warehouse.query<Record<string, unknown>>(/* sql */ `
@@ -180,14 +180,17 @@ export async function getFilterFacets(
       SELECT site_city AS value, count(*) AS n
       FROM series
       WHERE site_city IS NOT NULL AND trim(site_city) <> ''
-      GROUP BY 1 ORDER BY n DESC LIMIT 200;
+      -- The name breaks ties. Hundreds of cities share a count in the tail, and
+      -- ordering by count alone lets them swap places between requests, which
+      -- makes a filter list that reshuffles under the cursor.
+      GROUP BY 1 ORDER BY n DESC, value ASC LIMIT 200;
     `),
     warehouse.query<Record<string, unknown>>(/* sql */ `
       WITH ${cte}
-      SELECT state_class AS value, any_value(state_class_group) AS label, count(*) AS n
+      SELECT state_class AS value, min(state_class_group) AS label, count(*) AS n
       FROM series
       WHERE state_class IS NOT NULL AND trim(state_class) <> ''
-      GROUP BY 1 ORDER BY n DESC LIMIT 100;
+      GROUP BY 1 ORDER BY n DESC, value ASC LIMIT 100;
     `),
     warehouse.queryOne<Record<string, unknown>>(/* sql */ `
       WITH ${cte}

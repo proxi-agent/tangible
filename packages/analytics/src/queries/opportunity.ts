@@ -20,7 +20,7 @@ export async function getOpportunityModel(
   const predicate = SEGMENT_PREDICATES[input.segment];
 
   const sql = /* sql */ `
-    WITH ${accountSeriesCte(input.jurisdictionId, input.taxYear)}
+    WITH ${accountSeriesCte(input.jurisdictionId, input.taxYear, warehouse.materializedSeries)}
     SELECT
       count(*)                                    AS addressable_accounts,
       coalesce(sum(estimated_annual_penalty), 0)  AS current_penalty_burden,

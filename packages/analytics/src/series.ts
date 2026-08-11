@@ -15,9 +15,39 @@ import { lit } from './sql.js';
  * source that omits the field produces no non-filer signal at all rather than a
  * spurious one.
  */
-export function accountSeriesCte(jurisdictionId: string, asOfYear: number): string {
+export const MATERIALIZED_SERIES_TABLE = 'account_series';
+
+export function accountSeriesCte(
+  jurisdictionId: string,
+  asOfYear: number,
+  materialized = false,
+): string {
   const j = lit(jurisdictionId);
   const y = lit(asOfYear);
+
+  /**
+   * When the export carries a precomputed series, read it instead of rebuilding
+   * it.
+   *
+   * The computation below is the whole cost of a query — measured at 907ms of a
+   * 976ms overview, against a 5ms scan — because it runs two window functions
+   * across every account-year in the jurisdiction on every request. Nothing in
+   * it depends on the request, so it belongs in the export.
+   *
+   * The materialized table is produced *by running this CTE*, which is what
+   * guarantees the two are column-for-column identical. Anything derived from
+   * `jurisdiction` or `tax_policy` — the blended rate, the exemption threshold —
+   * is therefore frozen at export time, and picks up a change on the next
+   * `pnpm export:parquet` rather than the next request.
+   */
+  if (materialized) {
+    return /* sql */ `
+series AS (
+  SELECT * EXCLUDE (as_of_year)
+  FROM ${MATERIALIZED_SERIES_TABLE}
+  WHERE jurisdiction_id = ${j} AND as_of_year = ${y}
+)`;
+  }
 
   return /* sql */ `
 series AS (
