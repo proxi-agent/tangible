@@ -1,7 +1,15 @@
 'use client';
 
 import { HelpCircle } from 'lucide-react';
-import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/cn';
 
@@ -20,8 +28,8 @@ import { cn } from '@/lib/cn';
 
 const PANEL_WIDTH = 264;
 const VIEWPORT_MARGIN = 8;
-/** Below this much room overhead, the panel flips under the trigger. */
-const FLIP_THRESHOLD = 150;
+/** Space between the trigger and the panel. */
+const GAP = 8;
 
 export function Tooltip({
   title,
@@ -46,21 +54,53 @@ export function Tooltip({
   }, []);
   const hide = useCallback(() => setAnchor(null), []);
 
+  /** Which input opened it — hover and focus want different dismissal rules. */
+  const openedByPointer = useRef(false);
+  const showFromPointer = useCallback(() => {
+    openedByPointer.current = true;
+    show();
+  }, [show]);
+  const showFromFocus = useCallback(() => {
+    openedByPointer.current = false;
+    show();
+  }, [show]);
+
   useEffect(() => {
     if (!open) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') hide();
     };
+    // Backstop for a hover that never gets its pointerleave — the trigger
+    // re-rendering out from under the cursor, or a pointer that jumps rather
+    // than travels. Only for pointer-opened panels: a keyboard user who opened
+    // this by tabbing should not lose it to a nudged mouse.
+    // Geometry, not event.target: a move event can be reported against an
+    // ancestor while the cursor is still over the trigger, and the rect is the
+    // only authority on where the cursor actually is. A trigger that has since
+    // unmounted has no rect, which is itself the answer.
+    const onPointerMove = (event: PointerEvent) => {
+      const rect = triggerRef.current?.getBoundingClientRect();
+      const inside =
+        rect &&
+        event.clientX >= rect.left &&
+        event.clientX <= rect.right &&
+        event.clientY >= rect.top &&
+        event.clientY <= rect.bottom;
+      if (!inside) hide();
+    };
+
     // The measured rect goes stale the moment anything moves, and a panel
     // floating away from its trigger is worse than no panel.
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('scroll', hide, true);
     window.addEventListener('resize', hide);
+    if (openedByPointer.current) document.addEventListener('pointermove', onPointerMove);
     return () => {
       window.removeEventListener('keydown', onKeyDown);
       window.removeEventListener('scroll', hide, true);
       window.removeEventListener('resize', hide);
+      document.removeEventListener('pointermove', onPointerMove);
     };
   }, [open, hide]);
 
@@ -69,9 +109,9 @@ export function Tooltip({
       <span
         ref={triggerRef}
         className={cn('inline-flex', className)}
-        onPointerEnter={show}
+        onPointerEnter={showFromPointer}
         onPointerLeave={hide}
-        onFocus={show}
+        onFocus={showFromFocus}
         onBlur={hide}
         aria-describedby={open ? id : undefined}
       >
@@ -81,6 +121,44 @@ export function Tooltip({
       {open ? <TooltipPanel id={id} anchor={anchor} title={title} content={content} /> : null}
     </>
   );
+}
+
+/**
+ * Where the panel goes, once its real height is known.
+ *
+ * Above the trigger by preference — that is where the eye already is — but
+ * only if the whole panel fits there. A three-line definition and an eight-line
+ * one need different answers, and a guess based on the trigger's position alone
+ * gets the tall ones sheared off against the top of the window.
+ */
+function place(anchor: DOMRect, width: number, height: number) {
+  const roomAbove = anchor.top - VIEWPORT_MARGIN - GAP;
+  const roomBelow = window.innerHeight - anchor.bottom - VIEWPORT_MARGIN - GAP;
+
+  // Fits above → above. Otherwise whichever side has more room, so the panel
+  // is never squeezed into the smaller of two bad options.
+  const above = height <= roomAbove || roomAbove >= roomBelow;
+  const maxHeight = Math.max(above ? roomAbove : roomBelow, 0);
+  const settled = Math.min(height, maxHeight);
+
+  return {
+    left: clamp(
+      anchor.left + anchor.width / 2 - width / 2,
+      VIEWPORT_MARGIN,
+      window.innerWidth - width - VIEWPORT_MARGIN,
+    ),
+    top: clamp(
+      above ? anchor.top - GAP - settled : anchor.bottom + GAP,
+      VIEWPORT_MARGIN,
+      window.innerHeight - settled - VIEWPORT_MARGIN,
+    ),
+    maxHeight,
+  };
+}
+
+/** Low wins ties, so a panel taller than the viewport still starts on screen. */
+function clamp(value: number, low: number, high: number) {
+  return Math.max(low, Math.min(value, high));
 }
 
 function TooltipPanel({
@@ -94,34 +172,42 @@ function TooltipPanel({
   title?: string;
   content: ReactNode;
 }) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<ReturnType<typeof place> | null>(null);
+
+  // Measure, then place. useLayoutEffect runs before paint, so the unplaced
+  // first render is never visible — it exists only to be measured.
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const { width, height } = panel.getBoundingClientRect();
+    setPosition(place(anchor, width, height));
+  }, [anchor]);
+
   if (typeof document === 'undefined') return null;
 
-  const below = anchor.top < FLIP_THRESHOLD;
-  const centered = anchor.left + anchor.width / 2;
-  const half = PANEL_WIDTH / 2;
-  const left = Math.min(
-    Math.max(centered, half + VIEWPORT_MARGIN),
-    window.innerWidth - half - VIEWPORT_MARGIN,
-  );
+  const width = Math.min(PANEL_WIDTH, window.innerWidth - VIEWPORT_MARGIN * 2);
 
   return createPortal(
     <div
+      ref={panelRef}
       id={id}
       role="tooltip"
       style={{
         position: 'fixed',
-        left,
-        top: below ? anchor.bottom + 8 : anchor.top - 8,
-        width: PANEL_WIDTH,
-        transform: `translate(-50%, ${below ? '0' : '-100%'})`,
+        width,
+        left: position?.left ?? 0,
+        top: position?.top ?? 0,
+        maxHeight: position?.maxHeight,
+        opacity: position ? 1 : 0,
       }}
       className={cn(
-        'pointer-events-none z-50 rounded-lg border border-[var(--color-hairline)]',
-        'bg-[var(--color-surface)] px-3 py-2 shadow-lg shadow-black/10',
-        'text-xs leading-relaxed text-[var(--color-ink-secondary)]',
+        'pointer-events-none z-50 overflow-y-auto overscroll-contain rounded-lg',
+        'border-hairline bg-surface border px-3 py-2',
+        'text-ink-secondary text-xs leading-relaxed shadow-lg shadow-black/10',
       )}
     >
-      {title ? <p className="mb-1 font-semibold text-[var(--color-ink)]">{title}</p> : null}
+      {title ? <p className="text-ink mb-1 font-semibold">{title}</p> : null}
       {content}
     </div>,
     document.body,
