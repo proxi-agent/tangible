@@ -431,12 +431,21 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 ```
 
-There is deliberately no `vercel.json`. Its `functions` globs match Pages Router
+`apps/web/vercel.json` deliberately contains only `"framework": "nextjs"`.
+
+It does **not** use the `functions` property. Those globs match Pages Router
 files and standalone `/api` directories, not App Router routes — pointed at
-`src/app/api/**/*.ts` it fails the deploy with *"doesn't match any Serverless
+`src/app/api/**/*.ts` the deploy fails with *"doesn't match any Serverless
 Functions inside the `api` directory"*. Segment config is the supported route,
 and it lands in `.next/server/functions-config-manifest.json`, which is what
 Vercel reads.
+
+The `framework` line pins the preset, because with it left as "Other" the build
+succeeds and then fails looking for a `public` directory — "Other" expects
+static output, so it never looks for `.next`. Pinning it here means the setting
+cannot drift in the dashboard. Note that `vercel.json` is read from the
+project's Root Directory, so this file only takes effect with Root Directory set
+to `apps/web` — that part is a project setting and cannot be committed.
 
 Memory has no segment-config equivalent; set it in the project's
 Settings → Functions if the default is not enough. Keep `DUCKDB_MEMORY_LIMIT`
