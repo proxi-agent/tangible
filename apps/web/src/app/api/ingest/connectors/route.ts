@@ -3,6 +3,7 @@ import { handle } from '@/lib/route';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /**
  * Which jurisdictions can be ingested, and from where.

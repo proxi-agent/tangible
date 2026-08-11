@@ -421,7 +421,28 @@ of old and new files.
 Set `PARQUET_CACHE=off` to disable it, `PARQUET_CACHE_MAX_MB` to change the
 400 MB budget (Vercel gives each function 512 MB of temp space).
 
-`maxDuration` is set to 60s in `apps/web/vercel.json`.
+### Function limits
+
+`maxDuration` is 60s, declared in each route file as App Router segment config:
+
+```ts
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
+```
+
+There is deliberately no `vercel.json`. Its `functions` globs match Pages Router
+files and standalone `/api` directories, not App Router routes — pointed at
+`src/app/api/**/*.ts` it fails the deploy with *"doesn't match any Serverless
+Functions inside the `api` directory"*. Segment config is the supported route,
+and it lands in `.next/server/functions-config-manifest.json`, which is what
+Vercel reads.
+
+Memory has no segment-config equivalent; set it in the project's
+Settings → Functions if the default is not enough. Keep `DUCKDB_MEMORY_LIMIT`
+under whatever that is — DuckDB treats it as a hard ceiling. Queries spill to
+the temp directory rather than failing when they reach it, so a tight limit
+costs speed instead of correctness.
 
 To run ingest against a deployed dashboard, set `INGEST_API_URL` to a reachable
 NestJS instance. Left unset, the Data page reports that ingest is local-only

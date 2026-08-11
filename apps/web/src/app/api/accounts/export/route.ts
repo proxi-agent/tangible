@@ -4,6 +4,7 @@ import { getWarehouse } from '@/lib/warehouse';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /** Rows exported per CSV request. Anything larger belongs in a saved lead list. */
 const CSV_EXPORT_LIMIT = 5000;

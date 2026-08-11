@@ -4,6 +4,7 @@ import { getWarehouse } from '@/lib/warehouse';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /** Year-over-year shape of the roll — this is where the HB 9 cliff shows up. */
 export function GET(request: Request): Promise<Response> {

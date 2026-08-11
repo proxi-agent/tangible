@@ -4,6 +4,7 @@ import { getWarehouse } from '@/lib/warehouse';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /** Every segment's headline numbers for one jurisdiction/year. */
 export function GET(request: Request): Promise<Response> {

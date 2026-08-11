@@ -5,6 +5,7 @@ import { getWarehouse } from '@/lib/warehouse';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /**
  * Accounts rolled up by normalized owner. A business with twelve locations

@@ -4,6 +4,7 @@ import { getWarehouse, getWarehouseInfo } from '@/lib/warehouse';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 60;
 
 /** Confirms the process is up *and* that the warehouse actually answers. */
 export function GET(): Promise<Response> {

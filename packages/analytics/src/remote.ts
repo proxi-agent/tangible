@@ -153,6 +153,12 @@ export function remoteInitSql(baseUrl: string, options: RemoteWarehouseOptions =
     );
   }
 
+  // Somewhere to spill. `memory_limit` is a hard ceiling, and without a temp
+  // directory an in-memory database that reaches it fails the query outright
+  // rather than going to disk. Function memory cannot be set from route segment
+  // config, so the safe assumption is that there is less of it than we'd like.
+  statements.push(`SET temp_directory = ${lit(`${tmpdir()}/duckdb-spill`)};`);
+
   if (remote) {
     const extensionDir = options.extensionDirectory ?? `${tmpdir()}/duckdb-extensions`;
     statements.push(`SET extension_directory = ${lit(extensionDir)};`);
