@@ -1,0 +1,41 @@
+{
+  "name": "@tangible/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "swc src -d dist --strip-leading-paths",
+    "dev": "concurrently -n swc,node -c cyan,green \"swc src -d dist --strip-leading-paths -w\" \"node --watch-path=./dist dist/main.js\"",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "seed": "tsx src/cli/seed.ts",
+    "ingest": "tsx src/cli/ingest.ts",
+    "export:parquet": "tsx src/cli/export-parquet.ts",
+    "publish:parquet": "tsx src/cli/publish-parquet.ts",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.1.29",
+    "@nestjs/config": "^4.0.4",
+    "@nestjs/core": "^11.1.29",
+    "@nestjs/platform-express": "^11.1.29",
+    "@nestjs/schedule": "^6.1.3",
+    "@tangible/analytics": "workspace:*",
+    "@tangible/db": "workspace:*",
+    "@tangible/ingest": "workspace:*",
+    "@tangible/types": "workspace:*",
+    "drizzle-orm": "^0.45.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@swc/cli": "^0.7.9",
+    "@swc/core": "^1.15.47",
+    "@types/express": "^5.0.6",
+    "@types/node": "catalog:",
+    "concurrently": "^10.0.4",
+    "tsx": "catalog:",
+    "typescript": "catalog:"
+  }
+}

@@ -1,0 +1,27 @@
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+.next/
+out/
+*.tsbuildinfo
+
+# turbo
+.turbo/
+
+# env
+.env
+.env.*
+!.env.example
+
+# data warehouse — county files and the DuckDB database are large, never commit
+data/
+*.duckdb
+*.duckdb.wal
+*.parquet
+
+# misc
+.DS_Store
+*.log
+coverage/

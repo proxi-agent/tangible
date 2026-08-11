@@ -1,0 +1,13 @@
+# The warehouse and the county archives are gigabytes and belong in object
+# storage, not in a deployment. `data/` is gitignored too, so a git-triggered
+# build never sees it — this is the guard for `vercel deploy` run by hand from
+# a working copy that has the files.
+data/
+*.duckdb
+*.duckdb.wal
+*.parquet
+
+node_modules/
+.turbo/
+.next/
+dist/

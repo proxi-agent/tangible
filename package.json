@@ -1,0 +1,32 @@
+{
+  "name": "tangible",
+  "version": "0.1.0",
+  "private": true,
+  "packageManager": "pnpm@11.4.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "typecheck": "turbo run typecheck",
+    "lint": "turbo run lint",
+    "test": "turbo run test",
+    "clean": "turbo run clean && rm -rf node_modules",
+    "format": "prettier --write \"**/*.{ts,tsx,md,json}\"",
+    "ingest": "pnpm --filter @tangible/api ingest",
+    "seed": "pnpm --filter @tangible/api seed",
+    "export:parquet": "pnpm --filter @tangible/api export:parquet",
+    "publish:parquet": "pnpm --filter @tangible/api publish:parquet",
+    "db:generate": "pnpm --filter @tangible/db db:generate",
+    "db:push": "pnpm --filter @tangible/db db:push"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "prettier": "^3.9.6",
+    "prettier-plugin-tailwindcss": "^0.8.1",
+    "tsx": "^4.23.12",
+    "turbo": "^2.10.9",
+    "typescript": "^7.0.2"
+  }
+}

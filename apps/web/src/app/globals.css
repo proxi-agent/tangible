@@ -1,0 +1,116 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens.
+ *
+ * Chart colors, surfaces and ink follow the validated reference palette — the
+ * categorical slots are used in fixed order and never cycled, so a series keeps
+ * its color when a filter changes the set. Dark mode is a selected set of steps
+ * for the dark surface, not an inverted light palette.
+ */
+@theme {
+  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --color-surface: #fcfcfb;
+  --color-plane: #f9f9f7;
+  --color-ink: #0b0b0b;
+  --color-ink-secondary: #52514e;
+  --color-ink-muted: #898781;
+  --color-grid: #e1e0d9;
+  --color-axis: #c3c2b7;
+  --color-hairline: rgba(11, 11, 11, 0.1);
+
+  --color-series-1: #2a78d6;
+  --color-series-2: #eb6834;
+  --color-series-3: #1baf7a;
+
+  --color-good: #0ca30c;
+  --color-warning: #fab219;
+  --color-serious: #ec835a;
+  --color-critical: #d03b3b;
+
+  --radius-card: 0.75rem;
+}
+
+/*
+ * Dark values are declared under both scopes: the media query follows the OS
+ * setting, the data-theme scope follows the in-app toggle and must win either
+ * way.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:where(:not([data-theme='light'])) {
+    --color-surface: #1a1a19;
+    --color-plane: #0d0d0d;
+    --color-ink: #ffffff;
+    --color-ink-secondary: #c3c2b7;
+    --color-ink-muted: #898781;
+    --color-grid: #2c2c2a;
+    --color-axis: #383835;
+    --color-hairline: rgba(255, 255, 255, 0.1);
+
+    --color-series-1: #3987e5;
+    --color-series-2: #d95926;
+    --color-series-3: #199e70;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --color-surface: #1a1a19;
+  --color-plane: #0d0d0d;
+  --color-ink: #ffffff;
+  --color-ink-secondary: #c3c2b7;
+  --color-ink-muted: #898781;
+  --color-grid: #2c2c2a;
+  --color-axis: #383835;
+  --color-hairline: rgba(255, 255, 255, 0.1);
+
+  --color-series-1: #3987e5;
+  --color-series-2: #d95926;
+  --color-series-3: #199e70;
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-plane);
+  }
+
+  body {
+    background-color: var(--color-plane);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Columns of numbers must align vertically; standalone figures should not. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-series-1) 25%, transparent);
+  }
+}
+
+@layer components {
+  .card {
+    background-color: var(--color-surface);
+    border: 1px solid var(--color-hairline);
+    border-radius: var(--radius-card);
+  }
+
+  .hairline {
+    border-color: var(--color-hairline);
+  }
+}
+
+/* Recharts injects its own focus outline on the wrapper; ours is on the marks. */
+.recharts-wrapper:focus,
+.recharts-surface:focus {
+  outline: none;
+}

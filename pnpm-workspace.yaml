@@ -1,0 +1,34 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Both ship platform-native binaries and need their install scripts to run.
+allowBuilds:
+  '@swc/core': true
+  esbuild: true
+
+# Keep versions of cross-cutting deps aligned across every workspace package.
+catalog:
+  typescript: ^7.0.2
+  zod: ^4.4.3
+  "@types/node": ^26.2.0
+  tsx: ^4.23.12
+  vitest: ^4.1.10
+
+minimumReleaseAgeExclude:
+  - '@duckdb/node-api@1.5.5-r.4'
+  - '@duckdb/node-bindings-darwin-arm64@1.5.5-r.4'
+  - '@duckdb/node-bindings-darwin-x64@1.5.5-r.4'
+  - '@duckdb/node-bindings-linux-arm64-musl@1.5.5-r.4'
+  - '@duckdb/node-bindings-linux-arm64@1.5.5-r.4'
+  - '@duckdb/node-bindings-linux-x64-musl@1.5.5-r.4'
+  - '@duckdb/node-bindings-linux-x64@1.5.5-r.4'
+  - '@duckdb/node-bindings-win32-arm64@1.5.5-r.4'
+  - '@duckdb/node-bindings-win32-x64@1.5.5-r.4'
+  - '@duckdb/node-bindings@1.5.5-r.4'
+  - '@supabase/auth-js@2.112.3'
+  - '@supabase/functions-js@2.112.3'
+  - '@supabase/postgrest-js@2.112.3'
+  - '@supabase/realtime-js@2.112.3'
+  - '@supabase/storage-js@2.112.3'
+  - '@supabase/supabase-js@2.112.3'
