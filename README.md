@@ -367,9 +367,38 @@ has no directory listing, so `read_parquet` cannot glob over HTTP and the files
 have to be named. The export reads itself back through the same code path the
 deployment uses and fails if the counts disagree.
 
-Upload the directory to any host that serves plain HTTP GETs with `Range`
-support and preserves paths — Supabase Storage, S3, R2. (Vercel Blob works only
-with `addRandomSuffix: false`; random suffixes break the manifest's paths.)
+```bash
+pnpm publish:parquet --dry-run   # names the destination, writes nothing
+```
+
+```bash
+pnpm publish:parquet
+```
+
+Any host that serves plain HTTP GETs with `Range` and preserves paths will do.
+**Cloudflare R2 is the one to pick**, because egress is free and this workload is
+egress-shaped: every cold instance downloads the whole 95 MB export. On
+Supabase's free plan the same pattern spends its 5 GB monthly allowance in about
+fifty cold starts, which is a bill or a throttle rather than a design. (Vercel
+Blob works only with `addRandomSuffix: false`; random suffixes break the
+manifest's paths.)
+
+Set up R2 once:
+
+1. **dash.cloudflare.com → R2 → Create bucket**, e.g. `tangible-warehouse`.
+2. On the bucket, **Settings → Public access → enable the r2.dev URL**, or
+   connect a custom domain. DuckDB reads these unauthenticated, so the bucket
+   must be public. That is appropriate here — it is county appraisal roll data,
+   already public record — but nothing derived from a private source should ever
+   be published this way. A custom domain is worth it beyond a prototype: the
+   r2.dev URL is rate-limited and not meant for production traffic.
+3. **R2 → API → Create API token**, Object Read & Write, scoped to the bucket.
+   Put the account id, access key id and secret in `.env`, with
+   `R2_PUBLIC_BASE_URL` set to the URL from step 2.
+
+`pnpm publish:parquet` then uploads and prints the `PARQUET_BASE_URL` to set on
+Vercel. Re-running skips objects already stored at the right size, so an
+interrupted publish resumes.
 
 **2. Point a Vercel project at it.**
 
