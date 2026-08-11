@@ -19,6 +19,7 @@ export function GET(): Promise<Response> {
       mode: info.mode,
       publishedAt: info.publishedAt,
       readingFrom: info.readingFrom,
+      cacheWarm: info.cacheWarm,
       cache: info.cache,
       accountYearRows: num(row?.n),
       timestamp: new Date().toISOString(),

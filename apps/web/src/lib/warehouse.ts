@@ -27,6 +27,8 @@ export interface WarehouseInfo {
   publishedAt?: string | null;
   /** Where queries actually read from — the cache directory, or the base URL. */
   readingFrom?: string;
+  /** False while an instance is still serving over HTTP and warming its copy. */
+  cacheWarm?: boolean;
   cache?: { downloaded: number; reused: number; bytes: number; durationMs: number } | null;
 }
 
@@ -49,7 +51,8 @@ function cacheSettings(): ParquetCacheOptions | false {
 
 interface Held {
   warehouse: Warehouse;
-  info: WarehouseInfo;
+  /** A function, because the cache warms after the instance starts serving. */
+  info: () => WarehouseInfo;
 }
 
 async function build(): Promise<Held> {
@@ -67,21 +70,32 @@ async function build(): Promise<Held> {
       extensionDirectory: process.env.DUCKDB_EXTENSION_DIR,
       extensionPreinstalled: process.env.DUCKDB_EXTENSION_DIR !== undefined,
       cache: cacheSettings(),
+      // Set PARQUET_CACHE=blocking to wait for the copy before serving. Only
+      // useful somewhere with no cold starts to speak of; on Vercel it just
+      // moves a 95 MB download in front of the first visitor.
+      blockOnCache: process.env.PARQUET_CACHE?.toLowerCase() === 'blocking',
     });
 
     return {
       warehouse,
-      info: {
-        mode: 'parquet',
-        source: baseUrl,
-        publishedAt: manifest?.exportedAt ?? null,
-        readingFrom,
-        cache: cache && {
-          downloaded: cache.downloaded,
-          reused: cache.reused,
-          bytes: cache.bytes,
-          durationMs: cache.durationMs,
-        },
+      info: () => {
+        const result = cache();
+        return {
+          mode: 'parquet',
+          source: baseUrl,
+          publishedAt: manifest?.exportedAt ?? null,
+          // Read through the accessors, not captured once: the cache warms in
+          // the background, so this flips from the URL to a local path
+          // part-way through an instance's life.
+          readingFrom: readingFrom(),
+          cacheWarm: readingFrom() !== baseUrl,
+          cache: result && {
+            downloaded: result.downloaded,
+            reused: result.reused,
+            bytes: result.bytes,
+            durationMs: result.durationMs,
+          },
+        };
       },
     };
   }
@@ -97,7 +111,7 @@ async function build(): Promise<Held> {
       memoryLimit: process.env.DUCKDB_MEMORY_LIMIT ?? '4GB',
       threads: Number(process.env.DUCKDB_THREADS ?? 4),
     }),
-    info: { mode: 'file', source: path, publishedAt: null },
+    info: () => ({ mode: 'file', source: path, publishedAt: null }),
   };
 }
 
@@ -143,5 +157,5 @@ export async function releaseWarehouse(): Promise<void> {
 }
 
 export async function getWarehouseInfo(): Promise<WarehouseInfo> {
-  return (await instance()).info;
+  return (await instance()).info();
 }

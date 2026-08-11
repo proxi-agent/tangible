@@ -172,12 +172,23 @@ export function remoteInitSql(baseUrl: string, options: RemoteWarehouseOptions =
     statements.push(`SET http_retries = 3;`);
   }
 
-  for (const table of PARQUET_TABLES) {
-    const source = parquetSourceSql(baseUrl, table, options.manifest);
-    statements.push(`CREATE OR REPLACE VIEW ${table.name} AS SELECT * FROM ${source};`);
-  }
+  statements.push(...parquetViewSql(baseUrl, options.manifest));
 
   return statements;
+}
+
+/**
+ * Just the view definitions, without any of the session setup.
+ *
+ * Separated so the source can be re-pointed on a live connection. A view is
+ * only SQL; replacing one swaps where every subsequent query reads from,
+ * without reopening the database or losing the session's settings.
+ */
+export function parquetViewSql(baseUrl: string, manifest?: ParquetManifest): string[] {
+  return PARQUET_TABLES.map(
+    (table) =>
+      `CREATE OR REPLACE VIEW ${table.name} AS SELECT * FROM ${parquetSourceSql(baseUrl, table, manifest)};`,
+  );
 }
 
 /**
@@ -215,18 +226,29 @@ export async function fetchManifest(baseUrl: string): Promise<ParquetManifest | 
 
 export interface OpenRemoteOptions extends Omit<RemoteWarehouseOptions, 'manifest'> {
   /**
-   * Copy the export to local disk before reading it. Pass `false` to always
-   * read over HTTP. Ignored for a base URL that is already a local path.
+   * Copy the export to local disk. Pass `false` to always read over HTTP.
+   * Ignored for a base URL that is already a local path.
    */
   cache?: ParquetCacheOptions | false;
+  /**
+   * Wait for the copy before answering anything.
+   *
+   * Off by default, and that default matters more than it sounds. The export is
+   * ~95 MB; blocking on it puts the whole download in front of the first
+   * request, so every cold instance makes somebody wait for all four counties
+   * before it can answer a question about one. Backgrounding it means the
+   * instance serves over HTTP straight away — slower per query, but immediately
+   * — and silently upgrades itself to local reads part-way through.
+   */
+  blockOnCache?: boolean;
 }
 
 export interface OpenRemoteResult {
   warehouse: Warehouse;
   manifest: ParquetManifest | null;
-  /** What the warehouse ended up reading — the base URL, or the cache directory. */
-  readingFrom: string;
-  cache: ParquetCacheResult | null;
+  /** Where reads go right now; flips to the cache directory once it is warm. */
+  readingFrom: () => string;
+  cache: () => ParquetCacheResult | null;
 }
 
 /**
@@ -240,35 +262,57 @@ export async function openRemoteWarehouse(
   baseUrl: string,
   options: OpenRemoteOptions = {},
 ): Promise<OpenRemoteResult> {
-  const { cache: cacheOptions, ...warehouseOptions } = options;
+  const { cache: cacheOptions, blockOnCache, ...warehouseOptions } = options;
   const manifest = await fetchManifest(baseUrl);
+  const log = cacheOptions === false ? undefined : cacheOptions?.logger;
 
+  const wanted = isRemote(baseUrl) && manifest !== null && cacheOptions !== false;
   let readingFrom = baseUrl;
   let cache: ParquetCacheResult | null = null;
 
-  if (isRemote(baseUrl) && manifest && cacheOptions !== false) {
+  // Warm the cache first only when explicitly asked. Otherwise the instance
+  // opens against the remote URL and upgrades itself below.
+  if (wanted && blockOnCache) {
     try {
-      cache = await cacheParquet(baseUrl, manifest, cacheOptions ?? {});
+      cache = await cacheParquet(baseUrl, manifest!, cacheOptions ?? {});
       readingFrom = cache.dir;
     } catch (error) {
-      // Never fatal. A host with no writable disk, too little space, or a
-      // transient fetch failure reads over HTTP — slower, but correct, and the
-      // reason is worth saying out loud rather than silently degrading.
-      cacheOptions?.logger?.(
-        `Parquet cache unavailable, reading over HTTP: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      log?.(`Parquet cache unavailable, reading over HTTP: ${describe(error)}`);
     }
   }
 
+  const warehouse = createRemoteWarehouse(readingFrom, {
+    ...warehouseOptions,
+    manifest: manifest ?? undefined,
+  });
+
+  if (wanted && !blockOnCache) {
+    void (async () => {
+      try {
+        const result = await cacheParquet(baseUrl, manifest!, cacheOptions ?? {});
+        // Re-point the views at the local copy. Every subsequent query reads
+        // from disk; anything already running keeps the plan it started with.
+        for (const statement of parquetViewSql(result.dir, manifest ?? undefined)) {
+          await warehouse.exec(statement);
+        }
+        cache = result;
+        readingFrom = result.dir;
+        log?.(`Switched to the local copy after ${result.durationMs}ms`);
+      } catch (error) {
+        // Reads simply stay remote. This is a speed-up that failed, not a fault.
+        log?.(`Parquet cache unavailable, staying on HTTP: ${describe(error)}`);
+      }
+    })();
+  }
+
   return {
-    warehouse: createRemoteWarehouse(readingFrom, {
-      ...warehouseOptions,
-      manifest: manifest ?? undefined,
-    }),
+    warehouse,
     manifest,
-    readingFrom,
-    cache,
+    readingFrom: () => readingFrom,
+    cache: () => cache,
   };
+}
+
+function describe(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }

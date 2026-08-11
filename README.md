@@ -447,8 +447,26 @@ export is cached under its own directory keyed on the publish timestamp, and
 superseded ones are removed — a republished dataset can never be read as a mix
 of old and new files.
 
-Set `PARQUET_CACHE=off` to disable it, `PARQUET_CACHE_MAX_MB` to change the
-400 MB budget (Vercel gives each function 512 MB of temp space).
+The copy is fetched **in the background**. An instance starts serving over HTTP
+immediately and re-points its views at the local files when they land, so the
+95 MB never sits in front of the first visitor. The alternative — waiting — is
+`PARQUET_CACHE=blocking`, and it is only the better trade where cold starts are
+rare and bandwidth to the bucket is fast. Worth knowing: on a LAN-speed link
+blocking wins, because the download is nearly free and the first query is then a
+local read. Over a real network the download dominates, and blocking means one
+unlucky visitor waits for all of it. Check `cache.durationMs` on `/api/health`
+in your own deployment before changing this — that is the number that decides it,
+and it cannot be measured from a laptop.
+
+`PARQUET_CACHE=off` disables the copy entirely; `PARQUET_CACHE_MAX_MB` changes
+the 400 MB budget (Vercel gives each function 512 MB of temp space).
+
+One thing the cache does not currently do is fetch selectively. Parquet is
+columnar, so reading over HTTP pulls only the columns a query touches — and for
+the segment analysis that is about **35%** of the bytes. The other 65% is owner
+names and mailing addresses, which only the account detail page and the CSV
+export read. The cache copies all of it. Narrowing the cached set is the obvious
+next lever if warm-up time ever matters.
 
 ### Function limits
 
