@@ -12,6 +12,7 @@ import {
 import { count, moneyExact } from '@/lib/format';
 import { Badge } from '@/components/ui/primitives';
 import { DataTable, type ColumnMeta } from '@/components/ui/data-table';
+import { Tooltip } from '@/components/ui/tooltip';
 
 const SORTABLE = new Set<string>(OWNER_SORT_FIELDS);
 
@@ -46,12 +47,15 @@ export function OwnersTable({
       {
         id: 'ownerName',
         header: 'Owner',
-        meta: { className: 'max-w-[320px]' } satisfies ColumnMeta,
+        meta: {
+          className: 'max-w-[320px]',
+          help: 'The business, with every location it owns rolled into one row. Click a name to see those locations listed individually.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <>
             <Link
               href={`/accounts?${scopeQuery}&search=${encodeURIComponent(row.original.ownerName)}`}
-              className="block truncate font-medium hover:underline"
+              className="block truncate font-medium underline-offset-2 outline-none hover:text-[var(--color-series-1)] hover:underline focus-visible:text-[var(--color-series-1)] focus-visible:underline"
               title={row.original.ownerName}
             >
               {row.original.ownerName}
@@ -65,14 +69,20 @@ export function OwnersTable({
       },
       {
         id: 'accountCount',
-        header: 'Accounts',
-        meta: { align: 'right' } satisfies ColumnMeta,
+        header: 'Locations',
+        meta: {
+          align: 'right',
+          help: 'How many separate places this business is taxed at. Each one is its own account, and each one owes its own filing.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => count(row.original.accountCount),
       },
       {
         id: 'unfiledAccountCount',
-        header: 'Did not file',
-        meta: { align: 'right' } satisfies ColumnMeta,
+        header: 'Missed filings',
+        meta: {
+          align: 'right',
+          help: 'How many of those locations skipped the annual equipment declaration in the selected year.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <span className="text-[var(--color-ink-secondary)]">
             {count(row.original.unfiledAccountCount)}
@@ -81,14 +91,20 @@ export function OwnersTable({
       },
       {
         id: 'totalAssessedValue',
-        header: 'Assessed value',
-        meta: { align: 'right' } satisfies ColumnMeta,
+        header: 'Equipment value',
+        meta: {
+          align: 'right',
+          help: 'What the county says this business’s equipment is worth, added up across every location it holds.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => moneyExact(row.original.totalAssessedValue),
       },
       {
         id: 'estimatedAnnualPenalty',
         header: 'Penalty / yr',
-        meta: { align: 'right' } satisfies ColumnMeta,
+        meta: {
+          align: 'right',
+          help: 'The 10% late-filing penalty across all of this business’s locations, for one year. One conversation with the owner covers every one of them.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <span className="font-medium">{moneyExact(row.original.estimatedAnnualPenalty)}</span>
         ),
@@ -99,9 +115,21 @@ export function OwnersTable({
         enableSorting: false,
         cell: ({ row }) => (
           <div className="flex flex-wrap gap-1">
-            {row.original.hasAgent ? <Badge>Agent</Badge> : null}
+            {row.original.hasAgent ? (
+              <Tooltip
+                title="Has an agent"
+                content="A tax firm is already on record with the county for at least one of this owner's locations."
+              >
+                <Badge>Agent</Badge>
+              </Tooltip>
+            ) : null}
             {row.original.frozenAccountCount > 0 ? (
-              <Badge tone="warning">{row.original.frozenAccountCount} frozen</Badge>
+              <Tooltip
+                title="Frozen value"
+                content="Locations whose value has not moved in any year observed. Equipment depreciates, so a flat line usually means nobody has updated the number."
+              >
+                <Badge tone="warning">{row.original.frozenAccountCount} frozen</Badge>
+              </Tooltip>
             ) : null}
           </div>
         ),

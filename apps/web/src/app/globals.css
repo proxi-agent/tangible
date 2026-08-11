@@ -92,6 +92,26 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /*
+   * Tailwind v4's reset gives buttons `cursor: default`, which makes a page of
+   * real affordances feel inert. Anything that responds to a click says so
+   * here, once, rather than relying on every call site to remember the class.
+   */
+  button:not(:disabled),
+  [role='button']:not([aria-disabled='true']),
+  [role='radio'],
+  select:not(:disabled),
+  summary,
+  a[href] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  select:disabled,
+  [aria-disabled='true'] {
+    cursor: not-allowed;
+  }
+
   ::selection {
     background-color: color-mix(in oklab, var(--color-series-1) 25%, transparent);
   }

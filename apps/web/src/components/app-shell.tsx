@@ -7,6 +7,7 @@ import type { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 import { useScope } from '@/hooks/use-scope';
 import { Select } from '@/components/ui/controls';
+import { Tooltip } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme-toggle';
 
 const NAV = [
@@ -50,11 +51,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                 <Link
                   key={href}
                   href={`${href}${suffix}`}
+                  aria-current={active ? 'page' : undefined}
                   className={cn(
-                    'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm transition-colors',
+                    'flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-sm outline-none transition-colors',
+                    'focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
                     active
-                      ? 'bg-[var(--color-plane)] font-medium text-[var(--color-ink)]'
-                      : 'text-[var(--color-ink-secondary)] hover:bg-[var(--color-plane)]',
+                      ? 'bg-[var(--color-plane)] font-medium text-[var(--color-ink)] ring-1 ring-[var(--color-hairline)]'
+                      : 'text-[var(--color-ink-secondary)] hover:bg-[var(--color-plane)] hover:text-[var(--color-ink)]',
                   )}
                 >
                   <Icon size={15} strokeWidth={2} />
@@ -65,33 +68,50 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            <Select
-              aria-label="Jurisdiction"
-              value={scope.jurisdictionId}
-              onChange={(e) => scope.setScope({ jurisdictionId: e.target.value })}
-              className="h-8 text-[13px]"
+            {/* These two set what every number on every page refers to, so they
+                say what they are rather than relying on the reader inferring it
+                from the county names inside. */}
+            <Tooltip
+              title="County"
+              content="Which appraisal district's public records you are looking at. Each county publishes its own file."
             >
-              {scope.jurisdictions.map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.name}
-                  {j.accountCount === 0 ? ' — no data' : ''}
-                </option>
-              ))}
-            </Select>
+              <label className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+                County
+                <Select
+                  value={scope.jurisdictionId}
+                  onChange={(e) => scope.setScope({ jurisdictionId: e.target.value })}
+                  className="h-8 text-[13px]"
+                >
+                  {scope.jurisdictions.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.name}
+                      {j.accountCount === 0 ? ' — no data' : ''}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </Tooltip>
 
-            <Select
-              aria-label="Tax year"
-              value={scope.taxYear}
-              onChange={(e) => scope.setScope({ taxYear: Number(e.target.value) })}
-              className="h-8 w-24 text-[13px]"
-              disabled={scope.availableYears.length === 0}
+            <Tooltip
+              title="Tax year"
+              content="Counties reassess every year. Changing this changes every figure on the page — values, filings and penalties all move together."
             >
-              {(scope.availableYears.length ? scope.availableYears : [scope.taxYear]).map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-            </Select>
+              <label className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+                Year
+                <Select
+                  value={scope.taxYear}
+                  onChange={(e) => scope.setScope({ taxYear: Number(e.target.value) })}
+                  className="h-8 w-24 text-[13px]"
+                  disabled={scope.availableYears.length === 0}
+                >
+                  {(scope.availableYears.length ? scope.availableYears : [scope.taxYear]).map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </Tooltip>
 
             <ThemeToggle />
           </div>

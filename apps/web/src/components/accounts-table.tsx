@@ -5,13 +5,16 @@ import Link from 'next/link';
 import { useMemo } from 'react';
 import {
   ACCOUNT_SORT_FIELDS,
+  SEGMENTS,
   type AccountQuery,
   type AccountSeries,
   type AccountSortField,
 } from '@tangible/types';
+import { cn } from '@/lib/cn';
 import { count, moneyExact } from '@/lib/format';
 import { Badge } from '@/components/ui/primitives';
 import { DataTable, type ColumnMeta } from '@/components/ui/data-table';
+import { Tooltip } from '@/components/ui/tooltip';
 
 /**
  * Only these columns can be sorted, because only these can be sorted *by the
@@ -42,11 +45,18 @@ export function AccountsTable({
         id: 'ownerName',
         header: 'Owner',
         enableSorting: SORTABLE.has('ownerName'),
-        meta: { className: 'max-w-[280px]' } satisfies ColumnMeta,
+        meta: {
+          className: 'max-w-[280px]',
+          help: 'The business the county has on record at this location. Click a name to open its year-by-year history.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <Link
             href={`/accounts/${encodeURIComponent(row.original.accountId)}?${scopeQuery}`}
-            className="block truncate font-medium hover:underline"
+            className={cn(
+              'block truncate font-medium underline-offset-2',
+              'hover:text-[var(--color-series-1)] hover:underline',
+              'focus-visible:text-[var(--color-series-1)] focus-visible:underline outline-none',
+            )}
             title={row.original.ownerName ?? undefined}
           >
             {row.original.ownerName ?? '—'}
@@ -57,6 +67,9 @@ export function AccountsTable({
         id: 'accountId',
         header: 'Account',
         enableSorting: false,
+        meta: {
+          help: "The county's own reference number for this location. Use it to look the record up on the appraisal district's website.",
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <span className="tabular text-[var(--color-ink-secondary)]">
             {row.original.accountId}
@@ -67,28 +80,40 @@ export function AccountsTable({
         id: 'siteCity',
         header: 'City',
         enableSorting: false,
+        meta: {
+          help: 'Where the equipment physically sits — not necessarily where the company is headquartered.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <span className="text-[var(--color-ink-secondary)]">{row.original.siteCity ?? '—'}</span>
         ),
       },
       {
         id: 'stateClass',
-        header: 'Class',
+        header: 'Type',
         enableSorting: false,
+        meta: {
+          help: "The state's category code for the property. L1 is ordinary commercial equipment, L2 industrial; other codes cover dealers, utilities and pipelines, which are appraised under different rules.",
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <span className="text-[var(--color-ink-secondary)]">{row.original.stateClass ?? '—'}</span>
         ),
       },
       {
         id: 'latestAssessedValue',
-        header: 'Assessed value',
-        meta: { align: 'right' } satisfies ColumnMeta,
+        header: 'Equipment value',
+        meta: {
+          align: 'right',
+          help: 'What the county says this business’s equipment, furniture, fixtures and inventory are worth this tax year. The tax bill is a percentage of it.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => moneyExact(row.original.latestAssessedValue),
       },
       {
         id: 'yearsUnfiled',
-        header: 'Unfiled / on roll',
-        meta: { align: 'right' } satisfies ColumnMeta,
+        header: 'Years missed',
+        meta: {
+          align: 'right',
+          help: 'Texas businesses must declare their equipment to the county every year — the form is called a rendition. This is how many years this account skipped it, out of the years it has been on the county’s books.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <span className="text-[var(--color-ink-secondary)]">
             {count(row.original.yearsUnfiled)} / {count(row.original.yearsOnRoll)}
@@ -98,7 +123,10 @@ export function AccountsTable({
       {
         id: 'estimatedAnnualPenalty',
         header: 'Penalty / yr',
-        meta: { align: 'right' } satisfies ColumnMeta,
+        meta: {
+          align: 'right',
+          help: 'Skipping the declaration adds a 10% penalty on top of the tax bill. This is what that costs the business in one year, estimated at the county’s blended tax rate.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <span className="font-medium">{moneyExact(row.original.estimatedAnnualPenalty)}</span>
         ),
@@ -106,7 +134,10 @@ export function AccountsTable({
       {
         id: 'estimatedLifetimePenalty',
         header: 'Penalty to date',
-        meta: { align: 'right' } satisfies ColumnMeta,
+        meta: {
+          align: 'right',
+          help: 'Every missed year’s penalty added together, across the whole period this account appears in the data.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <span className="text-[var(--color-ink-secondary)]">
             {moneyExact(row.original.estimatedLifetimePenalty)}
@@ -119,12 +150,26 @@ export function AccountsTable({
         enableSorting: false,
         cell: ({ row }) => (
           <div className="flex flex-wrap gap-1">
-            {row.original.segments.includes('core_icp') ? <Badge tone="accent">Core ICP</Badge> : null}
-            {row.original.segments.includes('chronic_nonfiler') ? (
-              <Badge tone="critical">Chronic</Badge>
+            {row.original.segments.includes('core_icp') ? (
+              <Tooltip title="Best-fit target" content={SEGMENTS.core_icp.description}>
+                <Badge tone="accent">Best fit</Badge>
+              </Tooltip>
             ) : null}
-            {row.original.hasAgent ? <Badge>Agent</Badge> : null}
-            {row.original.isFrozen ? <Badge tone="warning">Frozen</Badge> : null}
+            {row.original.segments.includes('chronic_nonfiler') ? (
+              <Tooltip title="Never files" content={SEGMENTS.chronic_nonfiler.description}>
+                <Badge tone="critical">Never files</Badge>
+              </Tooltip>
+            ) : null}
+            {row.original.hasAgent ? (
+              <Tooltip title="Has an agent" content={SEGMENTS.agent_represented.description}>
+                <Badge>Agent</Badge>
+              </Tooltip>
+            ) : null}
+            {row.original.isFrozen ? (
+              <Tooltip title="Frozen value" content={SEGMENTS.frozen_value.description}>
+                <Badge tone="warning">Frozen</Badge>
+              </Tooltip>
+            ) : null}
           </div>
         ),
       },

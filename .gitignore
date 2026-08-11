@@ -15,8 +15,10 @@ out/
 .env.*
 !.env.example
 
-# data warehouse — county files and the DuckDB database are large, never commit
-data/
+# data warehouse — county files and the DuckDB database are large, never commit.
+# Anchored: an unanchored `data/` also swallowed apps/web/src/app/data, the
+# Data sources route, which then 404'd in every deployment.
+/data/
 *.duckdb
 *.duckdb.wal
 *.parquet

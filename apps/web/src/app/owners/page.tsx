@@ -99,7 +99,8 @@ function Owners() {
               options={segmentDefs.data.map((s) => ({
                 value: s.key,
                 label: s.label,
-                hint: s.caveat ?? s.description,
+                description: s.description,
+                caveat: s.caveat,
               }))}
               selected={segments}
               onToggle={(value) =>
@@ -115,18 +116,24 @@ function Owners() {
           )}
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Field label="Search owner">
+            <Field
+              label="Search owner"
+              help="Matches part of a business name. Case does not matter."
+            >
               <TextInput
                 placeholder="e.g. logistics"
                 defaultValue={search}
                 onChange={(e) => update({ search: e.target.value.trim() || undefined })}
               />
             </Field>
-            <Field label="Minimum accounts held">
+            <Field
+              label="Minimum locations"
+              help="Hides businesses with fewer locations than this. Raise it to find the operators where one conversation covers many penalties at once."
+            >
               <Select value={minAccounts} onChange={(e) => update({ minAccounts: e.target.value })}>
                 {[1, 2, 3, 5, 10, 20].map((n) => (
                   <option key={n} value={n}>
-                    {n}+
+                    {n === 1 ? 'Any (1+)' : `${n}+ locations`}
                   </option>
                 ))}
               </Select>

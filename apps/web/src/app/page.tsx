@@ -8,6 +8,7 @@ import { TrendCharts } from '@/components/charts/trend-charts';
 import { OpportunityPanel } from '@/components/opportunity-panel';
 import { SegmentTiles } from '@/components/segment-tiles';
 import { Card, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { InfoTip } from '@/components/ui/tooltip';
 import { useScope } from '@/hooks/use-scope';
 import { api } from '@/lib/api';
 import { count, money, moneyExact, percent } from '@/lib/format';
@@ -163,10 +164,18 @@ function Headline({
       </p>
 
       {filingKnown ? (
-        <p className="mt-3 max-w-3xl text-2xl leading-snug font-semibold tracking-tight sm:text-3xl">
-          <span className="text-[var(--color-series-2)]">{money(totalPenalty)}</span> a year in
-          rendition penalties across {count(taxableAccounts)} taxable accounts.
-        </p>
+        <>
+          <p className="mt-3 max-w-3xl text-2xl leading-snug font-semibold tracking-tight sm:text-3xl">
+            <span className="text-[var(--color-series-2)]">{money(totalPenalty)}</span> a year in
+            avoidable penalties, across {count(taxableAccounts)} business locations that owe tax on
+            their equipment.
+          </p>
+          <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+            Texas businesses must file a list of the equipment they own with their county every
+            year. Skip it and the county adds 10% to the bill — automatically, and again every year
+            it stays unfiled. This is the public record of who is paying that.
+          </p>
+        </>
       ) : (
         <>
           <p className="mt-3 max-w-3xl text-2xl leading-snug font-semibold tracking-tight sm:text-3xl">
@@ -181,23 +190,43 @@ function Headline({
       )}
 
       <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-3">
-        <Stat label="On the roll" value={count(totalAccounts)} />
         <Stat
-          label="Taxable"
-          value={`${count(taxableAccounts)} (${percent(totalAccounts ? taxableAccounts / totalAccounts : null, 0)})`}
+          label="Businesses on file"
+          value={count(totalAccounts)}
+          help="Every business location the county has recorded equipment for this year, including the small ones that owe nothing."
         />
-        <Stat label="Filing rate" value={filingKnown ? percent(filingRate) : 'Not published'} />
-        <Stat label="Exemption" value={moneyExact(exemption)} />
-        <Stat label="Blended tax rate" value={percent(taxRate, 2)} />
+        <Stat
+          label="Big enough to tax"
+          value={`${count(taxableAccounts)} (${percent(totalAccounts ? taxableAccounts / totalAccounts : null, 0)})`}
+          help="Locations whose equipment is worth more than the exemption, so they actually owe tax — and can therefore owe a penalty."
+        />
+        <Stat
+          label="Filed on time"
+          value={filingKnown ? percent(filingRate) : 'Not published'}
+          help="The share that sent the county their annual equipment declaration. Some counties do not release this field at all."
+        />
+        <Stat
+          label="Exemption"
+          value={moneyExact(exemption)}
+          help="Own less equipment than this and you owe nothing. Texas raised it from $2,500 to $125,000 in 2026, which removes most of the roll from the tax base."
+        />
+        <Stat
+          label="Tax rate"
+          value={percent(taxRate, 2)}
+          help="A blended rate across the taxing units in this county — city, county, school district and so on. Every dollar figure on this page is an estimate built on it."
+        />
       </dl>
     </Card>
   );
 }
 
-function Stat({ label, value }: { label: string; value: string }) {
+function Stat({ label, value, help }: { label: string; value: string; help: string }) {
   return (
     <div>
-      <dt className="text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">{label}</dt>
+      <dt className="flex items-center gap-1 text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+        {label}
+        <InfoTip title={label} content={help} size={11} />
+      </dt>
       <dd className="tabular mt-0.5 text-sm font-semibold">{value}</dd>
     </div>
   );

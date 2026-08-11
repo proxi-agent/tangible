@@ -26,16 +26,22 @@ export function HistoryTable({ history }: { history: AccountYearPoint[] }) {
       },
       {
         id: 'assessedValue',
-        header: 'Assessed value',
+        header: 'Equipment value',
         accessorFn: (row) => row.assessedValue ?? 0,
-        meta: { align: 'right' } satisfies ColumnMeta,
+        meta: {
+          align: 'right',
+          help: 'What the county valued this business’s equipment at that year. Equipment wears out, so this number should normally drift downward unless the business bought more.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => moneyExact(row.original.assessedValue),
       },
       {
         id: 'estimatedTax',
         header: 'Estimated tax',
         accessorFn: (row) => row.estimatedTax ?? 0,
-        meta: { align: 'right' } satisfies ColumnMeta,
+        meta: {
+          align: 'right',
+          help: 'The value above times the county’s blended tax rate. An estimate — the exact bill depends on which taxing units cover the address.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <span className="text-[var(--color-ink-secondary)]">
             {moneyExact(row.original.estimatedTax)}
@@ -44,7 +50,10 @@ export function HistoryTable({ history }: { history: AccountYearPoint[] }) {
       },
       {
         id: 'rendition',
-        header: 'Rendition',
+        header: 'Declaration filed',
+        meta: {
+          help: 'Texas businesses must send the county a list of the equipment they own each year — the form is called a rendition, and it is due April 15. This column is whether the county recorded one. "Not published" means the county does not release that field at all.',
+        } satisfies ColumnMeta,
         // Sorted by meaning rather than by the boolean: unknown, not filed,
         // late, filed — which is the order someone scanning for exposure wants.
         accessorFn: (row) =>
@@ -57,7 +66,10 @@ export function HistoryTable({ history }: { history: AccountYearPoint[] }) {
         id: 'estimatedPenalty',
         header: 'Penalty',
         accessorFn: (row) => row.estimatedPenalty ?? 0,
-        meta: { align: 'right' } satisfies ColumnMeta,
+        meta: {
+          align: 'right',
+          help: 'The extra 10% the business pays for missing the declaration that year, on top of the tax itself.',
+        } satisfies ColumnMeta,
         cell: ({ row }) => (
           <span className="font-medium">{moneyExact(row.original.estimatedPenalty)}</span>
         ),

@@ -18,6 +18,8 @@ import { SEGMENTS, type SegmentKey } from '@tangible/types';
 import { AXIS, ChartFrame, GRID, TooltipCard } from '@/components/charts/chart-parts';
 import { HistoryTable } from '@/components/history-table';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+// Recharts owns the name `Tooltip` in this file; ours is the explainer kind.
+import { InfoTip, Tooltip as HelpTooltip } from '@/components/ui/tooltip';
 import { useScope } from '@/hooks/use-scope';
 import { api } from '@/lib/api';
 import { count, money, moneyExact, percent } from '@/lib/format';
@@ -49,7 +51,7 @@ function AccountDetail() {
     <div className="space-y-4">
       <Link
         href={`/accounts?${scopeQuery}`}
-        className="inline-flex items-center gap-1.5 text-sm text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
+        className="group inline-flex items-center gap-1.5 text-sm text-[var(--color-ink-secondary)] underline-offset-2 hover:text-[var(--color-ink)] hover:underline"
       >
         <ArrowLeft size={15} /> Back to accounts
       </Link>
@@ -65,35 +67,92 @@ function AccountDetail() {
             </p>
           </div>
           <div className="flex flex-wrap gap-1.5">
-            {data.segments.map((key) => (
-              <Badge key={key} tone={key === 'core_icp' ? 'accent' : 'neutral'}>
-                {SEGMENTS[key as SegmentKey]?.label ?? key}
-              </Badge>
-            ))}
+            {data.segments.map((key) => {
+              const definition = SEGMENTS[key as SegmentKey];
+              const badge = (
+                <Badge key={key} tone={key === 'core_icp' ? 'accent' : 'neutral'}>
+                  {definition?.label ?? key}
+                </Badge>
+              );
+              return definition ? (
+                <HelpTooltip
+                  key={key}
+                  title={definition.label}
+                  content={
+                    <>
+                      <p>{definition.description}</p>
+                      {definition.caveat ? (
+                        <p className="mt-1.5 border-t border-[var(--color-hairline)] pt-1.5 text-[var(--color-ink-muted)]">
+                          {definition.caveat}
+                        </p>
+                      ) : null}
+                    </>
+                  }
+                >
+                  {badge}
+                </HelpTooltip>
+              ) : (
+                badge
+              );
+            })}
           </div>
         </div>
 
         <dl className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <Figure label="Assessed value" value={moneyExact(data.latestAssessedValue)} />
-          <Figure label="Estimated tax / yr" value={moneyExact(data.estimatedAnnualTax)} />
+          <Figure
+            label="Equipment value"
+            value={moneyExact(data.latestAssessedValue)}
+            help="What the county says this location’s equipment, furniture and inventory are worth this year."
+          />
+          <Figure
+            label="Tax / yr"
+            value={moneyExact(data.estimatedAnnualTax)}
+            help="The value above at the county’s blended tax rate. An estimate — the exact bill depends on which taxing units cover the address."
+          />
           <Figure
             label="Penalty / yr"
             value={moneyExact(data.estimatedAnnualPenalty)}
             tone={data.estimatedAnnualPenalty ? 'critical' : undefined}
+            help="The extra 10% charged for not filing the annual equipment declaration. Pure waste — filing the form removes it."
           />
-          <Figure label="Penalty to date" value={moneyExact(data.estimatedLifetimePenalty)} />
+          <Figure
+            label="Penalty to date"
+            value={moneyExact(data.estimatedLifetimePenalty)}
+            help="Every missed year’s penalty added up over the period covered by this data."
+          />
         </dl>
 
         <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-3 border-t border-[var(--color-hairline)] pt-5">
-          <SmallStat label="Years on roll" value={count(data.yearsOnRoll)} />
-          <SmallStat label="Years unfiled" value={count(data.yearsUnfiled)} />
-          <SmallStat label="Years filed late" value={count(data.yearsFiledLate)} />
           <SmallStat
-            label="Unfiled share"
-            value={percent(data.yearsOnRoll ? data.yearsUnfiled / data.yearsOnRoll : null, 0)}
+            label="Years on record"
+            value={count(data.yearsOnRoll)}
+            help="How many tax years this location appears in the county's published data."
           />
-          <SmallStat label="Tax agent" value={data.hasAgent ? 'On record' : 'None'} />
-          <SmallStat label="Value pattern" value={data.isFrozen ? 'Frozen' : data.neverDeclines ? 'Never declines' : 'Moves'} />
+          <SmallStat
+            label="Years missed"
+            value={count(data.yearsUnfiled)}
+            help="Years with no equipment declaration recorded — each one carrying its own 10% penalty."
+          />
+          <SmallStat
+            label="Years filed late"
+            value={count(data.yearsFiledLate)}
+            help="Filed, but after the April 15 deadline. Late still carries the penalty unless the county granted an extension."
+          />
+          <SmallStat
+            label="Miss rate"
+            value={percent(data.yearsOnRoll ? data.yearsUnfiled / data.yearsOnRoll : null, 0)}
+            help="Missed years as a share of years on record. A high rate is habit, not an accident."
+          />
+          <SmallStat
+            label="Tax agent"
+            value={data.hasAgent ? 'On record' : 'None'}
+            help="Whether a tax firm is already registered with the county to act for this business."
+          />
+          <SmallStat
+            label="Value pattern"
+            value={data.isFrozen ? 'Frozen' : data.neverDeclines ? 'Never declines' : 'Moves'}
+            help="Equipment depreciates, so a value that never moves usually means nobody has updated it — often because the business stopped reporting."
+          />
         </dl>
       </Card>
 
@@ -156,10 +215,23 @@ function AccountDetail() {
   );
 }
 
-function Figure({ label, value, tone }: { label: string; value: string; tone?: 'critical' }) {
+function Figure({
+  label,
+  value,
+  tone,
+  help,
+}: {
+  label: string;
+  value: string;
+  tone?: 'critical';
+  help: string;
+}) {
   return (
     <div>
-      <dt className="text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">{label}</dt>
+      <dt className="flex items-center gap-1 text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+        {label}
+        <InfoTip title={label} content={help} size={11} />
+      </dt>
       <dd
         className={`tabular mt-1 text-xl font-semibold ${tone === 'critical' ? 'text-[var(--color-critical)]' : ''}`}
       >
@@ -169,10 +241,13 @@ function Figure({ label, value, tone }: { label: string; value: string; tone?: '
   );
 }
 
-function SmallStat({ label, value }: { label: string; value: string }) {
+function SmallStat({ label, value, help }: { label: string; value: string; help: string }) {
   return (
     <div>
-      <dt className="text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">{label}</dt>
+      <dt className="flex items-center gap-1 text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+        {label}
+        <InfoTip title={label} content={help} size={11} />
+      </dt>
       <dd className="tabular mt-0.5 text-sm font-medium">{value}</dd>
     </div>
   );

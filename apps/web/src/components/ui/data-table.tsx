@@ -14,6 +14,7 @@ import { cn } from '@/lib/cn';
 import { count } from '@/lib/format';
 import { Button } from '@/components/ui/controls';
 import { EmptyState } from '@/components/ui/primitives';
+import { InfoTip } from '@/components/ui/tooltip';
 
 /**
  * The table used everywhere rows are listed.
@@ -94,6 +95,7 @@ export function DataTable<T>({
                   const align = alignOf(header.column.columnDef);
                   const sortable = header.column.getCanSort();
                   const direction = header.column.getIsSorted();
+                  const help = helpOf(header.column.columnDef);
 
                   return (
                     <th
@@ -111,32 +113,48 @@ export function DataTable<T>({
                         align === 'right' ? 'text-right' : 'text-left',
                       )}
                     >
-                      {header.isPlaceholder ? null : sortable ? (
-                        <button
-                          type="button"
-                          onClick={header.column.getToggleSortingHandler()}
-                          className={cn(
-                            'group inline-flex items-center gap-1 transition-colors hover:text-[var(--color-ink)]',
-                            direction && 'text-[var(--color-ink)]',
-                          )}
-                        >
-                          {flexRender(header.column.columnDef.header, header.getContext())}
-                          {direction === 'desc' ? (
-                            <ArrowDown size={12} strokeWidth={2.5} />
-                          ) : direction === 'asc' ? (
-                            <ArrowUp size={12} strokeWidth={2.5} />
+                      {header.isPlaceholder ? null : (
+                        <span className="inline-flex items-center gap-1">
+                          {sortable ? (
+                            <button
+                              type="button"
+                              onClick={header.column.getToggleSortingHandler()}
+                              aria-label={`Sort by ${headerLabel(header.column.columnDef)}`}
+                              className={cn(
+                                'group inline-flex cursor-pointer items-center gap-1 rounded transition-colors',
+                                'hover:text-[var(--color-ink)] outline-none',
+                                'focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
+                                direction && 'text-[var(--color-ink)]',
+                              )}
+                            >
+                              {flexRender(header.column.columnDef.header, header.getContext())}
+                              {direction === 'desc' ? (
+                                <ArrowDown size={12} strokeWidth={2.5} />
+                              ) : direction === 'asc' ? (
+                                <ArrowUp size={12} strokeWidth={2.5} />
+                              ) : (
+                                // Faint at rest rather than invisible: a header you
+                                // can sort by should look sortable before you happen
+                                // to hover it. It darkens on hover to confirm.
+                                <ChevronsUpDown
+                                  size={12}
+                                  strokeWidth={2}
+                                  className="opacity-25 transition-opacity group-hover:opacity-70"
+                                />
+                              )}
+                            </button>
                           ) : (
-                            // Only on hover: a sort affordance on every column
-                            // at rest reads as noise across nine headers.
-                            <ChevronsUpDown
-                              size={12}
-                              strokeWidth={2}
-                              className="opacity-0 transition-opacity group-hover:opacity-40"
-                            />
+                            flexRender(header.column.columnDef.header, header.getContext())
                           )}
-                        </button>
-                      ) : (
-                        flexRender(header.column.columnDef.header, header.getContext())
+
+                          {help ? (
+                            <InfoTip
+                              title={headerLabel(header.column.columnDef)}
+                              content={help}
+                              size={11}
+                            />
+                          ) : null}
+                        </span>
                       )}
                     </th>
                   );
@@ -213,6 +231,11 @@ function Pagination({
 export interface ColumnMeta {
   align?: 'right';
   className?: string;
+  /**
+   * What the column means, for a reader who has never seen an appraisal roll.
+   * Rendered as a hoverable explainer beside the header.
+   */
+  help?: ReactNode;
 }
 
 function alignOf(def: { meta?: unknown }): 'right' | undefined {
@@ -221,4 +244,13 @@ function alignOf(def: { meta?: unknown }): 'right' | undefined {
 
 function widthOf(def: { meta?: unknown }): string | undefined {
   return (def.meta as ColumnMeta | undefined)?.className;
+}
+
+function helpOf(def: { meta?: unknown }): ReactNode | undefined {
+  return (def.meta as ColumnMeta | undefined)?.help;
+}
+
+/** The header, when it is a plain string — used for labels a tooltip can title. */
+function headerLabel(def: { header?: unknown }): string {
+  return typeof def.header === 'string' ? def.header : 'this column';
 }
