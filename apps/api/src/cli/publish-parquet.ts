@@ -1,139 +1,103 @@
 /**
- * Upload a Parquet export to Supabase Storage.
+ * Upload a Parquet export to object storage.
  *
- *   pnpm publish:parquet                 # bucket 'warehouse'
- *   pnpm publish:parquet my-bucket
+ *   pnpm publish:parquet            # target chosen from .env
+ *   pnpm publish:parquet r2
+ *   pnpm publish:parquet supabase
  *
- * Needs `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. The bucket is public,
- * which is both required — DuckDB reads these with plain unauthenticated GETs —
- * and appropriate: this is county appraisal roll data, already public record.
- * Nothing derived from a private source goes through here.
+ * Whatever the target, the requirements are the same: serve plain HTTP GETs,
+ * honour `Range`, and preserve paths. The bucket ends up public, which is both
+ * required — DuckDB reads these unauthenticated — and appropriate: this is
+ * county appraisal roll data, already public record. Nothing derived from a
+ * private source goes through here.
  */
-import { readFile, stat } from 'node:fs/promises';
+import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MANIFEST_FILENAME, resolveDataPath, type ParquetManifest } from '@tangible/analytics';
+import type { Env } from '../config/env.js';
 import { loadEnv } from './env.js';
 import { reportAndExit } from './fail.js';
+import { r2Target } from './targets/r2.js';
+import { supabaseTarget } from './targets/supabase.js';
+import type { PublishTarget } from './targets/target.js';
 
 const CONCURRENCY = 6;
-/** Exports are immutable — a republish writes a new manifest, not new bytes. */
-const CACHE_CONTROL = '31536000';
 
 async function main(): Promise<void> {
   const env = loadEnv();
-  const bucket = process.argv[2] ?? process.env.PARQUET_BUCKET ?? 'warehouse';
   const dir = resolveDataPath(process.env.PARQUET_DIR ?? './data/parquet');
-
-  const supabaseUrl = required('SUPABASE_URL', env.SUPABASE_URL);
-  const serviceKey = required('SUPABASE_SERVICE_ROLE_KEY', env.SUPABASE_SERVICE_ROLE_KEY);
-  const api = supabaseUrl.replace(/\/+$/, '');
+  // Skip flags and pnpm's `--` separator when looking for the target name.
+  const target = await pick(
+    env,
+    process.argv.slice(2).find((arg) => !arg.startsWith('-')),
+  );
 
   const manifest = JSON.parse(
     await readFile(join(dir, MANIFEST_FILENAME), 'utf8'),
   ) as ParquetManifest;
 
-  // The manifest is uploaded last, so a run that dies partway leaves the
-  // previous export still fully described and readable rather than pointing at
-  // files that are not there yet.
   const files = manifest.tables.flatMap((table) => table.files);
   const total = files.reduce((sum, file) => sum + file.bytes, 0);
 
-  console.log(`Publishing ${files.length} files (${mb(total)}) to ${api}/…/${bucket}`);
-  await ensureBucket(api, serviceKey, bucket);
+  console.log(`Publishing ${files.length} files (${mb(total)}) to ${target.describe()}`);
+  console.log(`Destination is publicly readable: ${target.publicBaseUrl()}`);
+
+  // Publishing puts data on the open internet under someone's account, and a
+  // dry run is the difference between checking what this command would do and
+  // discovering it afterwards.
+  if (process.argv.includes('--dry-run')) {
+    console.log('\n--dry-run: nothing uploaded.');
+    return;
+  }
+
+  await target.prepare();
 
   let uploaded = 0;
   let skipped = 0;
   await inParallel(files, CONCURRENCY, async (file) => {
-    const url = publicUrl(api, bucket, file.path);
-    if (await alreadyThere(url, file.bytes)) {
+    if (await target.isPresent(file.path, file.bytes)) {
       skipped++;
-      return;
+    } else {
+      await target.put(file.path, await readFile(join(dir, file.path)), 'parquet');
+      uploaded++;
     }
-    await upload(api, serviceKey, bucket, file.path, join(dir, file.path));
-    uploaded++;
     process.stdout.write(`\r  ${uploaded + skipped}/${files.length}`);
   });
 
-  await upload(api, serviceKey, bucket, MANIFEST_FILENAME, join(dir, MANIFEST_FILENAME), {
-    contentType: 'application/json',
-    // The one mutable object in the export: it is how a deployment discovers
-    // that a new generation exists, so it must not be cached.
-    cacheControl: '0',
-  });
+  // Written last, and never cached. The manifest is how a deployment discovers
+  // which files exist, so a run that dies partway leaves the previous export
+  // still fully described rather than pointing at objects that are not there.
+  await target.put(MANIFEST_FILENAME, await readFile(join(dir, MANIFEST_FILENAME)), 'manifest');
 
   console.log(`\r  ${uploaded} uploaded, ${skipped} already present, manifest written.\n`);
   console.log('Set this on the Vercel project:');
-  console.log(`  PARQUET_BASE_URL=${api}/storage/v1/object/public/${bucket}`);
-}
-
-function required(name: string, value: string | undefined): string {
-  if (!value || /your-|example\.com/.test(value)) {
-    throw new Error(`${name} is not set in .env (Supabase dashboard → Project Settings → API).`);
-  }
-  return value;
-}
-
-function publicUrl(api: string, bucket: string, path: string): string {
-  return `${api}/storage/v1/object/public/${bucket}/${path}`;
+  console.log(`  PARQUET_BASE_URL=${target.publicBaseUrl()}`);
 }
 
 /**
- * Create the bucket unless it exists. A 409 means someone got there first,
- * which is the desired end state either way.
+ * Explicit argument first, then whichever target is actually configured. R2
+ * wins a tie: its egress is free, and this export is re-downloaded by every
+ * cold instance.
  */
-async function ensureBucket(api: string, key: string, bucket: string): Promise<void> {
-  const response = await fetch(`${api}/storage/v1/bucket`, {
-    method: 'POST',
-    headers: { ...auth(key), 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: bucket, name: bucket, public: true }),
-  });
-  if (response.ok || response.status === 409) return;
-  const body = await response.text();
-  if (/already exists/i.test(body)) return;
-  throw new Error(`Could not create bucket '${bucket}': ${response.status} ${body}`);
-}
+async function pick(env: Env, requested?: string): Promise<PublishTarget> {
+  const targets: Record<string, () => PublishTarget> = {
+    r2: () => r2Target(env),
+    supabase: () => supabaseTarget(env),
+  };
 
-/** Resume support: a file of the right length is already fully uploaded. */
-async function alreadyThere(url: string, bytes: number): Promise<boolean> {
-  try {
-    const response = await fetch(url, { method: 'HEAD' });
-    return response.ok && Number(response.headers.get('content-length')) === bytes;
-  } catch {
-    return false;
+  if (requested) {
+    const build = targets[requested.toLowerCase()];
+    if (!build) throw new Error(`Unknown target '${requested}'. Use 'r2' or 'supabase'.`);
+    return build();
   }
-}
 
-async function upload(
-  api: string,
-  key: string,
-  bucket: string,
-  path: string,
-  source: string,
-  options: { contentType?: string; cacheControl?: string } = {},
-): Promise<void> {
-  const body = await readFile(source);
-  const response = await fetch(`${api}/storage/v1/object/${bucket}/${path}`, {
-    method: 'POST',
-    headers: {
-      ...auth(key),
-      'Content-Type': options.contentType ?? 'application/vnd.apache.parquet',
-      'Cache-Control': options.cacheControl ?? CACHE_CONTROL,
-      // Republishing the same path must overwrite rather than 409.
-      'x-upsert': 'true',
-    },
-    body,
-  });
-  if (!response.ok) {
-    throw new Error(`Upload of ${path} failed: ${response.status} ${await response.text()}`);
-  }
-  const written = (await stat(source)).size;
-  if (written !== body.byteLength) {
-    throw new Error(`${path} changed while uploading; re-run publish.`);
-  }
-}
+  if (env.R2_ACCOUNT_ID) return targets.r2!();
+  if (env.SUPABASE_URL) return targets.supabase!();
 
-function auth(key: string): Record<string, string> {
-  return { Authorization: `Bearer ${key}`, apikey: key };
+  throw new Error(
+    'No storage target configured. Set R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY ' +
+      '(recommended — R2 egress is free) or SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY in .env.',
+  );
 }
 
 async function inParallel<T>(

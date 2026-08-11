@@ -21,6 +21,20 @@ export const EnvSchema = z.object({
   DATABASE_URL: z.string().optional(),
   SUPABASE_URL: z.string().optional(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+
+  /**
+   * Cloudflare R2, the preferred home for the published export.
+   *
+   * Egress is free, which matters more here than it looks: every cold instance
+   * pulls the whole ~95MB export to its local disk, and on a metered store that
+   * is the dominant cost of running the dashboard.
+   */
+  R2_ACCOUNT_ID: z.string().optional(),
+  R2_ACCESS_KEY_ID: z.string().optional(),
+  R2_SECRET_ACCESS_KEY: z.string().optional(),
+  R2_BUCKET: z.string().default('tangible-warehouse'),
+  /** The bucket's public origin — an r2.dev URL or a custom domain. */
+  R2_PUBLIC_BASE_URL: z.string().optional(),
 });
 
 export type Env = z.infer<typeof EnvSchema>;
