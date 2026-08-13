@@ -220,6 +220,19 @@ interface SharePointListing {
 }
 
 /**
+ * Folder listings, memoized for the life of the process.
+ *
+ * All 67 counties live in the same handful of folders, so without this a run
+ * across the state asks the portal for the identical listing 67 times per year
+ * — around 800 requests to learn 12 distinct answers. The promise is cached
+ * rather than the result so concurrent callers share one request.
+ *
+ * Safe to hold for a whole run: the DOR publishes a roll once and does not
+ * revise it mid-session, and a single ingest is minutes rather than days.
+ */
+const folderCache = new Map<string, Promise<string[]>>();
+
+/**
  * Ask the portal what is actually in a folder.
  *
  * The published file names are not derivable. They mostly follow
@@ -229,18 +242,35 @@ interface SharePointListing {
  * name guesses wrong for whichever counties the DOR happened to fat-finger.
  * Listing the folder and matching on the county number sidesteps all of it.
  */
-async function listFolder(folder: string): Promise<string[]> {
+function listFolder(folder: string): Promise<string[]> {
+  const cached = folderCache.get(folder);
+  if (cached) return cached;
+
   const url =
     `https://floridarevenue.com/property/dataportal/_api/web/` +
     `GetFolderByServerRelativeUrl('${encodeURIComponent(folder)}')/Files?$select=Name`;
 
-  const response = await fetch(url, {
-    headers: { Accept: 'application/json;odata=nometadata' },
-  });
-  if (!response.ok) return [];
+  const pending = (async () => {
+    const response = await fetch(url, {
+      headers: { Accept: 'application/json;odata=nometadata' },
+    });
+    // A missing folder is the normal answer for a year the DOR has not posted,
+    // and it is worth caching too — otherwise every county re-asks about 2021.
+    if (!response.ok) return [];
+    const body = (await response.json()) as SharePointListing;
+    return (body.value ?? []).map((f) => f.Name ?? '').filter(Boolean);
+  })();
 
-  const body = (await response.json()) as SharePointListing;
-  return (body.value ?? []).map((f) => f.Name ?? '').filter(Boolean);
+  // A rejected lookup must not be cached, or one network blip poisons the whole
+  // run for that folder.
+  folderCache.set(
+    folder,
+    pending.catch((error) => {
+      folderCache.delete(folder);
+      throw error;
+    }),
+  );
+  return folderCache.get(folder)!;
 }
 
 export class FloridaConnector implements Connector {

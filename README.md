@@ -137,17 +137,17 @@ warehouse file locally, or the published Parquet export in a deployment. See
 
 ## County coverage
 
-Loaded today — **3.43M account-years across 71 counties in two states**:
+Loaded today — **3.53M account-years across 71 counties in two states**:
 
 | County | State | CAD | Years | Account-years | Acquisition | Filing status |
 |---|---|---|---|---|---|---|
 | Harris | TX | HCAD | 2021–2026 | 1,130,423 | Automatic | Full, including late renditions |
-| Dallas | TX | DCAD | 2022–2026 | 510,589 | Automatic | Filed / did not file; no late flag |
+| Dallas | TX | DCAD | 2021–2026 | 607,277 | Automatic | Filed / did not file; no late flag |
 | Tarrant | TX | TAD | 2021–2026 | 420,519 | Manual download (2 files/yr) | **None published** |
 | Collin | TX | CCAD | 2020–2025 | 213,656 | Automatic (state portal) | **None published** |
 | All 67 counties | FL | — | 2026 only | 1,158,330 | Automatic (state portal) | **None published** |
 
-Texas contributes 2.28M account-years with 1.64M of them carrying a filing
+Texas contributes 2.37M account-years with 1.74M of them carrying a filing
 status; Florida contributes 1.16M with none, worth $257.9B assessed. Florida is
 complete — every county the state publishes is loaded.
 
