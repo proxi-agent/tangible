@@ -38,6 +38,16 @@ export const JurisdictionSummarySchema = JurisdictionSchema.extend({
   accountCount: z.number().int().nonnegative(),
   latestYear: z.number().int().nullable(),
   lastIngestedAt: z.string().datetime().nullable(),
+  /**
+   * Whether this jurisdiction's loaded rows carry a filing status at all.
+   *
+   * Read off the data rather than declared by the connector, because that is
+   * the thing callers actually need to know: a connector that maps the field
+   * but whose county left it blank is, for every practical purpose, a county
+   * that does not publish it. Views that default to a filing-based filter use
+   * this to avoid opening on a query that cannot match anything.
+   */
+  publishesFilingStatus: z.boolean().default(false),
 });
 
 export type JurisdictionSummary = z.infer<typeof JurisdictionSummarySchema>;

@@ -36,7 +36,7 @@ function AccountDetail() {
   const params = useParams<{ accountId: string }>();
   const scope = useScope();
   const accountId = decodeURIComponent(params.accountId);
-  const scopeQuery = `jurisdictionId=${scope.jurisdictionId}&taxYear=${scope.taxYear}`;
+  const scopeQuery = scope.linkQuery;
 
   const { data, isPending, error } = useQuery({
     queryKey: ['account', scope.jurisdictionId, scope.taxYear, accountId],
@@ -207,9 +207,9 @@ function AccountDetail() {
 
       <p className="px-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
         Figures are derived from the public appraisal roll at a{' '}
-        {percent(scope.current?.blendedTaxRate, 2)} blended rate. Renditions themselves are
-        confidential in Texas — nothing here reflects the contents of a filing, only whether the
-        district recorded one.
+        {percent(scope.current?.blendedTaxRate, 2)} blended rate. The filings themselves are
+        confidential in both states — nothing here reflects the contents of a return, only whether
+        the county recorded one.
       </p>
     </div>
   );

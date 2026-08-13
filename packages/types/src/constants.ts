@@ -1,9 +1,16 @@
 /**
- * Domain constants for Texas business personal property (BPP).
+ * Domain constants for business personal property (BPP).
  *
- * These are policy numbers, not tuning knobs — they change when the legislature
+ * These are policy numbers, not tuning knobs — they change when a legislature
  * changes them, so they live in one place and are referenced by both the
  * analytics SQL and the UI copy.
+ *
+ * Everything here was originally Texas, and much of it still is: the state class
+ * codes and the rendition vocabulary have no meaning outside Texas. The
+ * *exemption and penalty* numbers do not have that luxury, because they decide
+ * which accounts count as taxable — so those are keyed by state. Scoring a
+ * Florida roll against the Texas exemption would misstate the taxable base by an
+ * order of magnitude in the direction that flatters the answer.
  */
 
 /**
@@ -19,6 +26,30 @@ export const BPP_EXEMPTION_BY_YEAR: Readonly<Record<number, number>> = {
   2025: 2_500,
   2026: 125_000,
 };
+
+/**
+ * Florida's tangible personal property exemption, s.196.183 F.S. — a flat
+ * $25,000 per return since the 2008 constitutional amendment, unchanged since.
+ * An account under it owes nothing but still has to file once to claim it.
+ */
+export const FL_TPP_EXEMPTION_BY_YEAR: Readonly<Record<number, number>> = {
+  2021: 25_000,
+  2022: 25_000,
+  2023: 25_000,
+  2024: 25_000,
+  2025: 25_000,
+  2026: 25_000,
+};
+
+/**
+ * Florida s.193.072: failing to file a TPP return carries 25% of the tax levied,
+ * against Texas's 10%. Late filing is 5% a month to a maximum of 25%.
+ *
+ * This rate is used to model exposure from the statute, exactly as the Texas
+ * rate is. It is unrelated to the roll's own `PEN_RATE` column, which records
+ * what an appraiser actually applied and is too unevenly populated to use.
+ */
+export const FL_FAILURE_TO_FILE_PENALTY_RATE = 0.25;
 
 export const CURRENT_TAX_YEAR = 2026;
 
@@ -45,6 +76,25 @@ export const RENDITION_PENALTY_RATE = 0.1;
 
 /** Sec. 22.29 adds a 50% penalty for fraudulent renditions — tracked separately. */
 export const FRAUD_PENALTY_RATE = 0.5;
+
+/** The statutory rules that decide whether an account is taxable, per state. */
+export interface StatePolicy {
+  exemptionByYear: Readonly<Record<number, number>>;
+  /** Statutory penalty for not filing, as a share of the tax due. */
+  penaltyRate: number;
+}
+
+/**
+ * Policy by state.
+ *
+ * A state absent from this table gets no policy rows at all, which is
+ * deliberate: its accounts then fall back to the query defaults rather than
+ * being silently scored against another state's statute.
+ */
+export const POLICY_BY_STATE: Readonly<Record<string, StatePolicy>> = {
+  TX: { exemptionByYear: BPP_EXEMPTION_BY_YEAR, penaltyRate: RENDITION_PENALTY_RATE },
+  FL: { exemptionByYear: FL_TPP_EXEMPTION_BY_YEAR, penaltyRate: FL_FAILURE_TO_FILE_PENALTY_RATE },
+};
 
 /** Rendition deadline (month/day). Extensions to May 15 are available on request. */
 export const RENDITION_DEADLINE = { month: 4, day: 15 } as const;

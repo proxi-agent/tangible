@@ -112,7 +112,7 @@ export function AccountsTable({
         header: 'Years missed',
         meta: {
           align: 'right',
-          help: 'Texas businesses must declare their equipment to the county every year — the form is called a rendition. This is how many years this account skipped it, out of the years it has been on the county’s books.',
+          help: 'Businesses must declare their equipment to the county every year — a rendition in Texas, a tangible personal property return in Florida. This is how many years this account skipped it, out of the years it has been on the county’s books.',
         } satisfies ColumnMeta,
         cell: ({ row }) => (
           <span className="text-[var(--color-ink-secondary)]">

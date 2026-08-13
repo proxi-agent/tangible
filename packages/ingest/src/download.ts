@@ -12,8 +12,30 @@ import type { IngestLogger } from './connector.js';
 const USER_AGENT =
   'tangible-ingest/0.1 (public records research; contact the site owner with concerns)';
 
-/** An HTML error page is not a data file — real county archives are megabytes. */
-const MIN_PLAUSIBLE_ARCHIVE_BYTES = 100_000;
+/**
+ * A portal that has reorganized answers with a courtesy page rather than a 404,
+ * and an HTML error page is not a data file. Size alone cannot make that call:
+ * Florida's smallest counties publish rolls well under 100KB, so a byte
+ * threshold big enough to catch an error page also discards Lafayette and
+ * Liberty. What actually separates them is the first few bytes.
+ */
+const MIN_PLAUSIBLE_ARCHIVE_BYTES = 1_000;
+
+/** Leading bytes of a payload that is markup rather than data. */
+const MARKUP_PREFIXES = ['<!doctype', '<html', '<?xml', '<head', '<body'];
+
+/** Read enough of the head of a file to tell markup from a data file. */
+async function looksLikeMarkup(path: string): Promise<boolean> {
+  const handle = await open(path, 'r');
+  try {
+    const buffer = Buffer.alloc(512);
+    const { bytesRead } = await handle.read(buffer, 0, 512, 0);
+    const head = buffer.subarray(0, bytesRead).toString('latin1').trimStart().toLowerCase();
+    return MARKUP_PREFIXES.some((prefix) => head.startsWith(prefix));
+  } finally {
+    await handle.close();
+  }
+}
 
 export interface DownloadResult {
   path: string;
@@ -89,6 +111,10 @@ export async function downloadFile(
   let { size } = await stat(dest);
   if (size < MIN_PLAUSIBLE_ARCHIVE_BYTES) {
     logger.warn(`  got ${size} bytes — too small to be a data file, treating as a miss`);
+    return null;
+  }
+  if (await looksLikeMarkup(dest)) {
+    logger.warn(`  got an HTML page rather than a data file, treating as a miss`);
     return null;
   }
 

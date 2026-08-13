@@ -145,7 +145,9 @@ export async function getAccount(
         0.025
       ) AS rate
     ) j
-    LEFT JOIN tax_policy p ON p.tax_year = ay.tax_year
+    LEFT JOIN tax_policy p
+      ON p.tax_year = ay.tax_year
+     AND p.state = (SELECT state FROM jurisdiction WHERE jurisdiction_id = ${lit(jurisdictionId)})
     WHERE ay.jurisdiction_id = ${lit(jurisdictionId)}
       AND ay.account_id = ${lit(accountId)}
       AND ay.tax_year <= ${lit(taxYear)}

@@ -3,11 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import {
-  OwnerSortFieldSchema,
-  SortDirectionSchema,
-  type SegmentKey,
-} from '@tangible/types';
+import { OwnerSortFieldSchema, SortDirectionSchema, type SegmentKey } from '@tangible/types';
 import { Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { OwnersTable } from '@/components/owners-table';
 import { ChipGroup, Field, Select, TextInput } from '@/components/ui/controls';
@@ -31,7 +27,17 @@ function Owners() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const segments = (searchParams.get('segments') ?? 'unfiled')
+  /**
+   * Non-filers are the point of this page, so that is what it opens on — but
+   * only where the county publishes who filed. All but two of the counties
+   * loaded here do not, and opening them on a filing filter meant landing on
+   * "0 owners" for a query that cannot match anything, which reads as "this
+   * county is clean" rather than "this county does not say". Those open on
+   * taxable owners instead, which is the largest question their data can
+   * actually answer.
+   */
+  const defaultSegment: SegmentKey = scope.current?.publishesFilingStatus ? 'unfiled' : 'taxable';
+  const segments = (searchParams.get('segments') ?? defaultSegment)
     .split(',')
     .filter(Boolean) as SegmentKey[];
   const minAccounts = Number(searchParams.get('minAccounts') ?? 2);
@@ -41,7 +47,7 @@ function Owners() {
     searchParams.get('sortBy'),
   );
   const sortDir = SortDirectionSchema.catch('desc').parse(searchParams.get('sortDir'));
-  const scopeQuery = `jurisdictionId=${scope.jurisdictionId}&taxYear=${scope.taxYear}`;
+  const scopeQuery = scope.linkQuery;
 
   const update = (patch: Record<string, string | number | string[] | undefined>) => {
     const params = new URLSearchParams(searchParams.toString());

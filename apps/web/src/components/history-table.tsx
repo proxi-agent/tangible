@@ -52,7 +52,7 @@ export function HistoryTable({ history }: { history: AccountYearPoint[] }) {
         id: 'rendition',
         header: 'Declaration filed',
         meta: {
-          help: 'Texas businesses must send the county a list of the equipment they own each year — the form is called a rendition, and it is due April 15. This column is whether the county recorded one. "Not published" means the county does not release that field at all.',
+          help: 'Businesses must report the equipment they own to the county each year — Texas calls it a rendition and it is due 15 April, Florida a tangible personal property return, due 1 April. This column is whether the county recorded one. "Not published" means the county does not release that field at all; in Florida it is inferred from the penalty the appraiser applied.',
         } satisfies ColumnMeta,
         // Sorted by meaning rather than by the boolean: unknown, not filed,
         // late, filed — which is the order someone scanning for exposure wants.

@@ -29,7 +29,7 @@ function Accounts() {
     taxYear,
   );
   const enabled = Boolean(jurisdictionId);
-  const scopeQuery = `jurisdictionId=${jurisdictionId}&taxYear=${taxYear}`;
+  const scopeQuery = scope.linkQuery;
 
   const segments = useQuery({ queryKey: ['segments'], queryFn: api.segments });
   const facets = useQuery({

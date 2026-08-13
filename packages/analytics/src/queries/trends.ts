@@ -25,7 +25,11 @@ export async function getYearTrend(
         (coalesce(ay.assessed_value, 0) >= coalesce(p.exemption_threshold, 0)
           AND NOT coalesce(ay.is_exempt, FALSE)) AS is_taxable
       FROM account_year ay
-      LEFT JOIN tax_policy p ON p.tax_year = ay.tax_year
+      -- Policy is per state, not per year: the exemption that decides whether an
+      -- account is taxable is $125,000 in Texas for 2026 and $25,000 in Florida.
+      LEFT JOIN tax_policy p
+        ON p.tax_year = ay.tax_year
+       AND p.state = (SELECT state FROM jurisdiction WHERE jurisdiction_id = ${lit(jurisdictionId)})
       CROSS JOIN (
         SELECT coalesce(
           (SELECT blended_tax_rate FROM jurisdiction WHERE jurisdiction_id = ${lit(jurisdictionId)}),

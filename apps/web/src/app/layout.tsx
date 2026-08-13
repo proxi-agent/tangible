@@ -7,7 +7,7 @@ import './globals.css';
 export const metadata: Metadata = {
   title: 'Tangible — business personal property intelligence',
   description:
-    'Public appraisal-roll analysis for Texas business personal property: who files, who does not, and what the penalty exposure is worth.',
+    'Public appraisal-roll analysis for business personal property across Texas and Florida: who files, who does not, and what the penalty exposure is worth.',
 };
 
 /**

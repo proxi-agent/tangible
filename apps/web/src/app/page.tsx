@@ -3,7 +3,10 @@
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
 import { Suspense } from 'react';
-import { ClassDistributionChart, ValueDistributionChart } from '@/components/charts/distribution-charts';
+import {
+  ClassDistributionChart,
+  ValueDistributionChart,
+} from '@/components/charts/distribution-charts';
 import { TrendCharts } from '@/components/charts/trend-charts';
 import { OpportunityPanel } from '@/components/opportunity-panel';
 import { SegmentTiles } from '@/components/segment-tiles';
@@ -12,6 +15,22 @@ import { InfoTip } from '@/components/ui/tooltip';
 import { useScope } from '@/hooks/use-scope';
 import { api } from '@/lib/api';
 import { count, money, moneyExact, percent } from '@/lib/format';
+
+/**
+ * The rule this page is measuring, in the words of the state it applies to.
+ *
+ * The statute differs enough that one sentence cannot cover both: Texas charges
+ * 10% for failing to render, Florida 25% for failing to file a return, and
+ * Florida's is inferred from a penalty rate rather than read off a filing flag.
+ * Saying "Texas" over a Palm Beach roll is the kind of copy that quietly
+ * destroys trust in every number under it.
+ */
+const RULE_BY_STATE: Readonly<Record<string, string>> = {
+  TX: 'Texas businesses must file a list of the equipment they own with their county every year. Skip it and the county adds 10% to the bill — automatically, and again every year it stays unfiled. This is the public record of who is paying that.',
+  FL: 'Florida businesses must file a tangible personal property return with the county by 1 April. Failing to file carries a 25% penalty on the tax due under s.193.072, and filing late costs 5% a month. The county does not publish who filed, so these counts are inferred from the penalty the appraiser applied.',
+  default:
+    'Businesses must report the equipment they own to the county each year, and the county penalises those who do not. This is the public record of who is paying that.',
+};
 
 export default function OverviewPage() {
   return (
@@ -25,7 +44,7 @@ function Overview() {
   const scope = useScope();
   const { jurisdictionId, taxYear } = scope;
   const enabled = Boolean(jurisdictionId) && Number.isInteger(taxYear);
-  const scopeQuery = `jurisdictionId=${jurisdictionId}&taxYear=${taxYear}`;
+  const scopeQuery = scope.linkQuery;
 
   const overview = useQuery({
     queryKey: ['overview', jurisdictionId, taxYear],
@@ -50,7 +69,12 @@ function Overview() {
     enabled,
   });
 
-  if (scope.error) return <Card><ErrorState error={scope.error} /></Card>;
+  if (scope.error)
+    return (
+      <Card>
+        <ErrorState error={scope.error} />
+      </Card>
+    );
   if (scope.isLoading) return <PageSkeleton />;
 
   if (!jurisdictionId || (scope.current && scope.current.accountCount === 0)) {
@@ -67,7 +91,12 @@ function Overview() {
     );
   }
 
-  if (overview.error) return <Card><ErrorState error={overview.error} /></Card>;
+  if (overview.error)
+    return (
+      <Card>
+        <ErrorState error={overview.error} />
+      </Card>
+    );
 
   return (
     <div className="space-y-6">
@@ -86,6 +115,7 @@ function Overview() {
           }
           taxYear={taxYear}
           jurisdictionName={scope.current?.name ?? jurisdictionId}
+          stateCode={scope.current?.state ?? ''}
         />
       ) : (
         <Skeleton className="h-28 w-full" />
@@ -108,11 +138,7 @@ function Overview() {
       ) : null}
 
       {overview.data && segments.data ? (
-        <SegmentTiles
-          overview={overview.data}
-          segments={segments.data}
-          scopeQuery={scopeQuery}
-        />
+        <SegmentTiles overview={overview.data} segments={segments.data} scopeQuery={scopeQuery} />
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }, (_, i) => (
@@ -122,8 +148,16 @@ function Overview() {
       )}
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {valueDist.data ? <ValueDistributionChart data={valueDist.data} /> : <Skeleton className="h-80" />}
-        {classDist.data ? <ClassDistributionChart data={classDist.data} /> : <Skeleton className="h-80" />}
+        {valueDist.data ? (
+          <ValueDistributionChart data={valueDist.data} />
+        ) : (
+          <Skeleton className="h-80" />
+        )}
+        {classDist.data ? (
+          <ClassDistributionChart data={classDist.data} />
+        ) : (
+          <Skeleton className="h-80" />
+        )}
       </div>
 
       <OpportunityPanel jurisdictionId={jurisdictionId} taxYear={taxYear} />
@@ -133,6 +167,7 @@ function Overview() {
 
 function Headline({
   jurisdictionName,
+  stateCode,
   taxYear,
   totalAccounts,
   taxableAccounts,
@@ -143,6 +178,7 @@ function Headline({
   taxableValue,
 }: {
   jurisdictionName: string;
+  stateCode: string;
   taxYear: number;
   totalAccounts: number;
   taxableAccounts: number;
@@ -171,9 +207,7 @@ function Headline({
             their equipment.
           </p>
           <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[var(--color-ink-secondary)]">
-            Texas businesses must file a list of the equipment they own with their county every
-            year. Skip it and the county adds 10% to the bill — automatically, and again every year
-            it stays unfiled. This is the public record of who is paying that.
+            {RULE_BY_STATE[stateCode] ?? RULE_BY_STATE.default}
           </p>
         </>
       ) : (
@@ -208,7 +242,13 @@ function Headline({
         <Stat
           label="Exemption"
           value={moneyExact(exemption)}
-          help="Own less equipment than this and you owe nothing. Texas raised it from $2,500 to $125,000 in 2026, which removes most of the roll from the tax base."
+          help={
+            stateCode === 'FL'
+              ? 'Own less equipment than this and you owe nothing. Florida has held the tangible personal property exemption at $25,000 since 2008, and most accounts on the roll fall under it.'
+              : stateCode === 'TX'
+                ? 'Own less equipment than this and you owe nothing. Texas raised it from $2,500 to $125,000 in 2026, which removes most of the roll from the tax base.'
+                : 'Own less equipment than this and you owe nothing. The threshold is set by state statute and changes when the legislature changes it.'
+          }
         />
         <Stat
           label="Tax rate"

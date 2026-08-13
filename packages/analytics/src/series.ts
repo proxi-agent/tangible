@@ -109,13 +109,24 @@ series AS (
         (SELECT blended_tax_rate FROM jurisdiction WHERE jurisdiction_id = ${j}),
         ${lit(DEFAULT_BLENDED_TAX_RATE)}
       ) AS blended_tax_rate,
+      -- Every policy lookup is narrowed to this jurisdiction's own state, and
+      -- the fallback picks that state's *nearest* year rather than its newest —
+      -- a roll from before the codified range must not inherit a later
+      -- statute's exemption. See BACKFILL_POLICY_SQL for why that matters.
       coalesce(
-        (SELECT exemption_threshold FROM tax_policy WHERE tax_year = ${y}),
-        (SELECT exemption_threshold FROM tax_policy ORDER BY tax_year DESC LIMIT 1),
+        (SELECT exemption_threshold FROM tax_policy
+          WHERE tax_year = ${y} AND state = (SELECT state FROM jurisdiction WHERE jurisdiction_id = ${j})),
+        (SELECT exemption_threshold FROM tax_policy
+          WHERE state = (SELECT state FROM jurisdiction WHERE jurisdiction_id = ${j})
+          ORDER BY abs(tax_year - ${y}) ASC, tax_year DESC LIMIT 1),
         0
       ) AS exemption_threshold,
       coalesce(
-        (SELECT penalty_rate FROM tax_policy WHERE tax_year = ${y}),
+        (SELECT penalty_rate FROM tax_policy
+          WHERE tax_year = ${y} AND state = (SELECT state FROM jurisdiction WHERE jurisdiction_id = ${j})),
+        (SELECT penalty_rate FROM tax_policy
+          WHERE state = (SELECT state FROM jurisdiction WHERE jurisdiction_id = ${j})
+          ORDER BY abs(tax_year - ${y}) ASC, tax_year DESC LIMIT 1),
         ${lit(RENDITION_PENALTY_RATE)}
       ) AS penalty_rate
   )

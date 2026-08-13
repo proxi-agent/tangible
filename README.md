@@ -1,6 +1,7 @@
 # Tangible
 
-Public appraisal-roll analysis for Texas business personal property (BPP).
+Public appraisal-roll analysis for business personal property (BPP), across
+Texas and Florida.
 
 The question this repo exists to answer: **is there a business in filing
 rendition paperwork for companies that never file it?** Texas Tax Code Sec.
@@ -117,21 +118,128 @@ warehouse file locally, or the published Parquet export in a deployment. See
 
 ## County coverage
 
-Loaded today — **2.28M account-years across four counties**:
+Loaded today — **3.43M account-years across 71 counties in two states**:
 
-| County | CAD | Years | Account-years | Acquisition | Filing status |
+| County | State | CAD | Years | Account-years | Acquisition | Filing status |
+|---|---|---|---|---|---|---|
+| Harris | TX | HCAD | 2021–2026 | 1,130,423 | Automatic | Full, including late renditions |
+| Dallas | TX | DCAD | 2022–2026 | 510,589 | Automatic | Filed / did not file; no late flag |
+| Tarrant | TX | TAD | 2021–2026 | 420,519 | Manual download (2 files/yr) | **None published** |
+| Collin | TX | CCAD | 2020–2025 | 213,656 | Automatic (state portal) | **None published** |
+| All 67 counties | FL | — | 2026 only | 1,158,330 | Automatic (state portal) | **None published** |
+
+Texas contributes 2.28M account-years with 1.64M of them carrying a filing
+status; Florida contributes 1.16M with none, worth $257.9B assessed. Florida is
+complete — every county the state publishes is loaded.
+
+Florida's twenty largest, by account count:
+
+| County | Accounts | Assessed | County | Accounts | Assessed |
 |---|---|---|---|---|---|
-| Harris | HCAD | 2021–2026 | 1,130,423 | Automatic | Full, including late renditions |
-| Dallas | DCAD | 2022–2026 | 510,589 | Automatic | Filed / did not file; no late flag |
-| Tarrant | TAD | 2021–2026 | 420,519 | Manual download (2 files/yr) | **None published** |
-| Collin | CCAD | 2020–2025 | 213,656 | Automatic (state portal) | **None published** |
+| Miami-Dade | 116,061 | $25.2B | Volusia | 33,041 | $5.9B |
+| Broward | 89,919 | $13.4B | Duval | 30,491 | $18.8B |
+| Polk | 87,967 | $9.5B | Manatee | 28,120 | $5.3B |
+| Lee | 79,644 | $8.0B | Osceola | 27,977 | $4.5B |
+| Orange | 62,991 | $22.0B | Sarasota | 22,383 | $4.4B |
+| Palm Beach | 57,371 | $16.8B | Marion | 21,477 | $3.4B |
+| Pinellas | 56,315 | $8.1B | Collier | 18,256 | $3.9B |
+| Brevard | 47,347 | $12.9B | Pasco | 18,129 | $4.2B |
+| Hillsborough | 42,711 | $14.4B | Escambia | 13,547 | $4.9B |
+| Lake | 33,346 | $3.2B | Seminole | 13,519 | $3.8B |
 
-**Half the counties do not publish the field this product is built on.** Neither
-Tarrant nor Collin records rendition status at all. Their non-filer segments are
-empty *by design* rather than zero, and their filing rate reads as unknown
-rather than 0% — a two-valued boolean would have declared every business in both
-counties a chronic non-filer and invented tens of millions in exposure. They
-still contribute market size, value trends and frozen-value signal.
+Account count and value rank differently on purpose: Polk has nearly three times
+Duval's accounts and half its value, while Duval carries $7B in one municipal
+utility account. Ranking Florida by account count alone would put the wrong
+counties at the top.
+
+### Florida
+
+Florida does not work like Texas. Every property appraiser submits their
+tangible personal property roll to the Department of Revenue, which reformats
+all 67 counties onto one 36-field CSV — the NAP file — and republishes it. One
+connector therefore serves the whole state, and the county table in
+`connectors/florida.ts` is the only thing that grows.
+
+Two limits are worth knowing before reading any Florida number:
+
+- **Only the current roll is posted.** The DOR holds NAP files back to 2002 but
+  releases earlier years by public-records request, so a Florida county shows a
+  single year until the back years are requested and loaded with `--url`. Some
+  counties spare you the request — Pasco republishes its own final rolls back to
+  2020 at `ftp01.pascopa.com/historic/tangible/`, same format, free.
+- **There is no filing-status field**, and whether the nearest substitute can
+  stand in for one is a per-county question. See below.
+
+### Florida's filing signal: ten counties, by test
+
+`PEN_RATE` carries the s.193.072 penalty percentage, and 25% is specifically the
+failure-to-file penalty. Whether that can be read as compliance depends entirely
+on the appraiser. Measured across all 67 rolls: **20 counties report a penalty
+rate of zero on every single account**, and Polk reports 45.8% of its roll as
+penalised while placing exactly **2** accounts at the 25% rate.
+
+So it is read as compliance only where it earns it. A county qualifies if it has
+at least 100 accounts at the 25% rate, and that rate **declines monotonically as
+accounts get larger**, measured over accounts that actually owe tax. Ten pass:
+
+| County | Taxable accounts | Did not file | 25% share by value band |
+|---|---|---|---|
+| Palm Beach | 16,750 | 3,163 | 27.0% → 9.6% → 3.9% |
+| Manatee | 6,165 | 2,004 | 43.0% → 21.5% → 13.5% |
+| Lee | 10,194 | 1,352 | 17.0% → 10.2% → 3.0% |
+| Lake | 6,128 | 1,224 | 26.3% → 9.0% → 3.4% |
+| Pasco | 5,619 | 1,207 | 28.1% → 11.2% → 6.2% |
+| Escambia | 4,028 | 786 | 26.2% → 14.1% → 4.1% |
+| Charlotte | 4,387 | 622 | 18.6% → 1.2% → 0.7% |
+| Sumter / Putnam / Citrus | 5,097 | 730 | all declining |
+
+**58,368 taxable account-years with a filing status, 11,088 apparent non-filers.**
+The declining gradient is the whole argument — a real non-filer population thins
+out at the top, and it is the same test that rejected the Williamson proxy below.
+
+Three caveats travel with those numbers. The rate cannot separate a business that
+never filed from one that filed five or more months late, since late filing
+accrues 5% a month to the same 25% ceiling. The rates are never comparable
+*between* counties. And accounts below the $25,000 exemption are left unknown
+rather than compliant — the penalty is a share of tax levied, so an account
+owing nothing is penalised nothing either way. Including them made every county
+look flat and nearly caused the signal to be discarded.
+
+**The state file is not always faithful to the county.** Duval's own tangible
+roll records 3,879 accounts at the 25% rate; the DOR copy of the same roll
+renders nearly 2,000 of them as 15% and the rest as zero. That is why Duval is
+absent from the table above despite being one of the better-documented counties
+— its own file, free and monthly at jacksonville.gov, would need its own
+connector.
+
+Florida still contributes the widest market picture here: account-level owner,
+location, NAICS and value for every business account in the state, with
+exemption detail good enough to separate genuinely exempt bodies from the many
+small businesses sitting under the $25,000 exemption.
+
+Statutory policy is keyed by **state and year** in `tax_policy`, because the
+exemption decides which accounts count as taxable and the two states are an
+order of magnitude apart — $125,000 in Texas for 2026 against $25,000 in
+Florida. A state with no codified policy gets no rows rather than inheriting
+another state's statute.
+
+**Twelve of the 71 counties yield the field this product is built on**, and only
+two of them publish it outright. Harris and Dallas record rendition status
+directly; the ten Florida counties above have it inferred from a penalty rate
+that had to pass a test first. The other 59 — Tarrant, Collin and 57 Florida
+counties — say nothing.
+
+Where it is absent, non-filer segments are empty *by design* rather than zero,
+and the filing rate reads as unknown rather than 0%. A two-valued boolean would
+have declared every business in 59 counties a chronic non-filer and invented
+hundreds of millions in exposure. Those counties still contribute market size,
+value trends and frozen-value signal.
+
+Views that would open on a filing filter check `publishesFilingStatus` on the
+jurisdiction — computed from whether the loaded rows actually carry the field,
+not from what a connector claims — and fall back to a value-based view where it
+is absent. That indirection is what let ten Florida counties start behaving like
+Harris without a line changing in the pages themselves.
 
 Each connector declares its gaps as `dataNotes`, which the UI shows on every
 page for that jurisdiction.
@@ -141,9 +249,41 @@ non-filers, $29.8M/yr in penalties, 2,965 core ICP accounts.** Tarrant adds
 $41.9B of taxable BPP value to the market picture — it is absent from the
 Comptroller's 2024 study, so that figure is not in the ranking below.
 
+### Beyond Texas: what the other states publish
+
+Maryland, Florida, Virginia and Georgia were surveyed together. Only one of the
+four turned out to be ingestible, and the reasons the others are not differ
+enough to matter — one is a process problem, one is a modelling problem, one is
+a statute. The same survey is in the app behind **What each state publishes**,
+with the specific steps for each.
+
+| State | Account-level BPP | Filing status | Obstacle |
+|---|---|---|---|
+| Florida | **Yes — all 67 counties** | No | Current roll only; back years by request |
+| Georgia | No — county totals only | No | Per-county Open Records Act request |
+| Maryland | No published extract | Possibly, via entity good standing | Assessed centrally, so the unit is the taxpayer, not the county |
+| Virginia | No | No | **Va. Code §58.1-3 makes it confidential**, and FOIA-exempt |
+
+- **Georgia** publishes 35 years of county-level digest consolidations through
+  the DOR — genuine, long-running data that sizes a market and cannot name a
+  taxpayer. Account-level personal property exists only county by county, mostly
+  through qPublic, which is searchable one parcel at a time rather than
+  downloadable.
+- **Maryland** assesses BPP centrally at SDAT rather than county by county, so
+  the county-shaped model here does not fit without a decision about the unit.
+  A search of the state open data catalogue returns no business personal
+  property extract; only real property is published. The per-entity good-standing
+  status is the closest analogue to a rendition flag anywhere outside Texas and
+  is worth testing before it is trusted.
+- **Virginia** is the one hard stop. Each of 133 localities assesses its own BPP
+  with its own rate and schedule, there is no state aggregation, and account
+  detail is secret by statute rather than merely unpublished. A FOIA request
+  should be expected to be refused on those grounds. Treat Virginia as a
+  market-sizing exercise via the Auditor of Public Accounts' comparative report.
+
 ### The constraint is data, not engineering
 
-Ten counties' portals have been checked. **Only Harris and Dallas publish
+Ten Texas counties' portals have been checked. **Only Harris and Dallas publish
 whether a rendition was filed.** That field is the product; without it a county
 can be sized but not sold to.
 

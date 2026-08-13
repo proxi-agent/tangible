@@ -9,6 +9,7 @@ import { useScope } from '@/hooks/use-scope';
 import { Select } from '@/components/ui/controls';
 import { Tooltip } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { CoverageGuideButton } from '@/components/coverage-guide';
 
 const NAV = [
   { href: '/', label: 'Overview', icon: BarChart3 },
@@ -25,10 +26,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   // Carry the current scope across navigation so switching tabs never silently
   // changes which numbers you are looking at.
   const scopeQuery = new URLSearchParams();
-  if (searchParams.get('jurisdictionId')) {
-    scopeQuery.set('jurisdictionId', searchParams.get('jurisdictionId')!);
+  for (const key of ['state', 'jurisdictionId', 'taxYear']) {
+    const value = searchParams.get(key);
+    if (value) scopeQuery.set(key, value);
   }
-  if (searchParams.get('taxYear')) scopeQuery.set('taxYear', searchParams.get('taxYear')!);
   const suffix = scopeQuery.toString() ? `?${scopeQuery}` : '';
 
   const notes = scope.current?.dataNotes ?? [];
@@ -68,21 +69,44 @@ export function AppShell({ children }: { children: ReactNode }) {
           </nav>
 
           <div className="ml-auto flex items-center gap-2">
-            {/* These two set what every number on every page refers to, so they
-                say what they are rather than relying on the reader inferring it
-                from the county names inside. */}
+            {/* These three set what every number on every page refers to, so
+                they say what they are rather than relying on the reader
+                inferring it from the county names inside. They also nest: the
+                counties are this state's, and the years are this county's. */}
+            <Tooltip
+              title="State"
+              content="States publish business personal property on completely different terms — Texas names who failed to render, Florida publishes no filing field at all and has it inferred from penalty rates in the ten counties where that holds up, and Virginia keeps the accounts confidential. Changing this changes which questions the pages below can answer, not just which places they cover."
+            >
+              <label className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+                State
+                <Select
+                  value={scope.stateCode}
+                  onChange={(e) => scope.setScope({ stateCode: e.target.value })}
+                  className="h-8 text-[13px]"
+                  disabled={scope.states.length === 0}
+                >
+                  {scope.states.map((s) => (
+                    <option key={s.code} value={s.code}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+              </label>
+            </Tooltip>
+
             <Tooltip
               title="County"
-              content="Which appraisal district's public records you are looking at. Each county publishes its own file."
+              content="Which county's public records you are looking at, within the selected state. Counties with nothing loaded yet are marked — that is usually a download away, except where the state does not publish the file at all."
             >
               <label className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
                 County
                 <Select
                   value={scope.jurisdictionId}
                   onChange={(e) => scope.setScope({ jurisdictionId: e.target.value })}
-                  className="h-8 text-[13px]"
+                  className="h-8 max-w-56 text-[13px]"
+                  disabled={scope.countiesInState.length === 0}
                 >
-                  {scope.jurisdictions.map((j) => (
+                  {scope.countiesInState.map((j) => (
                     <option key={j.id} value={j.id}>
                       {j.name}
                       {j.accountCount === 0 ? ' — no data' : ''}
@@ -94,7 +118,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
             <Tooltip
               title="Tax year"
-              content="Counties reassess every year. Changing this changes every figure on the page — values, filings and penalties all move together."
+              content="Only the years this county has actually published and loaded appear here. Texas districts go back to 2020; Florida's state portal posts the current roll only, so most Florida counties offer a single year until the back years are requested."
             >
               <label className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
                 Year
@@ -112,6 +136,8 @@ export function AppShell({ children }: { children: ReactNode }) {
                 </Select>
               </label>
             </Tooltip>
+
+            <CoverageGuideButton className="h-8 text-[13px]" />
 
             <ThemeToggle />
           </div>
