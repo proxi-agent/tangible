@@ -69,6 +69,25 @@ pnpm ingest --jurisdiction tx-harris --years 2021,2022,2023,2024,2025,2026
 That pulls ~1.1M account-years (about 200MB of archives) into the warehouse.
 Files are cached under `data/raw/`, so a re-run reloads without re-downloading.
 
+To load in bulk, select by state or take everything:
+
+```bash
+pnpm ingest --state fl --years 2026
+```
+
+```bash
+pnpm ingest --all
+```
+
+`--jurisdiction` also accepts a comma-separated list. Bulk runs are sequential
+by design — DuckDB takes a single writer, and county portals are not
+infrastructure worth hammering in parallel. A county whose portal is down is
+reported at the end rather than aborting the other 70, and a run where
+everything was already current exits 0, so `--all` is safe on a schedule.
+
+Stop the dev server first: it holds a read handle on the warehouse, and the
+ingest needs the write lock.
+
 Portals reorganize, so if every candidate URL misses, copy the real link off the
 district's download page and pass it directly:
 
@@ -472,7 +491,9 @@ contents.
 | `pnpm dev` | Both apps, watching |
 | `pnpm build` | Build everything |
 | `pnpm typecheck` | Typecheck every package |
-| `pnpm ingest --jurisdiction <id> --years <list>` | Pull a real county roll |
+| `pnpm ingest --jurisdiction <id[,id]> --years <list>` | Pull one or more county rolls |
+| `pnpm ingest --state <tx\|fl>` | Pull every county in a state |
+| `pnpm ingest --all` | Pull every registered jurisdiction |
 | `pnpm seed [accounts]` | Regenerate the synthetic county |
 | `pnpm export:parquet [dir]` | Publish the warehouse as Parquet for deployment |
 | `pnpm db:push` | Push the Drizzle schema to Supabase |
