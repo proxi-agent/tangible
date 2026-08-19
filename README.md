@@ -270,17 +270,18 @@ Comptroller's 2024 study, so that figure is not in the ranking below.
 
 ### Beyond Texas: what the other states publish
 
-Maryland, Florida, Virginia and Georgia were surveyed together. Only one of the
-four turned out to be ingestible, and the reasons the others are not differ
-enough to matter — one is a process problem, one is a modelling problem, one is
-a statute. The same survey is in the app behind **What each state publishes**,
+Maryland, Florida, Virginia and Georgia were surveyed together. Only Florida is
+ingestible today, and the reasons the others are not differ enough to matter —
+two are process problems, one is a statute. Maryland is the one worth working:
+the data exists at account level, carries a real filing flag, and simply is not
+published. The same survey is in the app behind **What each state publishes**,
 with the specific steps for each.
 
 | State | Account-level BPP | Filing status | Obstacle |
 |---|---|---|---|
 | Florida | **Yes — all 67 counties** | No | Current roll only; back years by request |
 | Georgia | No — county totals only | No | Per-county Open Records Act request |
-| Maryland | No published extract | Possibly, via entity good standing | Assessed centrally, so the unit is the taxpayer, not the county |
+| Maryland | Exists, layout published, not downloadable | **Yes — SDAT's estimated-assessment code** | Sent to counties for billing; needs a records request |
 | Virginia | No | No | **Va. Code §58.1-3 makes it confidential**, and FOIA-exempt |
 
 - **Georgia** publishes 35 years of county-level digest consolidations through
@@ -288,12 +289,20 @@ with the specific steps for each.
   taxpayer. Account-level personal property exists only county by county, mostly
   through qPublic, which is searchable one parcel at a time rather than
   downloadable.
-- **Maryland** assesses BPP centrally at SDAT rather than county by county, so
-  the county-shaped model here does not fit without a decision about the unit.
-  A search of the state open data catalogue returns no business personal
-  property extract; only real property is published. The per-entity good-standing
-  status is the closest analogue to a rendition flag anywhere outside Texas and
-  is worth testing before it is trusted.
+- **Maryland** turned out to be the strongest of the three on a second look. SDAT
+  assesses BPP centrally and then certifies the assessments to the counties as a
+  file — the MBES billing extract, a 2,000-byte fixed-width record per account
+  whose [layout SDAT publishes](https://dat.maryland.gov/businesses/Pages/newppmbes.aspx).
+  It carries an **Estimated Code**, `E` or blank, marking accounts valued by
+  estimate because no return was filed, and Maryland assesses those at twice the
+  estimated value. That is the same fact HCAD's rendition flag records, stated by
+  the assessor rather than inferred from a penalty rate, and it is the only field
+  of its kind found outside Texas. The record also carries county, district and
+  town codes, so the county-shaped model fits after all. What is missing is a
+  download: the file goes to the 17 levying jurisdictions for billing and is not
+  posted, so Maryland is a records request — to SDAT, and to the large counties
+  in parallel, since each holds its own copy. The good-standing proxy is dropped;
+  the E flag supersedes it.
 - **Virginia** is the one hard stop. Each of 133 localities assesses its own BPP
   with its own rate and schedule, there is no state aggregation, and account
   detail is secret by statute rather than merely unpublished. A FOIA request
