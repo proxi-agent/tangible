@@ -5,6 +5,7 @@ import { ArrowLeft, MapPin, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
+import type { ClientLocation } from '@tangible/types';
 import { api } from '@/lib/api';
 import { ClientStatusBadge } from '@/components/workspace/badges';
 import { FilingProfileCard } from '@/components/workspace/filing-profile-card';
@@ -172,13 +173,7 @@ export default function ClientPage() {
           ) : (
             <ul className="divide-y divide-[var(--color-hairline)]">
               {locations.map((location) => (
-                <li key={location.id} className="flex items-center gap-2 px-5 py-3 text-sm">
-                  <MapPin size={14} strokeWidth={2} className="text-[var(--color-ink-muted)]" />
-                  <span className="font-medium">{location.label}</span>
-                  <span className="text-xs text-[var(--color-ink-muted)]">
-                    {[location.city, location.stateCode].filter(Boolean).join(', ')}
-                  </span>
-                </li>
+                <LocationRow key={location.id} clientId={clientId} location={location} />
               ))}
             </ul>
           )}
@@ -187,5 +182,118 @@ export default function ClientPage() {
 
       <FilingProfileCard clientId={clientId} clientName={client.name} profile={filingProfile} />
     </div>
+  );
+}
+
+/**
+ * A location, and the address the district needs, filled in when it is known.
+ *
+ * Sites are usually created from a register's own shorthand — "Houston Plant"
+ * is enough for an operator to place a thousand rows against, and it is all the
+ * file gives us. The street address arrives later, from the client or a notice,
+ * and until it does the label is genuinely all we have. So the address is an
+ * edit on an existing row rather than a precondition for making one: requiring
+ * it up front would only mean placements wait on a phone call.
+ *
+ * It stops being optional at the form. Line 1 of Form 50-144 wants the physical
+ * location of the property, and a label nobody outside this app recognises will
+ * not do.
+ */
+function LocationRow({ clientId, location }: { clientId: string; location: ClientLocation }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState({
+    addressLine1: location.addressLine1 ?? '',
+    city: location.city ?? '',
+    stateCode: location.stateCode ?? '',
+    zip: location.zip ?? '',
+  });
+
+  const save = useMutation({
+    mutationFn: () => api.updateLocation(clientId, location.id, draft),
+    onSuccess: () => {
+      setOpen(false);
+      void queryClient.invalidateQueries({ queryKey: ['client', clientId] });
+      // A situs the rendition could not print may have just become printable,
+      // on whichever of this client's engagements has property here.
+      void queryClient.invalidateQueries({ queryKey: ['engagement-rendition'] });
+    },
+  });
+
+  const address = [
+    location.addressLine1,
+    [location.city, location.stateCode].filter(Boolean).join(', '),
+    location.zip,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <li className="px-5 py-3 text-sm">
+      <div className="flex items-center gap-2">
+        <MapPin size={14} strokeWidth={2} className="text-[var(--color-ink-muted)]" />
+        <span className="font-medium">{location.label}</span>
+        {address ? (
+          <span className="text-xs text-[var(--color-ink-muted)]">{address}</span>
+        ) : (
+          <span className="text-xs text-[var(--color-warning)]">no address yet</span>
+        )}
+        <Button variant="ghost" className="ml-auto h-7 text-xs" onClick={() => setOpen(!open)}>
+          {open ? 'Cancel' : address ? 'Edit' : 'Add address'}
+        </Button>
+      </div>
+
+      {open ? (
+        <form
+          className="mt-3 flex flex-wrap items-end gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            save.mutate();
+          }}
+        >
+          <Field label="Street">
+            <TextInput
+              placeholder="1200 Commerce St"
+              value={draft.addressLine1}
+              onChange={(e) => setDraft({ ...draft, addressLine1: e.target.value })}
+              className="w-56"
+            />
+          </Field>
+          <Field label="City">
+            <TextInput
+              placeholder="Houston"
+              value={draft.city}
+              onChange={(e) => setDraft({ ...draft, city: e.target.value })}
+              className="w-36"
+            />
+          </Field>
+          <Field label="State">
+            <TextInput
+              placeholder="TX"
+              maxLength={2}
+              value={draft.stateCode}
+              onChange={(e) => setDraft({ ...draft, stateCode: e.target.value })}
+              className="w-16"
+            />
+          </Field>
+          <Field label="ZIP">
+            <TextInput
+              placeholder="77002"
+              value={draft.zip}
+              onChange={(e) => setDraft({ ...draft, zip: e.target.value })}
+              className="w-24"
+            />
+          </Field>
+          <Button variant="primary" type="submit" disabled={save.isPending}>
+            {save.isPending ? 'Saving…' : 'Save address'}
+          </Button>
+          {save.error ? (
+            <span className="text-xs text-[var(--color-critical)]">
+              {save.error instanceof Error ? save.error.message : String(save.error)}
+            </span>
+          ) : null}
+        </form>
+      ) : null}
+    </li>
   );
 }

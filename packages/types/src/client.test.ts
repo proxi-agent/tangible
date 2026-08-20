@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { UpdateFilingProfileRequestSchema } from './client.js';
+import {
+  PlaceSiteRequestSchema,
+  UpdateFilingProfileRequestSchema,
+  UpdateLocationRequestSchema,
+} from './client.js';
 
 const filled = {
   ownerName: 'Acme Manufacturing LLC',
@@ -52,5 +56,55 @@ describe('the filing profile a client saves', () => {
     const { mailingZip, ...missingOne } = filled;
     expect(() => UpdateFilingProfileRequestSchema.parse(missingOne)).toThrow();
     expect(parse({ mailingZip: null }).mailingZip).toBeNull();
+  });
+});
+
+describe('editing a location after the fact', () => {
+  it('takes one field on its own, because that is how a row gets edited', () => {
+    // PATCH semantics matter here: sending {city} must not be read as an
+    // instruction to blank the street and the ZIP that were already right.
+    expect(UpdateLocationRequestSchema.parse({ city: 'Houston' })).toEqual({ city: 'Houston' });
+    expect(UpdateLocationRequestSchema.parse({})).toEqual({});
+  });
+
+  it('separates a box left alone from a box emptied on purpose', () => {
+    // Absent is "I did not touch this". Empty is "there is no answer" — and on
+    // a situs, the difference is whether the form prints a stale address.
+    const cleared = UpdateLocationRequestSchema.parse({ addressLine1: '', zip: '  ' });
+    expect(cleared.addressLine1).toBeNull();
+    expect(cleared.zip).toBeNull();
+    expect('city' in cleared).toBe(false);
+  });
+
+  it('normalises the state the district prints, and lets it be cleared', () => {
+    expect(UpdateLocationRequestSchema.parse({ stateCode: 'tx' }).stateCode).toBe('TX');
+    expect(UpdateLocationRequestSchema.parse({ stateCode: '' }).stateCode).toBeNull();
+    expect(() => UpdateLocationRequestSchema.parse({ stateCode: 'Texas' })).toThrow();
+  });
+
+  it('will not let a location lose the name people know it by', () => {
+    // Every other field can go empty; the label is what an operator picks from
+    // when placing a register's rows, so a blank one is not an edit.
+    expect(() => UpdateLocationRequestSchema.parse({ label: '   ' })).toThrow();
+  });
+});
+
+describe('placing a register\'s rows at a site', () => {
+  it('carries the register\'s own words as the target', () => {
+    expect(PlaceSiteRequestSchema.parse({ text: 'Houston Plant', locationId: 'loc_1' })).toEqual({
+      text: 'Houston Plant',
+      locationId: 'loc_1',
+    });
+  });
+
+  it('treats "the register named no site" as a group, not a missing field', () => {
+    // Rows with a blank location cell are real property that has to be placed
+    // somewhere. Null is the address of that group, not an omission.
+    expect(PlaceSiteRequestSchema.parse({ text: null, locationId: 'loc_1' }).text).toBeNull();
+    expect(() => PlaceSiteRequestSchema.parse({ locationId: 'loc_1' })).toThrow();
+  });
+
+  it('refuses a placement with nowhere to place it', () => {
+    expect(() => PlaceSiteRequestSchema.parse({ text: 'Plant', locationId: '' })).toThrow();
   });
 });

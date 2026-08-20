@@ -16,6 +16,7 @@ import { FarFileStatusBadge } from '@/components/workspace/badges';
 import { ClassificationCard } from '@/components/workspace/classification-card';
 import { FindingsCard } from '@/components/workspace/findings-card';
 import { PriorsCard } from '@/components/workspace/priors-card';
+import { SitesCard } from '@/components/workspace/sites-card';
 import { ValuationCard } from '@/components/workspace/valuation-card';
 import { Button, ChipGroup, Select, TextInput } from '@/components/ui/controls';
 import { DataTable } from '@/components/ui/data-table';
@@ -82,6 +83,12 @@ export default function EngagementPage() {
       ) : null}
       {data.stats.assetCount > 0 ? (
         <ClassificationCard engagementId={engagementId} stats={data.classification} />
+      ) : null}
+      {/* Where the property sits, which is the last thing standing between a
+          finished valuation and a form somebody can sign — and the thing that
+          decides whether this engagement is one return or several. */}
+      {data.stats.assetCount > 0 ? (
+        <SitesCard clientId={clientId} engagementId={engagementId} />
       ) : null}
       <FilesCard detail={data} clientId={clientId} engagementId={engagementId} />
       {/* Both halves of the intake sit together: the register says what the

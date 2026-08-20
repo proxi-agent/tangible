@@ -80,8 +80,9 @@ export function FilingProfileCard({
       setDraft(settled);
       setJustSaved(true);
       void queryClient.invalidateQueries({ queryKey: ['client', clientId] });
-      // Every rendition and form for this client reads the profile.
-      void queryClient.invalidateQueries({ queryKey: ['rendition'] });
+      // Every rendition draft for this client reads the profile. The printable
+      // form is a server component and re-reads on its own.
+      void queryClient.invalidateQueries({ queryKey: ['engagement-rendition'] });
     },
   });
 

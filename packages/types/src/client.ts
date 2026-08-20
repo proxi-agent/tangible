@@ -54,6 +54,40 @@ export const ClientLocationSchema = z.object({
 export type ClientLocation = z.infer<typeof ClientLocationSchema>;
 
 /**
+ * One of the places a register says its property sits, and where we have put it.
+ *
+ * A `location` column is the only thing most fixed asset registers carry about
+ * situs, and it is the client's own shorthand — "Houston Plant", "Bldg 4",
+ * "WH-2". That text is evidence, not an answer: a {@link ClientLocation} is our
+ * reading of it, with the address the district actually needs. Grouping by the
+ * text is therefore the unit an operator works in, because resolving a site
+ * means saying once what a thousand rows meant.
+ *
+ * Every count here is over property still held. Disposed rows are reported
+ * separately and never counted in, because they are not on any return — but
+ * they are still placed along with their group, since they sat somewhere too.
+ */
+export const EngagementSiteSchema = z.object({
+  /** The register's words. Null groups the rows whose location cell was blank. */
+  text: z.string().nullable(),
+  assetCount: z.number().int().nonnegative(),
+  disposedCount: z.number().int().nonnegative(),
+  totalCost: z.number(),
+  /** Where this group's assets actually sit. Two entries means it was split. */
+  placements: z.array(
+    z.object({
+      locationId: z.string(),
+      label: z.string(),
+      assetCount: z.number().int().nonnegative(),
+    }),
+  ),
+  /** Held assets in this group with no location resolved yet. */
+  unplacedCount: z.number().int().nonnegative(),
+});
+
+export type EngagementSite = z.infer<typeof EngagementSiteSchema>;
+
+/**
  * The facts Form 50-144 asks for that a fixed asset register does not carry.
  *
  * Held once per client rather than per filing: a taxpayer has one identity on
@@ -222,3 +256,42 @@ export const UpdateFilingProfileRequestSchema = z.object({
 });
 
 export type UpdateFilingProfileRequest = z.infer<typeof UpdateFilingProfileRequestSchema>;
+
+/**
+ * Editing a location after the fact, which is the normal case: a site is first
+ * recorded as a label somebody recognises, and the address the district needs
+ * gets filled in later. PATCH rather than PUT because a location is a row in a
+ * list, edited in place, not a screen that saves as one.
+ */
+export const UpdateLocationRequestSchema = z.object({
+  label: z.string().trim().min(1).max(200).optional(),
+  addressLine1: box(z.string().trim().max(300)).optional(),
+  city: box(z.string().trim().max(120)).optional(),
+  stateCode: box(z.string().trim().length(2).toUpperCase()).optional(),
+  zip: box(z.string().trim().max(10)).optional(),
+  jurisdictionId: box(z.string().trim().max(100)).optional(),
+  notes: box(z.string().trim().max(5000)).optional(),
+});
+
+export type UpdateLocationRequest = z.infer<typeof UpdateLocationRequestSchema>;
+
+/**
+ * Place every asset a register filed under one location string.
+ *
+ * The unit is the string, not the asset: a register names its sites a handful
+ * of times across thousands of rows, and asking an operator to place rows one
+ * by one would be asking them to do by hand what the file already told us.
+ *
+ * This writes to the durable asset rather than to the version, so a placement
+ * outlives the register it was read from and applies to every engagement that
+ * asset appears in. That is correct — a lathe is in one building, whatever
+ * season we are filing — but it does mean placing from one engagement moves
+ * the asset for all of them.
+ */
+export const PlaceSiteRequestSchema = z.object({
+  /** Null targets the rows whose location cell was blank. */
+  text: z.string().nullable(),
+  locationId: z.string().min(1),
+});
+
+export type PlaceSiteRequest = z.infer<typeof PlaceSiteRequestSchema>;

@@ -1,5 +1,5 @@
 import 'server-only';
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import {
   buildForm50144,
   buildRendition,
@@ -100,7 +100,10 @@ async function situsFor(engagementId: string) {
     .selectDistinct({ locationId: schema.assets.locationId })
     .from(schema.assetVersions)
     .innerJoin(schema.assets, eq(schema.assets.id, schema.assetVersions.assetId))
-    .where(engagementAssetsWhere(engagementId));
+    // Held property only. A disposed asset is not on the return, so where it
+    // used to sit cannot decide where the return is filed — and an unplaced
+    // one must not be able to block a form it does not appear on.
+    .where(and(engagementAssetsWhere(engagementId), eq(schema.assetVersions.isDisposed, false)));
 
   const ids = rows.map((row) => row.locationId).filter((id): id is string => id !== null);
   if (ids.length === 0) return { locations: [], unresolved: rows.length > 0 };

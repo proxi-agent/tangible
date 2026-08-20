@@ -19,6 +19,7 @@ import type {
   CommitFindingsRequest,
   Engagement,
   EngagementDetail,
+  EngagementSite,
   EngagementValuation,
   FarFile,
   FarMapping,
@@ -37,6 +38,7 @@ import type {
   OwnerRollup,
   OwnerSortField,
   Paginated,
+  PlaceSiteRequest,
   PriorDocument,
   PriorDocumentKind,
   Rendition,
@@ -50,6 +52,7 @@ import type {
   UpdateFilingProfileRequest,
   UpdateFindingDispositionRequest,
   UpdateLineMappingRequest,
+  UpdateLocationRequest,
   UpdateEngagementRequest,
   YearTrendPoint,
 } from '@tangible/types';
@@ -230,6 +233,12 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  updateLocation: (clientId: string, locationId: string, body: UpdateLocationRequest) =>
+    request<ClientLocation>(`/clients/${clientId}/locations/${locationId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
   createEngagement: (clientId: string, body: CreateEngagementRequest) =>
     request<Engagement>(`/clients/${clientId}/engagements`, {
       method: 'POST',
@@ -237,6 +246,18 @@ export const api = {
     }),
 
   engagement: (engagementId: string) => request<EngagementDetail>(`/engagements/${engagementId}`),
+
+  sites: (engagementId: string) => request<EngagementSite[]>(`/engagements/${engagementId}/sites`),
+
+  /**
+   * Placing returns the recomputed sites, not just a count — one placement
+   * changes how the rest read.
+   */
+  placeSite: (engagementId: string, body: PlaceSiteRequest) =>
+    request<{ placed: number; sites: EngagementSite[] }>(`/engagements/${engagementId}/sites`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   updateEngagement: (engagementId: string, body: UpdateEngagementRequest) =>
     request<Engagement>(`/engagements/${engagementId}`, {
