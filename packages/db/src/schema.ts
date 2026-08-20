@@ -644,6 +644,114 @@ export const classificationMemory = pgTable(
   (table) => [uniqueIndex('classification_memory_fingerprint_unique').on(table.fingerprint)],
 );
 
+/**
+ * A document the client filed or received: last year's rendition, an assessment
+ * notice.
+ *
+ * The missing input. Until this existed the only "before" available was the
+ * assessed total on the public roll — one number, in the four Texas counties
+ * whose rolls we hold, and nothing at all about *how* the client got there.
+ * That is why three of the five findings in the savings report carry no dollar
+ * figure: we can show an asset would be cheaper on the right schedule, but not
+ * that the client actually rendered it on the wrong one.
+ *
+ * Kept separate from `far_files` deliberately, despite the similar lifecycle. A
+ * register is tabular and needs a column mapping confirmed before it means
+ * anything; a rendition is a known form with a fixed structure and needs
+ * extraction plus a footing check. Sharing a table would mean half its columns
+ * are null for whichever kind you are looking at.
+ */
+export const priorDocuments = pgTable(
+  'prior_documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** 'rendition' | 'notice'. */
+    kind: text('kind').notNull(),
+    originalFilename: text('original_filename').notNull(),
+    /** Path inside the private far-uploads bucket. Confidential under 22.27. */
+    storagePath: text('storage_path').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    checksum: text('checksum'),
+    contentType: text('content_type'),
+    /** 'uploaded' | 'extracting' | 'verified' | 'discrepant' | 'accepted' | 'failed'. */
+    status: text('status').notNull().default('uploaded'),
+    error: text('error'),
+    /**
+     * The tax year and account as the *document* states them, not as we expect
+     * them. Denormalized out of the extraction so a mismatch is visible in a
+     * list without opening the record — a return filed under another account is
+     * the one error that would attribute someone else's numbers to this client.
+     */
+    documentTaxYear: integer('document_tax_year'),
+    documentAccountId: text('document_account_id'),
+    /** ExtractedRendition or ExtractedNotice, exactly as the model returned it. */
+    extracted: jsonb('extracted'),
+    /** FootingResult — whether the document adds up, and where it does not. */
+    footing: jsonb('footing'),
+    /** What the form prints as its total, and what its lines actually add to. */
+    statedTotal: doublePrecision('stated_total'),
+    derivedTotal: doublePrecision('derived_total'),
+    extractionModel: text('extraction_model'),
+    uploadedBy: text('uploaded_by'),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('prior_documents_engagement_idx').on(table.engagementId, table.kind),
+    index('prior_documents_year_idx').on(table.documentTaxYear),
+  ],
+);
+
+/**
+ * One reported line of a filed rendition.
+ *
+ * Rows rather than jsonb because these get corrected. The footing check exists
+ * precisely to catch a misread figure, and catching one is worthless if fixing
+ * it means hand-editing a blob — a reviewer changes the line, the footing
+ * re-runs, and the document moves from discrepant to accepted.
+ *
+ * The grain is the form's, not ours: schedule, the filer's own property-type
+ * wording, and year acquired. A rendition reports in aggregate and never
+ * enumerates assets, so any per-asset figure here would be invented. Mapping
+ * "Mach & Equip" onto our category vocabulary is a separate judgement, stored
+ * in `categoryKey` once someone makes it.
+ */
+export const priorReturnLines = pgTable(
+  'prior_return_lines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => priorDocuments.id, { onDelete: 'cascade' }),
+    /** 'A'..'F', the form's own letters. */
+    schedule: text('schedule').notNull(),
+    /** The filer's wording, verbatim. Never normalized on the way in. */
+    type: text('type').notNull(),
+    yearAcquired: integer('year_acquired'),
+    historicalCost: doublePrecision('historical_cost'),
+    goodFaithEstimate: doublePrecision('good_faith_estimate'),
+    sourcePage: integer('source_page'),
+    /** Our category, once a person has decided what the filer's wording means. */
+    categoryKey: text('category_key'),
+    /** True once a reviewer corrected this line against the document. */
+    isCorrected: boolean('is_corrected').notNull().default(false),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('prior_return_lines_document_idx').on(table.documentId, table.schedule),
+    index('prior_return_lines_grain_idx').on(
+      table.documentId,
+      table.categoryKey,
+      table.yearAcquired,
+    ),
+  ],
+);
+
 export type Jurisdiction = typeof jurisdictions.$inferSelect;
 export type NewJurisdiction = typeof jurisdictions.$inferInsert;
 export type IngestRunRow = typeof ingestRuns.$inferSelect;
@@ -671,3 +779,7 @@ export type NewAssetPositionRow = typeof assetPositions.$inferInsert;
 export type AssetClassificationRow = typeof assetClassifications.$inferSelect;
 export type NewAssetClassificationRow = typeof assetClassifications.$inferInsert;
 export type ClassificationMemoryRow = typeof classificationMemory.$inferSelect;
+export type PriorDocumentRow = typeof priorDocuments.$inferSelect;
+export type NewPriorDocumentRow = typeof priorDocuments.$inferInsert;
+export type PriorReturnLineRow = typeof priorReturnLines.$inferSelect;
+export type NewPriorReturnLineRow = typeof priorReturnLines.$inferInsert;

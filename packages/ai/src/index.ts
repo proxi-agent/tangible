@@ -7,7 +7,7 @@ export {
   isAiConfigured,
   type AiProvider,
 } from './client.js';
-export { parseStructured, type StructuredResult } from './structured.js';
+export { parseStructured, type StructuredDocument, type StructuredResult } from './structured.js';
 export { proposeMapping, type MappingProposalResult } from './mapping.js';
 export {
   classifyBatch,
@@ -16,3 +16,4 @@ export {
   type ClassificationBatchResult,
   type ClassificationRequest,
 } from './classify.js';
+export { extractNotice, extractRendition } from './extract.js';

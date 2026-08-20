@@ -19,7 +19,24 @@ import { activeProvider, defaultModel, getAnthropic, getOpenAI, type AiTask } fr
  * The schemas that reach here must use `.nullable()` rather than `.optional()`.
  * Both providers' strict modes require every property to be present, so an
  * optional field is rejected outright — null is how "no answer" is spelled.
+ *
+ * A request may also carry a **document**. Renditions and assessment notices
+ * arrive as PDFs and, more often, as photographs of paper, and both providers
+ * read those natively — PDF pages and images alike. That is why there is no OCR
+ * step and no PDF text-extraction dependency anywhere in this repo: a scanned
+ * form with a coffee ring on it is exactly the case a text extractor fails at
+ * and a vision model does not.
  */
+
+/** A file for the model to read: a filed form, a notice, a photograph of one. */
+export interface StructuredDocument {
+  /** Shown to the model, and worth being real — filenames carry the year and the form number. */
+  filename: string;
+  /** `application/pdf`, `image/png`, `image/jpeg`. */
+  mediaType: string;
+  /** Base64, without a data: prefix. */
+  data: string;
+}
 
 export interface StructuredResult<T> {
   parsed: T;
@@ -48,6 +65,8 @@ export async function parseStructured<S extends z.ZodType>(request: {
   maxTokens: number;
   /** Which call this is — decides the model tier. See `AiTask`. */
   task: AiTask;
+  /** A file to read alongside the prompt. */
+  document?: StructuredDocument;
 }): Promise<StructuredResult<z.infer<S>>> {
   const provider = activeProvider();
   if (!provider) {
@@ -58,11 +77,38 @@ export async function parseStructured<S extends z.ZodType>(request: {
   const model = defaultModel(provider, request.task);
 
   if (provider === 'anthropic') {
+    const doc = request.document;
+    // The document goes *before* the instructions. Both providers attend better
+    // to a long instruction that follows the material it is about, and a form
+    // this dense needs the reading task framed after the page, not before it.
+    const content = doc
+      ? [
+          doc.mediaType === 'application/pdf'
+            ? {
+                type: 'document' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: 'application/pdf' as const,
+                  data: doc.data,
+                },
+              }
+            : {
+                type: 'image' as const,
+                source: {
+                  type: 'base64' as const,
+                  media_type: doc.mediaType as 'image/png' | 'image/jpeg',
+                  data: doc.data,
+                },
+              },
+          { type: 'text' as const, text: request.user },
+        ]
+      : request.user;
+
     const response = await getAnthropic().messages.parse({
       model,
       max_tokens: request.maxTokens,
       system: request.system,
-      messages: [{ role: 'user', content: request.user }],
+      messages: [{ role: 'user', content }],
       output_config: { format: zodOutputFormat(request.schema) },
     });
     const parsed = response.parsed_output;
@@ -70,10 +116,33 @@ export async function parseStructured<S extends z.ZodType>(request: {
     return { parsed: parsed as z.infer<S>, model };
   }
 
+  const doc = request.document;
+  const input = doc
+    ? [
+        {
+          role: 'user' as const,
+          content: [
+            doc.mediaType === 'application/pdf'
+              ? {
+                  type: 'input_file' as const,
+                  filename: doc.filename,
+                  file_data: `data:${doc.mediaType};base64,${doc.data}`,
+                }
+              : {
+                  type: 'input_image' as const,
+                  image_url: `data:${doc.mediaType};base64,${doc.data}`,
+                  detail: 'high' as const,
+                },
+            { type: 'input_text' as const, text: request.user },
+          ],
+        },
+      ]
+    : request.user;
+
   const response = await getOpenAI().responses.parse({
     model,
     instructions: request.system,
-    input: request.user,
+    input,
     max_output_tokens: request.maxTokens + REASONING_HEADROOM,
     text: { format: zodTextFormat(request.schema, request.schemaName) },
   });

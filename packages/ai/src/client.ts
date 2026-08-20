@@ -86,10 +86,17 @@ export function getOpenAI(): OpenAI {
  * also the call the review queue backstops, because anything the model is
  * unsure about goes to a person instead of being applied.
  *
+ * `extraction` reads a filed rendition or an assessment notice — usually a
+ * scan, often a bad one. It runs once per document and shares mapping's
+ * economics exactly: a handful of calls a season, and a misread figure becomes
+ * the baseline every later finding is measured against. It gets the strong tier
+ * for that reason, and unlike the other two it is checked afterwards — the
+ * schedules have to foot, so a weak model is caught rather than believed.
+ *
  * They therefore get separate knobs. Running classification cheap and mapping
  * careful is a sensible place to land, and neither choice is buried in code.
  */
-export type AiTask = 'mapping' | 'classification';
+export type AiTask = 'mapping' | 'classification' | 'extraction';
 
 /**
  * Model defaults, cheapest-tier first.
@@ -106,11 +113,22 @@ const ANTHROPIC_DEFAULT = 'claude-haiku-4-5';
 const OPENAI_MAPPING_DEFAULT = 'gpt-5.5';
 const ANTHROPIC_MAPPING_DEFAULT = 'claude-opus-5';
 
+/** Reading a scanned form is vision work on a document nobody will re-read. */
+const OPENAI_EXTRACTION_DEFAULT = 'gpt-5.5';
+const ANTHROPIC_EXTRACTION_DEFAULT = 'claude-opus-5';
+
 export function defaultModel(
   provider: AiProvider = activeProvider() ?? 'anthropic',
   task: AiTask = 'classification',
 ): string {
   if (provider === 'anthropic') {
+    if (task === 'extraction') {
+      return (
+        process.env.ANTHROPIC_EXTRACTION_MODEL ??
+        process.env.ANTHROPIC_MODEL ??
+        ANTHROPIC_EXTRACTION_DEFAULT
+      );
+    }
     if (task === 'mapping') {
       return (
         process.env.ANTHROPIC_MAPPING_MODEL ??
@@ -119,6 +137,11 @@ export function defaultModel(
       );
     }
     return process.env.ANTHROPIC_MODEL ?? ANTHROPIC_DEFAULT;
+  }
+  if (task === 'extraction') {
+    return (
+      process.env.OPENAI_EXTRACTION_MODEL ?? process.env.OPENAI_MODEL ?? OPENAI_EXTRACTION_DEFAULT
+    );
   }
   if (task === 'mapping') {
     return process.env.OPENAI_MAPPING_MODEL ?? process.env.OPENAI_MODEL ?? OPENAI_MAPPING_DEFAULT;
