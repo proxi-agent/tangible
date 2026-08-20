@@ -28,3 +28,23 @@ export {
   type ExclusionKey,
   type ExclusionRule,
 } from './vocabulary.js';
+export {
+  AUTO_ACCEPT_CONFIDENCE as LINE_AUTO_ACCEPT_CONFIDENCE,
+  LINE_MAPPING_KEYS,
+  WORDING_SCHEDULES,
+  isComparable,
+  isKnownLineMapping,
+  isMixed,
+  lineMappingLabel,
+  lineTypeFingerprint,
+  mapFromAi,
+  mapFromHuman,
+  mapFromMemory,
+  mapFromSchedule,
+  mapUnmappable,
+  scheduleDecides,
+  type LineAnswer,
+  type LineMapping,
+  type LineMappingKey,
+  type LineMemoryRecord,
+} from './line-types.js';

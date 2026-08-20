@@ -17,3 +17,10 @@ export {
   type ClassificationRequest,
 } from './classify.js';
 export { extractNotice, extractRendition } from './extract.js';
+export {
+  mapLineTypes,
+  LINE_TYPE_BATCH_SIZE,
+  type LineTypeAnswer,
+  type LineTypeBatchResult,
+  type LineTypeRequest,
+} from './map-line-types.js';

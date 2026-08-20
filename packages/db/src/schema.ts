@@ -736,8 +736,29 @@ export const priorReturnLines = pgTable(
     historicalCost: doublePrecision('historical_cost'),
     goodFaithEstimate: doublePrecision('good_faith_estimate'),
     sourcePage: integer('source_page'),
-    /** Our category, once a person has decided what the filer's wording means. */
+    /**
+     * Our category, once something has decided what the filer's wording means:
+     * a classification key, 'mixed' for wording that blends categories the form
+     * printed as one number, or null when nothing has read it yet.
+     *
+     * The decision lives on the line rather than in its own table because it is
+     * **derived and disposable**. Re-extracting a document replaces its lines
+     * wholesale — a fresh reading of the same page — and the mapping should be
+     * re-derived with them. What survives is `classification_memory`, keyed on
+     * the wording itself, which replays every settled reading instantly and for
+     * every later client who writes the same words.
+     */
     categoryKey: text('category_key'),
+    /** 'schedule' | 'memory' | 'ai' | 'human' — which of the four settled it. */
+    mappingSource: text('mapping_source'),
+    /** 'auto-accepted' | 'needs-review' | 'confirmed'. */
+    mappingStatus: text('mapping_status'),
+    mappingConfidence: doublePrecision('mapping_confidence'),
+    mappingRationale: text('mapping_rationale'),
+    /** The memory key this wording folds to, namespaced by schedule. */
+    mappingFingerprint: text('mapping_fingerprint'),
+    mappedBy: text('mapped_by'),
+    mappedAt: timestamp('mapped_at', { withTimezone: true }),
     /** True once a reviewer corrected this line against the document. */
     isCorrected: boolean('is_corrected').notNull().default(false),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -749,6 +770,8 @@ export const priorReturnLines = pgTable(
       table.categoryKey,
       table.yearAcquired,
     ),
+    /** The review queue: lines on this document still waiting on a person. */
+    index('prior_return_lines_mapping_idx').on(table.documentId, table.mappingStatus),
   ],
 );
 

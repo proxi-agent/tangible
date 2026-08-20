@@ -3,6 +3,8 @@ import type {
   ClassificationStatus,
   ClientStatus,
   FarFileStatus,
+  LineMappingSource,
+  PriorDocumentStatus,
 } from '@tangible/types';
 import { Badge } from '@/components/ui/primitives';
 
@@ -60,4 +62,43 @@ const SOURCE_LABELS: Record<ClassificationSource, string> = {
 
 export function ClassificationSourceBadge({ source }: { source: ClassificationSource }) {
   return <Badge tone="neutral">{SOURCE_LABELS[source]}</Badge>;
+}
+
+/**
+ * How far a prior filing has got, and whether its figures can be leaned on.
+ *
+ * `discrepant` is warning rather than critical on purpose: a return that does
+ * not foot is usually a real arithmetic error in the client's own filing, which
+ * is a finding worth having, not a broken upload.
+ */
+const PRIOR_TONES: Record<
+  PriorDocumentStatus,
+  { tone: 'neutral' | 'accent' | 'warning' | 'critical' | 'good'; label: string }
+> = {
+  uploaded: { tone: 'neutral', label: 'reading' },
+  verified: { tone: 'good', label: 'foots' },
+  discrepant: { tone: 'warning', label: 'does not foot' },
+  accepted: { tone: 'accent', label: 'accepted' },
+  failed: { tone: 'critical', label: 'failed' },
+};
+
+export function PriorDocumentStatusBadge({ status }: { status: PriorDocumentStatus }) {
+  const { tone, label } = PRIOR_TONES[status] ?? PRIOR_TONES.uploaded;
+  return <Badge tone={tone}>{label}</Badge>;
+}
+
+/**
+ * Where a line mapping came from. The asset vocabulary has three sources; this
+ * one has a fourth, and it is the most important of them — `schedule` means the
+ * form itself said so, and nothing was inferred at all.
+ */
+const LINE_SOURCE_LABELS: Record<LineMappingSource, string> = {
+  schedule: 'the form',
+  memory: 'memory',
+  ai: 'AI',
+  human: 'reviewer',
+};
+
+export function LineMappingSourceBadge({ source }: { source: LineMappingSource }) {
+  return <Badge tone={source === 'schedule' ? 'accent' : 'neutral'}>{LINE_SOURCE_LABELS[source]}</Badge>;
 }

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { desc, eq, sql } from 'drizzle-orm';
+import { count, desc, eq, inArray } from 'drizzle-orm';
 import {
   PRIOR_DOCUMENT_KINDS,
   PRIOR_UPLOAD_EXTENSIONS,
@@ -105,17 +105,34 @@ export function GET(
 
     const db = requireDb();
     const rows = await db
-      .select({
-        document: schema.priorDocuments,
-        lineCount: sql<number>`(
-          select count(*)::int from prior_return_lines l
-          where l.document_id = ${schema.priorDocuments.id}
-        )`,
-      })
+      .select()
       .from(schema.priorDocuments)
       .where(eq(schema.priorDocuments.engagementId, engagementId))
       .orderBy(desc(schema.priorDocuments.createdAt));
 
-    return { items: rows.map((r) => priorDocumentDto(r.document, r.lineCount ?? 0)) };
+    // Counted in a second grouped query rather than a correlated subselect: an
+    // engagement holds a handful of documents a season, and a typed aggregate
+    // is worth more here than saving one round trip.
+    const counts = new Map<string, number>();
+    if (rows.length > 0) {
+      const grouped = await db
+        .select({
+          documentId: schema.priorReturnLines.documentId,
+          lineCount: count(),
+        })
+        .from(schema.priorReturnLines)
+        .where(
+          inArray(
+            schema.priorReturnLines.documentId,
+            rows.map((row) => row.id),
+          ),
+        )
+        .groupBy(schema.priorReturnLines.documentId);
+      for (const row of grouped) counts.set(row.documentId, row.lineCount);
+    }
+
+    return {
+      items: rows.map((row) => priorDocumentDto(row, counts.get(row.id) ?? 0)),
+    };
   });
 }

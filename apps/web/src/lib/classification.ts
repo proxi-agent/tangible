@@ -28,6 +28,7 @@ import type {
 } from '@tangible/types';
 import { LIFE_CLASSES } from '@tangible/valuation';
 import { HttpError } from '@/lib/route';
+import { rememberDecision } from '@/lib/classification-memory';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -447,12 +448,6 @@ export async function recordDecision(
     let remembered = false;
     let memoryConflict = false;
     if (body.remember && existing.fingerprint) {
-      const [prior] = await tx
-        .select()
-        .from(schema.classificationMemory)
-        .where(eq(schema.classificationMemory.fingerprint, existing.fingerprint))
-        .for('update');
-
       const [asset] = await tx
         .select({ description: schema.assetVersions.description })
         .from(schema.assetVersions)
@@ -463,54 +458,20 @@ export async function recordDecision(
           ),
         )
         .limit(1);
-      // A readable sample, so the memory row is something a person can audit
-      // rather than a fold of a description nobody kept.
-      const sample = asset?.description ?? existing.fingerprint;
 
-      if (!prior) {
-        await tx.insert(schema.classificationMemory).values({
-          fingerprint: existing.fingerprint,
-          sampleDescription: sample,
-          categoryKey: body.categoryKey,
-          lifeClassOverride: override,
-          confirmations: 1,
-          sourceEngagementId: existing.engagementId,
-          lastConfirmedBy: reviewer,
-          lastConfirmedAt: now,
-        });
-      } else if (prior.categoryKey === body.categoryKey) {
-        // Agreement. If the row was flagged as contested, a second reviewer
-        // landing on the same answer settles it and it starts applying again.
-        await tx
-          .update(schema.classificationMemory)
-          .set({
-            lifeClassOverride: override,
-            confirmations: prior.confirmations + 1,
-            conflicted: false,
-            lastConfirmedBy: reviewer,
-            lastConfirmedAt: now,
-          })
-          .where(eq(schema.classificationMemory.id, prior.id));
-      } else {
-        // Disagreement. The newer answer is kept, but the row stops applying
-        // itself until someone agrees with one of the two — a silent overwrite
-        // here would push one reviewer's mistake onto every future client.
-        memoryConflict = true;
-        await tx
-          .update(schema.classificationMemory)
-          .set({
-            categoryKey: body.categoryKey,
-            lifeClassOverride: override,
-            // The count describes the answer now stored, which is new.
-            confirmations: 1,
-            conflicted: true,
-            conflictingCategoryKey: prior.categoryKey,
-            lastConfirmedBy: reviewer,
-            lastConfirmedAt: now,
-          })
-          .where(eq(schema.classificationMemory.id, prior.id));
-      }
-      remembered = true;
+      const outcome = await rememberDecision(tx, {
+        fingerprint: existing.fingerprint,
+        // A readable sample, so the memory row is something a person can audit
+        // rather than a fold of a description nobody kept.
+        sampleDescription: asset?.description ?? existing.fingerprint,
+        categoryKey: body.categoryKey,
+        lifeClassOverride: override,
+        engagementId: existing.engagementId,
+        reviewer,
+        now,
+      });
+      remembered = outcome.remembered;
+      memoryConflict = outcome.conflict;
     }
 
     return {

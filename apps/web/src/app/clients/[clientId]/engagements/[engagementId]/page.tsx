@@ -14,6 +14,7 @@ import { cn } from '@/lib/cn';
 import { count, money, moneyExact, plural } from '@/lib/format';
 import { FarFileStatusBadge } from '@/components/workspace/badges';
 import { ClassificationCard } from '@/components/workspace/classification-card';
+import { PriorsCard } from '@/components/workspace/priors-card';
 import { ValuationCard } from '@/components/workspace/valuation-card';
 import { Button, ChipGroup, Select, TextInput } from '@/components/ui/controls';
 import { DataTable } from '@/components/ui/data-table';
@@ -82,6 +83,9 @@ export default function EngagementPage() {
         <ClassificationCard engagementId={engagementId} stats={data.classification} />
       ) : null}
       <FilesCard detail={data} clientId={clientId} engagementId={engagementId} />
+      {/* Both halves of the intake sit together: the register says what the
+          client owns, the prior filing says what they told the district. */}
+      <PriorsCard clientId={clientId} engagementId={engagementId} />
       {data.stats.assetCount > 0 ? <AssetsCard detail={data} engagementId={engagementId} /> : null}
     </div>
   );

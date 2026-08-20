@@ -23,12 +23,17 @@ import type {
   FilterFacets,
   IngestRun,
   JurisdictionSummary,
+  LineMappingDecisionResult,
+  LineMappingRunResult,
+  MappedPriorLine,
   MarketOverview,
   NormalizationResult,
   OpportunityModel,
   OwnerRollup,
   OwnerSortField,
   Paginated,
+  PriorDocument,
+  PriorDocumentKind,
   Rendition,
   RenditionBasis,
   SavingsReport,
@@ -37,9 +42,26 @@ import type {
   StartIngestRequest,
   UpdateClassificationRequest,
   UpdateClientRequest,
+  UpdateLineMappingRequest,
   UpdateEngagementRequest,
   YearTrendPoint,
 } from '@tangible/types';
+// Type-only, so nothing from the filing package reaches the client bundle.
+import type { MappedBasis, RegisterComparison } from '@tangible/filing';
+
+export type { RegisterComparison };
+
+/**
+ * A prior return with its wording read into our vocabulary, and the rollup that
+ * follows from it. The rollup travels with the lines rather than being computed
+ * in the browser: it is the figure every later comparison starts from, and one
+ * arithmetic is easier to trust than two.
+ */
+export interface MappedPriorDocument {
+  document: PriorDocument;
+  lines: MappedPriorLine[];
+  basis: MappedBasis;
+}
 
 /**
  * Empty by default: the API is this app's own route handlers, so requests are
@@ -268,4 +290,52 @@ export const api = {
     request<Rendition>(
       `/engagements/${engagementId}/rendition?basis=${options.basis}&filedByAgent=${options.filedByAgent}`,
     ),
+
+  // -------------------------------------------------------------------------
+  // Prior filings
+  // -------------------------------------------------------------------------
+
+  priors: (engagementId: string) =>
+    request<{ items: PriorDocument[] }>(`/engagements/${engagementId}/priors`),
+
+  /**
+   * Multipart, so it bypasses `request` for the same reason `uploadFar` does:
+   * setting Content-Type by hand strips the boundary the server needs to split
+   * the parts back apart.
+   */
+  uploadPrior: async (
+    engagementId: string,
+    file: File,
+    kind: PriorDocumentKind,
+  ): Promise<PriorDocument> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('kind', kind);
+    const response = await fetch(`${BASE_URL}/api/engagements/${engagementId}/priors`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new ApiError(errorMessage(body) || response.statusText, response.status);
+    }
+    return response.json() as Promise<PriorDocument>;
+  },
+
+  priorDocument: (documentId: string) =>
+    request<MappedPriorDocument>(`/priors/${documentId}`),
+
+  priorComparison: (documentId: string) =>
+    request<RegisterComparison>(`/priors/${documentId}/comparison`),
+
+  mapPriorLines: (documentId: string, remap = false) =>
+    request<LineMappingRunResult>(`/priors/${documentId}/map${remap ? '?remap=true' : ''}`, {
+      method: 'POST',
+    }),
+
+  decideLineMapping: (lineId: string, body: UpdateLineMappingRequest) =>
+    request<LineMappingDecisionResult>(`/prior-lines/${lineId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 };

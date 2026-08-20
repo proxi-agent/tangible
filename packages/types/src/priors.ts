@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { ClassificationStatusSchema } from './classification.js';
 import { RenditionScheduleKeySchema } from './filing.js';
 
 /**
@@ -208,3 +209,169 @@ export type PriorDocumentKind = (typeof PRIOR_DOCUMENT_KINDS)[number];
 
 /** Extensions the intake accepts. Renditions and notices arrive as scans far more often than not. */
 export const PRIOR_UPLOAD_EXTENSIONS = ['.pdf', '.png', '.jpg', '.jpeg'] as const;
+
+// ---------------------------------------------------------------------------
+// What the filer's wording means in our vocabulary
+// ---------------------------------------------------------------------------
+
+/**
+ * A rendition is filed in the taxpayer's own words. "Mach & Equip", "Shop
+ * Equipment", "Telephone / Network Equipment" — nobody files against our
+ * category table, and the wording is stored verbatim on the way in precisely so
+ * that deciding what it means stays a separate, visible, arguable step.
+ *
+ * This is the step. It is the join that turns a stack of prior-year lines into
+ * something comparable with a classified register, and until it exists the
+ * document can be read but not used.
+ *
+ * Two things make it different from classifying an asset, and both are worth
+ * knowing before reading the rules:
+ *
+ *   - **The schedule letter is not a hint, it is the form's own statement.**
+ *     Schedule D is licensed vehicles because the form says Schedule D is
+ *     licensed vehicles. Four of the six schedules decide themselves and never
+ *     reach a model.
+ *   - **A line is a bucket, not a thing.** One line can cover several of our
+ *     categories — "Furniture, Fixtures & Equipment" is three — and no amount of
+ *     judgement can split a number the form printed as one. That answer has a
+ *     name here rather than being forced into a category it half fits.
+ */
+export const LINE_MAPPING_SOURCES = [
+  /** The form's schedule letter settled it. No model, no reviewer, no judgement. */
+  'schedule',
+  /** A reviewer settled this exact wording before — on this client or another. */
+  'memory',
+  'ai',
+  'human',
+] as const;
+
+export const LineMappingSourceSchema = z.enum(LINE_MAPPING_SOURCES);
+export type LineMappingSource = (typeof LINE_MAPPING_SOURCES)[number];
+
+/**
+ * The line blends categories and cannot be split.
+ *
+ * Not a failure and not an "unsure" — a definite finding about the filing. A
+ * lumped line means the district received no basis for putting that cost on one
+ * schedule rather than another, and applied its own judgement instead. The cost
+ * is carried through every rollup as explicitly unplaceable, because quietly
+ * assigning it to whichever category the wording leans toward would invent a
+ * comparison the document does not support.
+ */
+export const MIXED_LINE_KEY = 'mixed';
+
+export const PriorLineMappingSchema = z.object({
+  /**
+   * A classification key, {@link MIXED_LINE_KEY}, or null when nothing was
+   * decided. Null is a real state and the queue shows it as one.
+   */
+  categoryKey: z.string().nullable(),
+  confidence: z.number(),
+  rationale: z.string(),
+  source: LineMappingSourceSchema,
+  status: ClassificationStatusSchema,
+  /** The memory key this wording folds to, whether or not it hit. */
+  fingerprint: z.string().nullable(),
+});
+
+export type PriorLineMapping = z.infer<typeof PriorLineMappingSchema>;
+
+/** One extracted line plus what we decided its wording means. */
+export const MappedPriorLineSchema = PriorReturnLineSchema.extend({
+  id: z.string(),
+  documentId: z.string(),
+  mapping: PriorLineMappingSchema,
+  mappedBy: z.string().nullable(),
+  mappedAt: z.string().datetime().nullable(),
+  isCorrected: z.boolean(),
+});
+
+export type MappedPriorLine = z.infer<typeof MappedPriorLineSchema>;
+
+export const UpdateLineMappingRequestSchema = z.object({
+  categoryKey: z.string(),
+  /** Apply to every other line on this return whose wording folds the same way. */
+  applyToMatching: z.boolean().default(true),
+  /** Carry the decision to future returns that use these words. */
+  remember: z.boolean().default(true),
+  rationale: z.string().trim().max(2000).nullable().optional(),
+});
+
+export type UpdateLineMappingRequest = z.infer<typeof UpdateLineMappingRequestSchema>;
+
+export const LineMappingRunResultSchema = z.object({
+  considered: z.number().int().nonnegative(),
+  /** Settled by the schedule letter alone. */
+  fromSchedule: z.number().int().nonnegative(),
+  fromMemory: z.number().int().nonnegative(),
+  fromAi: z.number().int().nonnegative(),
+  autoAccepted: z.number().int().nonnegative(),
+  needsReview: z.number().int().nonnegative(),
+  /** Distinct questions actually put to the model, after folding and memory. */
+  distinctSent: z.number().int().nonnegative(),
+  model: z.string().nullable(),
+  aiUnavailable: z.boolean(),
+});
+
+export type LineMappingRunResult = z.infer<typeof LineMappingRunResultSchema>;
+
+// ---------------------------------------------------------------------------
+// What the app hands the browser
+// ---------------------------------------------------------------------------
+
+/**
+ * A stored document, as every screen sees it.
+ *
+ * `status` is deliberately wider than {@link PRIOR_RETURN_STATUSES}: a row
+ * exists from the moment the bytes land in the bucket, which is before anything
+ * has been read and therefore before any of the four verdicts can apply.
+ */
+export const PRIOR_DOCUMENT_STATUSES = ['uploaded', ...PRIOR_RETURN_STATUSES] as const;
+
+export const PriorDocumentStatusSchema = z.enum(PRIOR_DOCUMENT_STATUSES);
+export type PriorDocumentStatus = (typeof PRIOR_DOCUMENT_STATUSES)[number];
+
+export const PriorDocumentSchema = z.object({
+  id: z.string(),
+  engagementId: z.string(),
+  kind: PriorDocumentKindSchema,
+  originalFilename: z.string(),
+  byteSize: z.number().int().nonnegative(),
+  status: PriorDocumentStatusSchema,
+  /** Why extraction failed, in the words of whatever failed. Null when it did not. */
+  error: z.string().nullable(),
+  /**
+   * The year and account **the document itself claims**, kept apart from the
+   * engagement's own. They disagree more often than anyone expects — a client
+   * sends last year's form, or one location's account — and silently trusting
+   * either one would compare the wrong return against the wrong register.
+   */
+  documentTaxYear: z.number().int().nullable(),
+  documentAccountId: z.string().nullable(),
+  extracted: z.union([ExtractedRenditionSchema, ExtractedNoticeSchema]).nullable(),
+  footing: FootingResultSchema.nullable(),
+  statedTotal: z.number().nullable(),
+  derivedTotal: z.number().nullable(),
+  extractionModel: z.string().nullable(),
+  lineCount: z.number().int().nonnegative(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+export type PriorDocument = z.infer<typeof PriorDocumentSchema>;
+
+/** What a reviewer's single decision actually moved. */
+export const LineMappingDecisionResultSchema = z.object({
+  lineId: z.string(),
+  categoryKey: z.string(),
+  /** The reviewer overruled a reading that was already there, rather than filling a blank. */
+  corrected: z.boolean(),
+  /** Lines settled by this one decision, including the line it was made on. */
+  applied: z.number().int().nonnegative(),
+  /** The wording was written to memory and will replay on the next return. */
+  remembered: z.boolean(),
+  /** Memory already held a different answer for these words; both are now on the record. */
+  memoryConflict: z.boolean(),
+});
+
+export type LineMappingDecisionResult = z.infer<typeof LineMappingDecisionResultSchema>;

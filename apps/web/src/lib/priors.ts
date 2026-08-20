@@ -7,7 +7,9 @@ import type {
   ExtractedNotice,
   ExtractedRendition,
   FootingResult,
+  PriorDocument,
   PriorDocumentKind,
+  PriorDocumentStatus,
 } from '@tangible/types';
 import { downloadFarFile } from '@/lib/far-storage';
 import { requireDb, schema } from '@/lib/workspace-db';
@@ -30,25 +32,11 @@ import { requireDb, schema } from '@/lib/workspace-db';
 
 const iso = (d: Date) => d.toISOString();
 
-export interface PriorDocumentDto {
-  id: string;
-  engagementId: string;
-  kind: PriorDocumentKind;
-  originalFilename: string;
-  byteSize: number;
-  status: string;
-  error: string | null;
-  documentTaxYear: number | null;
-  documentAccountId: string | null;
-  extracted: ExtractedRendition | ExtractedNotice | null;
-  footing: FootingResult | null;
-  statedTotal: number | null;
-  derivedTotal: number | null;
-  extractionModel: string | null;
-  lineCount: number;
-  createdAt: string;
-  updatedAt: string;
-}
+/**
+ * The wire shape lives in `@tangible/types` because the browser needs it too,
+ * and this module is `server-only`.
+ */
+export type PriorDocumentDto = PriorDocument;
 
 export function priorDocumentDto(row: PriorDocumentRow, lineCount = 0): PriorDocumentDto {
   return {
@@ -57,7 +45,7 @@ export function priorDocumentDto(row: PriorDocumentRow, lineCount = 0): PriorDoc
     kind: row.kind as PriorDocumentKind,
     originalFilename: row.originalFilename,
     byteSize: row.byteSize,
-    status: row.status,
+    status: row.status as PriorDocumentStatus,
     error: row.error,
     documentTaxYear: row.documentTaxYear,
     documentAccountId: row.documentAccountId,
@@ -191,6 +179,18 @@ export async function runExtraction(options: ExtractOptions): Promise<PriorDocum
           await tx.insert(schema.priorReturnLines).values(lines.slice(i, i + CHUNK));
       }
     });
+
+    // Mapping runs here rather than being a second button, because a rendition
+    // whose wording nobody has read is not yet usable for anything — and the
+    // memory-first pass usually answers most of it for free. A failure is
+    // swallowed on purpose: the extraction succeeded, the lines are stored, and
+    // the mapping is retryable on its own endpoint.
+    try {
+      const { runLineMapping } = await import('@/lib/prior-mapping');
+      await runLineMapping(row.id, { remap: false });
+    } catch (cause) {
+      console.error('[priors] mapping after extraction failed', cause);
+    }
 
     return finish(row.id, {
       status: footing.status,
