@@ -8,6 +8,7 @@ export * from './query.js';
 export * from './far.js';
 export * from './classification.js';
 export * from './savings.js';
+export * from './findings.js';
 export * from './filing.js';
 export * from './priors.js';
 export * from './client.js';

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { ErrorState, Skeleton } from '@/components/ui/primitives';
+import { CommitFindings } from '@/components/workspace/commit-findings';
 import { SavingsReportView } from '@/components/workspace/savings-report';
 
 /**
@@ -34,6 +35,11 @@ export default function SavingsReportPage() {
         Back to the engagement
       </Link>
       <SavingsReportView report={data} />
+      {data.findings.length > 0 ? (
+        <div className="flex justify-end">
+          <CommitFindings clientId={clientId} engagementId={engagementId} source="savings" />
+        </div>
+      ) : null}
     </div>
   );
 }

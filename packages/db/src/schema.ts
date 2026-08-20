@@ -801,6 +801,160 @@ export const priorReturnLines = pgTable(
   ],
 ).enableRLS();
 
+
+/**
+ * A committed finding set, and the findings in it.
+ *
+ * The reports themselves stay derived on read — see the header of
+ * `@tangible/types/findings`. What lands here is the deliberate act of saying
+ * "this is the analysis, as of now": the document that went to a client, and
+ * the decisions taken against each line of it.
+ */
+export const findingSets = pgTable(
+  'finding_sets',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** 'savings' | 'register-comparison'. */
+    source: text('source').notNull(),
+    /**
+     * The return a comparison ran against. Null for a savings set. Not cascaded
+     * from the document on purpose: deleting a mis-uploaded PDF should not
+     * silently retract a report that was already sent.
+     */
+    priorDocumentId: uuid('prior_document_id').references(() => priorDocuments.id, {
+      onDelete: 'set null',
+    }),
+    taxYear: integer('tax_year').notNull(),
+    /** Free text, for the human reason this run exists. */
+    label: text('label'),
+
+    /**
+     * The full SavingsReport or RegisterComparison, exactly as produced. The
+     * findings below are the part that gets worked; this is what makes the
+     * document reproducible — coverage caveats, schedule year, the exemption
+     * applied — none of which a total means anything without.
+     */
+    report: jsonb('report').notNull(),
+
+    /**
+     * A cheap digest of what this was computed from: the register, the
+     * classifications, and the return's mapping. Compared against a freshly
+     * computed one to tell a reader that the set is behind the workspace.
+     * Deliberately not a content hash of the report — the point is to detect
+     * that the *inputs* moved, including in ways that happen not to change a
+     * number this time.
+     */
+    sourceFingerprint: text('source_fingerprint').notNull(),
+
+    findingCount: integer('finding_count').notNull(),
+    savingCount: integer('saving_count').notNull(),
+    exposureCount: integer('exposure_count').notNull(),
+    totalCost: doublePrecision('total_cost').notNull(),
+    totalValue: doublePrecision('total_value'),
+    headlineLabel: text('headline_label').notNull(),
+    headlineValue: doublePrecision('headline_value'),
+    headlineCaveat: text('headline_caveat'),
+
+    committedBy: text('committed_by'),
+    committedAt: timestamp('committed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('finding_sets_engagement_idx').on(table.engagementId, table.source, table.committedAt),
+    index('finding_sets_document_idx').on(table.priorDocumentId),
+  ],
+).enableRLS();
+
+export const findings = pgTable(
+  'findings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    setId: uuid('set_id')
+      .notNull()
+      .references(() => findingSets.id, { onDelete: 'cascade' }),
+    /**
+     * Denormalized from the set. A finding is read by engagement far more often
+     * than by set — the disposition join needs it, and so does every "what is
+     * still open on this client" question.
+     */
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    source: text('source').notNull(),
+    /** Stable across runs of the same analysis. What a disposition is keyed on. */
+    key: text('key').notNull(),
+    ordinal: integer('ordinal').notNull(),
+
+    title: text('title').notNull(),
+    /** 'measured' | 'modeled' | 'screening'. */
+    kind: text('kind').notNull(),
+    /** 'saving' | 'exposure' | 'neutral'. */
+    effect: text('effect').notNull(),
+    cost: doublePrecision('cost').notNull(),
+    /** Null where no schedule could price it, which is not the same as zero. */
+    value: doublePrecision('value'),
+    assetCount: integer('asset_count').notNull().default(0),
+
+    summary: text('summary').notNull(),
+    basis: text('basis').notNull(),
+    assumption: text('assumption'),
+
+    /** FindingEvidence[] — the register rows behind the claim. */
+    evidence: jsonb('evidence').notNull(),
+    /** ComparisonCell[] — the return's side. Empty for a savings finding. */
+    cells: jsonb('cells').notNull(),
+
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('findings_set_idx').on(table.setId, table.ordinal),
+    index('findings_engagement_idx').on(table.engagementId, table.source, table.key),
+  ],
+).enableRLS();
+
+/**
+ * What was decided about a finding — the one durable thing here.
+ *
+ * Keyed on (engagement, source, key) rather than on a finding row, because
+ * findings are disposable and decisions are not. Re-running an analysis after
+ * new assets land replaces every finding row and replays every decision, so
+ * only genuinely new findings arrive undecided. Same division as the line
+ * mapping: the derived reading is thrown away and rebuilt, the human answer
+ * survives it.
+ *
+ * `decidedCost` / `decidedValue` record what the finding claimed at the moment
+ * of the decision. Accepting a $96,000 position is not consent to a $184,000
+ * one, and without these a carried decision would quietly assert otherwise.
+ */
+export const findingDispositions = pgTable(
+  'finding_dispositions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    source: text('source').notNull(),
+    key: text('key').notNull(),
+    /** 'accepted' | 'rejected' | 'pending-client'. Undecided has no row. */
+    status: text('status').notNull(),
+    note: text('note'),
+    decidedBy: text('decided_by'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+    decidedCost: doublePrecision('decided_cost'),
+    decidedValue: doublePrecision('decided_value'),
+    /** The set the decision was made on, for the audit trail back to a document. */
+    decidedSetId: uuid('decided_set_id').references(() => findingSets.id, {
+      onDelete: 'set null',
+    }),
+  },
+  (table) => [
+    uniqueIndex('finding_dispositions_key_unique').on(table.engagementId, table.source, table.key),
+  ],
+).enableRLS();
+
+
 export type Jurisdiction = typeof jurisdictions.$inferSelect;
 export type NewJurisdiction = typeof jurisdictions.$inferInsert;
 export type IngestRunRow = typeof ingestRuns.$inferSelect;
@@ -832,3 +986,9 @@ export type PriorDocumentRow = typeof priorDocuments.$inferSelect;
 export type NewPriorDocumentRow = typeof priorDocuments.$inferInsert;
 export type PriorReturnLineRow = typeof priorReturnLines.$inferSelect;
 export type NewPriorReturnLineRow = typeof priorReturnLines.$inferInsert;
+export type FindingSetRow = typeof findingSets.$inferSelect;
+export type NewFindingSetRow = typeof findingSets.$inferInsert;
+export type FindingRow = typeof findings.$inferSelect;
+export type NewFindingRow = typeof findings.$inferInsert;
+export type FindingDispositionRow = typeof findingDispositions.$inferSelect;
+export type NewFindingDispositionRow = typeof findingDispositions.$inferInsert;

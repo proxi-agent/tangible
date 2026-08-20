@@ -1,4 +1,5 @@
 import { UpdateLineMappingRequestSchema } from '@tangible/types';
+import { currentActor } from '@/lib/actor';
 import { handle } from '@/lib/route';
 import { recordLineMapping, type LineMappingDecisionResult } from '@/lib/prior-mapping';
 
@@ -22,8 +23,7 @@ export function PATCH(
   return handle(async (): Promise<LineMappingDecisionResult> => {
     const { lineId } = await params;
     const body = UpdateLineMappingRequestSchema.parse(await request.json());
-    // Auth is off in this deployment, so there is no signed-in reviewer to
-    // record — the same as the asset queue.
-    return recordLineMapping(lineId, body, null);
+    // Null where auth is not configured — the same as the asset queue.
+    return recordLineMapping(lineId, body, await currentActor());
   });
 }

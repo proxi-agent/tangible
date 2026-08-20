@@ -15,12 +15,16 @@ import type {
   CreateEngagementRequest,
   CreateLocationRequest,
   DistributionBucket,
+  CommitFindingsRequest,
   Engagement,
   EngagementDetail,
   EngagementValuation,
   FarFile,
   FarMapping,
   FilterFacets,
+  FindingDecisionResult,
+  FindingSet,
+  FindingSetSummary,
   IngestRun,
   JurisdictionSummary,
   LineMappingDecisionResult,
@@ -42,6 +46,7 @@ import type {
   StartIngestRequest,
   UpdateClassificationRequest,
   UpdateClientRequest,
+  UpdateFindingDispositionRequest,
   UpdateLineMappingRequest,
   UpdateEngagementRequest,
   YearTrendPoint,
@@ -335,6 +340,33 @@ export const api = {
 
   decideLineMapping: (lineId: string, body: UpdateLineMappingRequest) =>
     request<LineMappingDecisionResult>(`/prior-lines/${lineId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  // -------------------------------------------------------------------------
+  // Committed findings
+  // -------------------------------------------------------------------------
+
+  findingSets: (engagementId: string) =>
+    request<{ items: FindingSetSummary[] }>(`/engagements/${engagementId}/findings`),
+
+  /**
+   * A POST, deliberately. The savings report and the comparison are free to
+   * look at and always current; this is the act of saying "this is what we told
+   * them", and it leaves a dated record with a name on it.
+   */
+  commitFindings: (engagementId: string, body: CommitFindingsRequest) =>
+    request<FindingSet>(`/engagements/${engagementId}/findings`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  findingSet: (setId: string) => request<FindingSet>(`/finding-sets/${setId}`),
+
+  /** A null status clears the decision rather than storing one. */
+  decideFinding: (findingId: string, body: UpdateFindingDispositionRequest) =>
+    request<FindingDecisionResult>(`/findings/${findingId}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),

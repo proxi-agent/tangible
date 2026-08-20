@@ -2,6 +2,7 @@ import {
   UpdateClassificationRequestSchema,
   type ClassificationDecisionResult,
 } from '@tangible/types';
+import { currentActor } from '@/lib/actor';
 import { handle } from '@/lib/route';
 import { recordDecision } from '@/lib/classification';
 
@@ -21,9 +22,8 @@ export function PATCH(
   return handle(async (): Promise<ClassificationDecisionResult> => {
     const { classificationId } = await params;
     const body = UpdateClassificationRequestSchema.parse(await request.json());
-    // Auth is off in this deployment, so there is no signed-in reviewer to
-    // record. When the gate is turned back on this reads the session instead;
-    // attributing a decision to nobody is better than attributing it wrongly.
-    return recordDecision(classificationId, body, null);
+    // Null where auth is not configured — attributing a decision to nobody is
+    // better than attributing it wrongly.
+    return recordDecision(classificationId, body, await currentActor());
   });
 }

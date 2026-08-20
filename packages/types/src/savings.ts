@@ -34,6 +34,26 @@ export const FINDING_KINDS = [
 export const FindingKindSchema = z.enum(FINDING_KINDS);
 export type FindingKind = (typeof FINDING_KINDS)[number];
 
+/**
+ * Which way a finding moves the client's position.
+ *
+ * Orthogonal to `FindingKind` on purpose, and the reason the two are separate
+ * axes: an under-reported category is a real, well-evidenced, *measured*
+ * finding that the client owes more than they filed. Folding that into the same
+ * scale as a saving is how a report ends up quietly netting exposure against
+ * relief and presenting the remainder as money saved.
+ */
+export const FINDING_EFFECTS = [
+  /** Acting on it takes value off the return. */
+  'saving',
+  /** The client is under-reported and should hear it from us first. */
+  'exposure',
+  'neutral',
+] as const;
+
+export const FindingEffectSchema = z.enum(FINDING_EFFECTS);
+export type FindingEffect = (typeof FINDING_EFFECTS)[number];
+
 /** One row backing a finding, so the claim can be checked line by line. */
 export const FindingEvidenceSchema = z.object({
   assetId: z.string(),

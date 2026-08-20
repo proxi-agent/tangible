@@ -3,6 +3,8 @@ import type {
   ClassificationStatus,
   ClientStatus,
   FarFileStatus,
+  FindingDispositionStatus,
+  FindingEffect,
   LineMappingSource,
   PriorDocumentStatus,
 } from '@tangible/types';
@@ -101,4 +103,45 @@ const LINE_SOURCE_LABELS: Record<LineMappingSource, string> = {
 
 export function LineMappingSourceBadge({ source }: { source: LineMappingSource }) {
   return <Badge tone={source === 'schedule' ? 'accent' : 'neutral'}>{LINE_SOURCE_LABELS[source]}</Badge>;
+}
+
+/**
+ * Which way a finding moves the client's position.
+ *
+ * Exposure is warning rather than critical: finding that a client is
+ * under-reported is the service working, and it is worth far more to them
+ * coming from us in March than from the district in an audit letter. Rendered
+ * in red it would read as a failure.
+ */
+const EFFECT_META: Record<
+  FindingEffect,
+  { tone: 'good' | 'warning' | 'neutral'; label: string }
+> = {
+  saving: { tone: 'good', label: 'saving' },
+  exposure: { tone: 'warning', label: 'exposure' },
+  neutral: { tone: 'neutral', label: 'no effect' },
+};
+
+export function FindingEffectBadge({ effect }: { effect: FindingEffect }) {
+  const { tone, label } = EFFECT_META[effect];
+  return <Badge tone={tone}>{label}</Badge>;
+}
+
+/**
+ * What was decided about a finding. There is no badge for undecided, because
+ * there is no record for it — an absent badge is the honest rendering of "we
+ * have not asked yet".
+ */
+const DISPOSITION_META: Record<
+  FindingDispositionStatus,
+  { tone: 'good' | 'neutral' | 'accent'; label: string }
+> = {
+  accepted: { tone: 'good', label: 'accepted' },
+  rejected: { tone: 'neutral', label: 'declined' },
+  'pending-client': { tone: 'accent', label: 'with the client' },
+};
+
+export function FindingDispositionBadge({ status }: { status: FindingDispositionStatus }) {
+  const { tone, label } = DISPOSITION_META[status];
+  return <Badge tone={tone}>{label}</Badge>;
 }

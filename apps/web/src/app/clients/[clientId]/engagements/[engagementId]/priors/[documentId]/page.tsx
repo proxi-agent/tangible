@@ -33,6 +33,7 @@ import {
   LineMappingSourceBadge,
   PriorDocumentStatusBadge,
 } from '@/components/workspace/badges';
+import { CommitFindings } from '@/components/workspace/commit-findings';
 import { PriorComparisonView } from '@/components/workspace/prior-comparison';
 import { Button, ChipGroup, Select, type ChipOption } from '@/components/ui/controls';
 import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
@@ -121,7 +122,11 @@ export default function PriorDocumentPage() {
           <FootingCard document={document} />
           <WordingCard documentId={documentId} lines={lines} />
           <ReconciliationCard basis={basis} document={document} />
-          <ComparisonSection documentId={documentId} />
+          <ComparisonSection
+            clientId={clientId}
+            engagementId={engagementId}
+            documentId={documentId}
+          />
         </>
       ) : (
         <NoticeCard extracted={document.extracted as ExtractedNotice | null} />
@@ -138,7 +143,15 @@ export default function PriorDocumentPage() {
  * settling wordings above should never wait on. It also invalidates on its own:
  * accepting one mapping changes this and nothing else on the page.
  */
-function ComparisonSection({ documentId }: { documentId: string }) {
+function ComparisonSection({
+  clientId,
+  engagementId,
+  documentId,
+}: {
+  clientId: string;
+  engagementId: string;
+  documentId: string;
+}) {
   const { data, error, isLoading } = useQuery({
     queryKey: ['prior-comparison', documentId],
     queryFn: () => api.priorComparison(documentId),
@@ -146,7 +159,24 @@ function ComparisonSection({ documentId }: { documentId: string }) {
 
   if (error) return <ErrorState error={error} />;
   if (isLoading || !data) return <Skeleton className="h-64 w-full" />;
-  return <PriorComparisonView comparison={data} />;
+
+  return (
+    <div className="space-y-4">
+      <PriorComparisonView comparison={data} />
+      {/* Below the comparison, not above it: committing is what you do having
+          read the thing, and a button at the top invites committing instead. */}
+      {data.findings.length > 0 ? (
+        <div className="flex justify-end">
+          <CommitFindings
+            clientId={clientId}
+            engagementId={engagementId}
+            source="register-comparison"
+            priorDocumentId={documentId}
+          />
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 // ---------------------------------------------------------------------------

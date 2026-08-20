@@ -1,5 +1,5 @@
 import { classificationLabel, isExclusion, isValuable } from '@tangible/classification';
-import type { ClassificationStatus, FindingEvidence, FindingKind } from '@tangible/types';
+import { FINDING_EFFECTS, type ClassificationStatus, type FindingEffect, type FindingEvidence, type FindingKind } from '@tangible/types';
 import { appraise, type DepreciationSchedule, type LifeClass } from '@tangible/valuation';
 import {
   rollupMapped,
@@ -187,16 +187,14 @@ export interface ComparisonCoverage {
   comparedLineCount: number;
 }
 
-/** Which way a finding moves the client's position. */
-export const COMPARISON_EFFECTS = [
-  /** Acting on it takes value off the return. */
-  'saving',
-  /** The client is under-reported and should hear it from us first. */
-  'exposure',
-  'neutral',
-] as const;
+/**
+ * Which way a finding moves the client's position. Defined in `@tangible/types`
+ * beside `FindingKind`, because the savings report answers the same question
+ * about its own findings and two copies of this list would eventually disagree.
+ */
+export const COMPARISON_EFFECTS = FINDING_EFFECTS;
 
-export type ComparisonEffect = (typeof COMPARISON_EFFECTS)[number];
+export type ComparisonEffect = FindingEffect;
 
 export interface ComparisonFinding {
   key: string;

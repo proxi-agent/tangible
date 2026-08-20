@@ -141,6 +141,9 @@ importers:
       '@tangible/filing':
         specifier: workspace:*
         version: link:../../packages/filing
+      '@tangible/findings':
+        specifier: workspace:*
+        version: link:../../packages/findings
       '@tangible/graph':
         specifier: workspace:*
         version: link:../../packages/graph
@@ -348,6 +351,25 @@ importers:
       zod:
         specifier: 'catalog:'
         version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.2.0
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@26.2.0)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12))
+
+  packages/findings:
+    dependencies:
+      '@tangible/filing':
+        specifier: workspace:*
+        version: link:../filing
+      '@tangible/types':
+        specifier: workspace:*
+        version: link:../types
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
