@@ -13,6 +13,7 @@ import {
   type FormSigner,
   type RenditionAsset,
 } from '@tangible/filing';
+import type { ClientFilingProfileRow } from '@tangible/db';
 import type { ClassificationStatus, Rendition, RenditionBasis } from '@tangible/types';
 import { scheduleFor } from '@tangible/valuation';
 import { currentActor } from '@/lib/actor';
@@ -120,6 +121,25 @@ const addressLines = (location: typeof schema.clientLocations.$inferSelect): str
     location.zip,
   ].filter((line): line is string => Boolean(line && line.trim()));
 
+/**
+ * The owner's mailing address, from the filing profile.
+ *
+ * Kept separate from {@link addressLines} on purpose even though the shape is
+ * nearly the same. A situs is where property stood on January 1 and comes off a
+ * location row; a mailing address is where the district sends the notice that
+ * starts the 41.44 protest clock, and comes off the taxpayer. Collapsing them
+ * into one helper is how a warehouse ends up receiving the appeal deadline.
+ */
+const mailingLines = (profile: ClientFilingProfileRow | null): string[] =>
+  profile === null
+    ? []
+    : [
+        profile.mailingAddressLine1,
+        profile.mailingAddressLine2,
+        [profile.mailingCity, profile.mailingStateCode].filter(Boolean).join(', '),
+        profile.mailingZip,
+      ].filter((line): line is string => Boolean(line && line.trim()));
+
 export interface EngagementForm {
   form: Form50144;
   /** The engagement and client names, for the page chrome. */
@@ -139,37 +159,44 @@ export interface EngagementForm {
  * Form 50-144 for this engagement, with everything the data cannot answer
  * surfaced rather than left blank.
  *
- * Three of the form's fields have no home in the schema yet — the owner's
- * mailing address, what the business does in the owner's own words, and the
- * date of the Form 50-162 appointment. They are passed through as absent on
- * purpose. `buildForm50144` turns each into an omission that names what is
- * missing and why it matters, which is a far better state to ship than three
- * quietly empty boxes on a sworn document.
+ * The taxpayer answers the register cannot give — who the owner is on the roll,
+ * where the notices go, what the business does in its own words, and what
+ * authorises us to sign — come from the client's filing profile. Where there is
+ * no profile, or a box in it is still empty, the value is passed through as
+ * absent on purpose: `buildForm50144` turns each into an omission naming what
+ * is missing and why it matters, which is a far better state to ship than a
+ * quietly empty box on a sworn document.
  */
 async function formInputs(engagementId: string, options: RenditionOptions) {
   const { engagement, client } = await fetchEngagement(engagementId);
-  const [rendition, situs, actor] = await Promise.all([
+  const db = requireDb();
+  const [rendition, situs, actor, profiles] = await Promise.all([
     buildEngagementRendition(engagementId, options),
     situsFor(engagementId),
     currentActor(),
+    db
+      .select()
+      .from(schema.clientFilingProfiles)
+      .where(eq(schema.clientFilingProfiles.clientId, client.id)),
   ]);
 
   const single = situs.locations.length === 1 ? situs.locations[0]! : null;
+  const profile = profiles[0] ?? null;
 
   const party: FormParty = {
     // The roll name and the name we file the client under are usually the same
-    // and legally need not be. Recorded as our name until somebody confirms it.
-    ownerName: client.name,
-    mailingAddress: [],
+    // and legally need not be. Ours stands until somebody records that it does.
+    ownerName: profile?.ownerName ?? client.name,
+    mailingAddress: mailingLines(profile),
     situsAddress: single ? addressLines(single) : [],
-    businessDescription: null,
+    businessDescription: profile?.businessDescription ?? null,
   };
 
   const signer: FormSigner = {
     name: actor ?? '',
-    title: null,
+    title: profile?.signerTitle ?? null,
     capacity: options.filedByAgent ? 'agent' : 'owner',
-    agentAppointmentDate: null,
+    agentAppointmentDate: profile?.agentAppointmentDate ?? null,
   };
 
   // What the pure builders cannot see, because it is a fact about the database

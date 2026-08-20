@@ -54,6 +54,33 @@ export const ClientLocationSchema = z.object({
 export type ClientLocation = z.infer<typeof ClientLocationSchema>;
 
 /**
+ * The facts Form 50-144 asks for that a fixed asset register does not carry.
+ *
+ * Held once per client rather than per filing: a taxpayer has one identity on
+ * the roll and one address its notices go to, and retyping them each season is
+ * how a wrong one gets sworn to. Every field is nullable — a half-filled
+ * profile is the ordinary state of a new client, and the form is already built
+ * to name what is missing instead of printing a blank.
+ */
+export const ClientFilingProfileSchema = z.object({
+  clientId: z.string(),
+  /** The owner as it appears on the roll. Null falls back to the client's name. */
+  ownerName: z.string().nullable(),
+  mailingAddressLine1: z.string().nullable(),
+  mailingAddressLine2: z.string().nullable(),
+  mailingCity: z.string().nullable(),
+  mailingStateCode: z.string().nullable(),
+  mailingZip: z.string().nullable(),
+  /** What the business does, in the owner's words. Not the SIC code restated. */
+  businessDescription: z.string().nullable(),
+  /** ISO date of the Form 50-162 appointment. Without one an agent cannot sign. */
+  agentAppointmentDate: z.string().nullable(),
+  signerTitle: z.string().nullable(),
+});
+
+export type ClientFilingProfile = z.infer<typeof ClientFilingProfileSchema>;
+
+/**
  * One tax season's worth of work for one client. The FAR files, mapped assets,
  * and (later) analyses and filings all hang off an engagement, so a new season
  * starts clean rather than mutating last year's record.
@@ -91,6 +118,8 @@ export const ClientDetailSchema = z.object({
   client: ClientSchema,
   locations: z.array(ClientLocationSchema),
   engagements: z.array(EngagementSchema),
+  /** Null until somebody has filled any of it in. */
+  filingProfile: ClientFilingProfileSchema.nullable(),
 });
 
 export type ClientDetail = z.infer<typeof ClientDetailSchema>;
@@ -159,3 +188,37 @@ export const UpdateEngagementRequestSchema = z.object({
 });
 
 export type UpdateEngagementRequest = z.infer<typeof UpdateEngagementRequestSchema>;
+
+/**
+ * A box on the filing profile form. Blank means unknown, so it lands as null
+ * rather than as the empty string — the form's omissions turn on the
+ * difference, and a mailing address of one space is not an address. Applied
+ * before the inner check so clearing a two-letter state code is allowed to
+ * leave it empty rather than failing the length rule.
+ */
+const box = <T extends z.ZodType<string>>(inner: T) =>
+  z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+    inner.nullable(),
+  );
+
+/**
+ * Upsert of a client's filing profile. Sent whole rather than as a patch: the
+ * screen is one form and saves as one, and clearing a box means the answer is
+ * unknown again.
+ */
+export const UpdateFilingProfileRequestSchema = z.object({
+  ownerName: box(z.string().trim().max(200)),
+  mailingAddressLine1: box(z.string().trim().max(300)),
+  mailingAddressLine2: box(z.string().trim().max(300)),
+  mailingCity: box(z.string().trim().max(120)),
+  mailingStateCode: box(z.string().trim().length(2).toUpperCase()),
+  mailingZip: box(z.string().trim().max(10)),
+  businessDescription: box(z.string().trim().max(2000)),
+  agentAppointmentDate: box(
+    z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use an ISO date, like 2026-01-15.'),
+  ),
+  signerTitle: box(z.string().trim().max(120)),
+});
+
+export type UpdateFilingProfileRequest = z.infer<typeof UpdateFilingProfileRequestSchema>;

@@ -1,7 +1,13 @@
 import { desc, eq } from 'drizzle-orm';
 import { UpdateClientRequestSchema, type ClientDetail } from '@tangible/types';
 import { handle } from '@/lib/route';
-import { clientDto, engagementDto, fetchClient, locationDto } from '@/lib/workspace';
+import {
+  clientDto,
+  engagementDto,
+  fetchClient,
+  filingProfileDto,
+  locationDto,
+} from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 export const runtime = 'nodejs';
@@ -16,7 +22,7 @@ export function GET(request: Request, { params }: Params): Promise<Response> {
     const client = await fetchClient(clientId);
     const db = requireDb();
 
-    const [locations, engagements] = await Promise.all([
+    const [locations, engagements, profiles] = await Promise.all([
       db
         .select()
         .from(schema.clientLocations)
@@ -27,12 +33,17 @@ export function GET(request: Request, { params }: Params): Promise<Response> {
         .from(schema.engagements)
         .where(eq(schema.engagements.clientId, clientId))
         .orderBy(desc(schema.engagements.taxYear), desc(schema.engagements.createdAt)),
+      db
+        .select()
+        .from(schema.clientFilingProfiles)
+        .where(eq(schema.clientFilingProfiles.clientId, clientId)),
     ]);
 
     return {
       client: clientDto(client),
       locations: locations.map(locationDto),
       engagements: engagements.map(engagementDto),
+      filingProfile: profiles[0] ? filingProfileDto(profiles[0]) : null,
     };
   });
 }

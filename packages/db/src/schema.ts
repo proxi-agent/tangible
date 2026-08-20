@@ -225,6 +225,57 @@ export const clientLocations = pgTable(
   (table) => [index('client_locations_client_idx').on(table.clientId)],
 ).enableRLS();
 
+/**
+ * The facts a return needs that a fixed asset register was never going to hold.
+ *
+ * A register knows what the company owns. Form 50-144 also asks who the owner
+ * is on the roll, where their notices go, what the business does in their own
+ * words, and — where we sign — what authorises us to. None of that is derivable
+ * from an asset list, and each missing one is a blocking omission on a sworn
+ * document, so they are recorded once per client rather than retyped per
+ * filing.
+ *
+ * One row per client, hence `clientId` as the primary key: a taxpayer has one
+ * identity on the roll, not a history of them. Everything except that key is
+ * nullable, because a half-filled profile is the normal state of a client
+ * between the first call and the first filing, and the form already knows how
+ * to name what is still missing.
+ */
+export const clientFilingProfiles = pgTable('client_filing_profiles', {
+  clientId: uuid('client_id')
+    .primaryKey()
+    .references(() => clients.id, { onDelete: 'cascade' }),
+  /**
+   * The owner as it appears on the roll. Usually the name we file the client
+   * under and legally need not be — a d/b/a, a renamed entity, or a roll that
+   * never caught up. Null means nobody has confirmed it differs, and the
+   * client's own name is used.
+   */
+  ownerName: text('owner_name'),
+  mailingAddressLine1: text('mailing_address_line1'),
+  mailingAddressLine2: text('mailing_address_line2'),
+  mailingCity: text('mailing_city'),
+  mailingStateCode: text('mailing_state_code'),
+  mailingZip: text('mailing_zip'),
+  /**
+   * What the business does, in the owner's words. Distinct from the SIC code
+   * and not a restatement of it: Texas keys machinery life to the business
+   * rather than the machine, so this is what an appraiser reads when the code
+   * is generic.
+   */
+  businessDescription: text('business_description'),
+  /**
+   * Date of the Form 50-162 appointment. Stored as text in ISO form rather than
+   * a date column because it is transcribed off a signed piece of paper and
+   * printed back onto another one; it is never arithmetic.
+   */
+  agentAppointmentDate: text('agent_appointment_date'),
+  /** The title the signature is made in — 'Agent' for us, an officer's title otherwise. */
+  signerTitle: text('signer_title'),
+  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}).enableRLS();
+
 /** One tax season's work for one client; FAR files and assets hang off this. */
 export const engagements = pgTable(
   'engagements',
@@ -967,6 +1018,7 @@ export type AccountNote = typeof accountNotes.$inferSelect;
 export type ClientRow = typeof clients.$inferSelect;
 export type NewClientRow = typeof clients.$inferInsert;
 export type ClientLocationRow = typeof clientLocations.$inferSelect;
+export type ClientFilingProfileRow = typeof clientFilingProfiles.$inferSelect;
 export type EngagementRow = typeof engagements.$inferSelect;
 export type FarFileRow = typeof farFiles.$inferSelect;
 export type ImportBatchRow = typeof importBatches.$inferSelect;

@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { ClientStatusBadge } from '@/components/workspace/badges';
+import { FilingProfileCard } from '@/components/workspace/filing-profile-card';
 import { Button, Field, TextInput } from '@/components/ui/controls';
 import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
 
@@ -45,7 +46,7 @@ export default function ClientPage() {
   if (error) return <ErrorState error={error} />;
   if (isLoading || !data) return <Skeleton className="h-48 w-full" />;
 
-  const { client, engagements, locations } = data;
+  const { client, engagements, locations, filingProfile } = data;
 
   return (
     <div className="space-y-6">
@@ -183,6 +184,8 @@ export default function ClientPage() {
           )}
         </Card>
       </div>
+
+      <FilingProfileCard clientId={clientId} clientName={client.name} profile={filingProfile} />
     </div>
   );
 }

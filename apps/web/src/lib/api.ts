@@ -9,6 +9,7 @@ import type {
   ClassificationRunResult,
   Client,
   ClientDetail,
+  ClientFilingProfile,
   ClientListItem,
   ClientLocation,
   CreateClientRequest,
@@ -46,6 +47,7 @@ import type {
   StartIngestRequest,
   UpdateClassificationRequest,
   UpdateClientRequest,
+  UpdateFilingProfileRequest,
   UpdateFindingDispositionRequest,
   UpdateLineMappingRequest,
   UpdateEngagementRequest,
@@ -210,6 +212,17 @@ export const api = {
 
   updateClient: (clientId: string, body: UpdateClientRequest) =>
     request<Client>(`/clients/${clientId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  /**
+   * Whole-shape upsert. The profile screen saves as one form, and a box cleared
+   * on it has to clear in the database — see the route for why this is not a
+   * PATCH.
+   */
+  updateFilingProfile: (clientId: string, body: UpdateFilingProfileRequest) =>
+    request<ClientFilingProfile>(`/clients/${clientId}/filing-profile`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
 
   createLocation: (clientId: string, body: CreateLocationRequest) =>
     request<ClientLocation>(`/clients/${clientId}/locations`, {

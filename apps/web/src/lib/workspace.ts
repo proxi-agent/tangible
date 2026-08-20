@@ -1,9 +1,16 @@
 import 'server-only';
 import { and, eq, sql } from 'drizzle-orm';
-import type { ClientLocationRow, ClientRow, EngagementRow, FarFileRow } from '@tangible/db';
+import type {
+  ClientFilingProfileRow,
+  ClientLocationRow,
+  ClientRow,
+  EngagementRow,
+  FarFileRow,
+} from '@tangible/db';
 import type {
   ClassificationStats,
   Client,
+  ClientFilingProfile,
   ClientLocation,
   Engagement,
   EngagementAssetStats,
@@ -45,6 +52,21 @@ export function locationDto(row: ClientLocationRow): ClientLocation {
     zip: row.zip,
     jurisdictionId: row.jurisdictionId,
     notes: row.notes,
+  };
+}
+
+export function filingProfileDto(row: ClientFilingProfileRow): ClientFilingProfile {
+  return {
+    clientId: row.clientId,
+    ownerName: row.ownerName,
+    mailingAddressLine1: row.mailingAddressLine1,
+    mailingAddressLine2: row.mailingAddressLine2,
+    mailingCity: row.mailingCity,
+    mailingStateCode: row.mailingStateCode,
+    mailingZip: row.mailingZip,
+    businessDescription: row.businessDescription,
+    agentAppointmentDate: row.agentAppointmentDate,
+    signerTitle: row.signerTitle,
   };
 }
 

@@ -5,11 +5,15 @@ import { cloneElement, isValidElement, useId, type ReactElement, type ReactNode,
 import { cn } from '@/lib/cn';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
 
-const FIELD =
-  'h-9 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] px-3 text-sm ' +
+const FIELD_BASE =
+  'rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] px-3 text-sm ' +
   'text-[var(--color-ink)] outline-none transition-colors ' +
   'focus-visible:border-[var(--color-series-1)] focus-visible:ring-2 ' +
   'focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_25%,transparent)]';
+
+// Single-line controls are one row tall; a textarea sets its own height from
+// `rows`, so the height cannot live in the shared base.
+const FIELD = `h-9 ${FIELD_BASE}`;
 
 export function Field({
   label,
@@ -73,6 +77,24 @@ export function TextInput({
       className={cn(
         FIELD,
         'hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)]',
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+export function TextArea({
+  className,
+  rows = 3,
+  ...props
+}: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea
+      rows={rows}
+      className={cn(
+        FIELD_BASE,
+        'py-2 leading-relaxed hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)]',
         className,
       )}
       {...props}
