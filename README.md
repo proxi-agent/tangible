@@ -1,20 +1,29 @@
 # Tangible
 
-Public appraisal-roll analysis for business personal property (BPP), across
-Texas and Florida.
+The flagship product for business personal property (BPP) tax: ingest a
+company's fixed asset register, show where they are overpaying, and become
+their rendition filing provider. Texas first (Harris County), Florida next.
 
-The question this repo exists to answer: **is there a business in filing
-rendition paperwork for companies that never file it?** Texas Tax Code Sec.
-22.28 charges 10% of the taxes due when a business fails to render, and it
-recurs every year they skip. County appraisal districts publish who is on the
-roll, what they are assessed at, and whether a rendition was recorded — so the
-size of that problem is measurable from public records before a single customer
-is contacted.
+The app has two wings sharing one shell:
 
-This is a feasibility instrument first and a product skeleton second. Every
-number it shows carries the caveat that qualifies it.
+- **Workspace** (`/clients`) — the taxpayer side. Clients → engagements → FAR
+  intake: upload a fixed asset register (Sage, NetSuite, QuickBooks, or a
+  hand-built workbook), let the AI propose a column mapping over the raw
+  preview, confirm it by hand, and get canonical asset rows with cell-level
+  lineage. Classification, jurisdiction valuation, the savings report, and
+  filing generation build on this.
+- **Market** (`/`, `/accounts`, `/owners`, `/data`) — the public-roll side:
+  appraisal-roll analysis across Texas and Florida. It began as the non-filer
+  feasibility instrument (that thesis measured out too small to be the
+  business) and now serves as market intelligence and the prospecting engine —
+  every prospect's assessed value and filing history is already loaded, so a
+  FAR-implied value has something public to be compared against.
 
-## What it does
+One discipline carries over everywhere: **nothing is guessed silently.** A FAR
+column mapping is proposed by AI and confirmed by a human before a single asset
+row exists, the same way a county file's layout must be pinned before it loads.
+
+## What the Market wing does
 
 1. **Ingests** a county appraisal district's public personal-property roll for
    multiple tax years.
@@ -87,13 +96,197 @@ column is "assessed value" would produce confident, wrong analysis.
 ```
 apps/
   api/          NestJS — ingest orchestration and CLI entry points
-  web/          Next.js — the dashboard and the read API it serves
+  web/          Next.js — both wings of the product and the API they serve
 packages/
   types/        Zod schemas + TypeScript types; the contract both apps import
   analytics/    DuckDB warehouse, segment SQL, every analytical query
   ingest/       Connector framework, the HCAD connector, the synthetic fixture
   db/           Drizzle schema + Supabase clients for application state
+  far/          Fixed-asset-register parsing: workbook reading, header/band
+                detection, and deterministic mapping → canonical asset rows
+  valuation/    The districts' own published schedules, and the arithmetic that
+                turns an asset into the value they would assess it at
+  classification/  Which schedule an asset belongs on: the memory key, the
+                confidence bar, and the rules about what a machine may decide
+                alone — all deterministic and testable without a model
+  savings/      The findings engine: register + classifications + schedules →
+                priced adjustments, each with its basis and its evidence
+  filing/       Form 50-144: which schedule each asset lands on, the two filing
+                bases and what each one costs, and what blocks a signature
+  ai/           The model provider seam + the FAR mapping proposal and asset
+                classification (both structured output)
+vendor/         The pinned SheetJS tarball (pnpm needs a local file: dep)
 ```
+
+### The Workspace wing
+
+The intake pipeline is upload → parse → propose → confirm → normalize:
+
+- **Upload** stores the original file first — a private Supabase Storage bucket
+  in a deployment, `data/uploads/` locally — then parses. A workbook the parser
+  chokes on is preserved and marked `failed` with the reason, never lost.
+- **Parse** (`@tangible/far`) reads xlsx/xls/csv into a cell matrix and
+  produces bounded sheet summaries with a guessed header row.
+- **Propose** (`@tangible/ai`) shows the model exactly the preview a reviewer
+  sees and gets back a structured mapping proposal — which sheets are asset
+  listings, which column is which canonical field, whether section bands carry
+  the category — with a confidence and rationale. No API key means no
+  proposals; the mapping screen still works by hand.
+- **Confirm** is human. Only a confirmed mapping is normalized, and
+  normalization is deterministic code: subtotal rows are skipped with reasons,
+  band rows become the running category, money and date shapes are parsed
+  conservatively, and anything soft lands as a per-row warning rather than a
+  guessed value. Re-confirming replaces a file's assets wholesale in one
+  transaction.
+- Every asset row keeps `sourceSheet`/`sourceRow` and the raw cells, so any
+  number in the app is traceable to the exact cells it came from.
+
+### Valuing what the register holds
+
+Texas appraisal districts publish their entire method, which is the opening this
+product runs through: a client's own asset costs can be put through the
+district's own arithmetic, and the result compared against what they were
+actually assessed.
+
+`@tangible/valuation` holds Harris County's published schedules for 2026 — cost
+index factors by year acquired, percent-good tables for all eleven life classes,
+the un-indexed computer, specific-equipment and industrial telecom/solar
+schedules, and the asset categories that decide which table applies. The
+calculation is HCAD's: original cost × index factor × percent good.
+
+The schedules are **committed data with a citation, not scraped at runtime** —
+published figures that change once a year, where a number that decides a
+client's rendition should be reviewable in a diff. `scripts/` holds the
+extraction that produced them, along with why reading those two tables is
+harder than it looks. The tests assert spot values read off the printed page,
+plus the properties the tables must have: percent good never rises as an asset
+ages, and a longer-lived class always holds value better at the same age.
+
+That second property is the whole reason classification matters. The same
+$20,000 of 2022 equipment is worth $2,600 rendered as personal computers and
+$14,284 rendered as generic machinery — a 5.5x difference decided entirely by
+which row of the table an asset lands in.
+
+**Machinery has no single life.** Texas keys it to what the business does, via
+the SIC tables on pages 6–45 of the same guide — 1,063 codes, of which 559 sit
+on eight years and 172 on fifteen, so the ten-year default is wrong in both
+directions for most businesses. Setting the SIC on an engagement moves every
+machinery asset at once. The guide prints both tables twice, alphabetically and
+numerically, which gives every row an independent second reading: all 1,063
+codes were parsed from both printings and agreed on every field, and the five
+that are not printed exactly twice were each checked by hand.
+
+Two edge rules the tables imply rather than state are handled explicitly: an
+asset older than its schedule's last published year has reached the floor and is
+fully depreciated in the district's own model (flagged as `atFloor`, which is
+where ghost-asset and frozen-value findings come from), and anything that cannot
+be valued — no cost, no acquisition year, no category — is reported as a gap
+rather than valued at zero and quietly averaged into a total.
+
+### Getting an asset onto the right row
+
+A register's category column is the client's bookkeeping vocabulary, not a
+district schedule. One real register files an ERP implementation, a rack of
+Dell workstations, a PowerEdge file server, CAD licences and a dead Xerox copier
+all under "Computers & Software" — five rows that need five different answers,
+two of which are that the asset does not belong on the rendition at all.
+
+`@tangible/classification` decides, in a fixed order of authority:
+
+- **Memory** — a description a reviewer has already settled, on any earlier
+  engagement, replayed for free. Descriptions are folded to a key that drops
+  case, punctuation, accents, bare numbers and serial-shaped tokens, so
+  `DELL LATITUDE 5420` and `Dell/Latitude - 5420` are one question. The folding
+  is deliberately conservative: too loose applies one client's decision to
+  another client's different asset, silently, with money attached; too tight
+  costs one model call.
+- **A model** for whatever memory could not answer — deduplicated first, so four
+  hundred identical office chairs are one question, and batched. Every answer
+  carries a confidence and a sentence a reviewer can disagree with.
+- **A person**, for anything below the bar. Their decision applies to every twin
+  of that description in the engagement and becomes memory for every engagement
+  afterwards.
+
+Three rules keep it honest. A model answer below **0.85** confidence is queued
+rather than applied — a needless review costs four seconds, and a wrong
+confident answer reaches a form signed under penalty of perjury. An **exclusion
+is never auto-applied** however sure the model is, because taking cost off a
+sworn form is a position rather than a lookup. And when two reviewers settle the
+same text differently, the memory row records the disagreement and **stops
+auto-applying** until someone settles it, rather than letting whoever went last
+quietly rewrite everyone's future.
+
+The valuation is then derived on read, never stored, from the settled
+classifications: assets still queued for review are excluded from the totals
+rather than counted at whatever the machine guessed, and disposed and excluded
+assets are reported separately rather than netted away — they are the findings.
+
+### The savings report
+
+The deliverable, at `/clients/:id/engagements/:id/report`. It compares what the
+district assesses today against what the register actually supports, and
+attributes every dollar of the difference to a named finding.
+
+Findings carry their own epistemic status, and the layout enforces it:
+
+- **measured** — computed from the register and the published schedules.
+  Disposed assets still on the register are the clearest case; they are valued
+  on their own classification, so the number is arithmetic rather than argument.
+- **modeled** — rests on a stated assumption about how the client rendered.
+  Non-taxable property is priced against ten-year machinery, the district's
+  general default, and the assumption is printed with the finding.
+- **screening** — worth real money, not computable from a register alone.
+  Freeport (11.251), leasehold double-taxation (23.24), and assets already at
+  the schedule floor. **These carry no dollar figure and never enter the total**
+  — an unanswered question is not a saving, and a headline number that collapses
+  under the first question costs more than it wins.
+
+Nothing unreviewed is counted, and the coverage block says so in the same type
+size as the total. No saving is claimed at all until the engagement is linked to
+its account on the public roll: without a "before" there is nothing to measure
+against, so the report says that rather than inventing a baseline.
+
+### Filing
+
+`@tangible/filing` builds Form 50-144 from the settled classifications, at
+`/clients/:id/engagements/:id/filing`. Three things it makes explicit that the
+form leaves implicit:
+
+- **Which basis.** Tax Code 22.01(a)(5) allows either historical cost and year
+  acquired, or a good faith estimate of market value. Cost is the default and
+  not for convenience: an estimate can be demanded in writing within 21 days
+  (22.07), and it is the _estimate_ — not the value — that drags an agent-filed
+  rendition over $150,000 into notarization under 22.24(e). Filing on cost
+  avoids that at any value.
+- **What is deliberately absent.** Disposed and non-taxable property is listed
+  with its reason rather than dropped, because "why isn't this on here" is the
+  first question a reviewer asks.
+- **What blocks a signature.** An asset still in the review queue is not
+  "probably furniture" — it is unresolved, and it blocks. So does filing as
+  agent without a Form 50-162 appointment. Missing account numbers and SIC codes
+  are warnings: defensible, just worse than they need to be.
+
+The rule that separates the two bases: an asset the schedules cannot value is a
+_note_ on the cost basis (the district does its own arithmetic) and **blocking**
+on the estimate basis, where its estimate is withheld rather than stated as
+zero. Zero on a form signed under penalty of perjury is not "unknown" — it is an
+assertion that the property is worthless.
+
+**Which model answers is configuration.** Set `ANTHROPIC_API_KEY` or
+`OPENAI_API_KEY`; when both are present Anthropic is used, and `AI_PROVIDER`
+forces either. The seam is a single `parseStructured()` in `@tangible/ai` —
+both providers enforce the Zod schema at the decode step, so the prompts, the
+schemas, the confidence bar and the review queue are written once and never
+learn which model answered. Schemas must use `.nullable()` rather than
+`.optional()`: both providers' strict modes require every property to be
+present, and null is how "no answer" is spelled. The model id is recorded on
+every row it produced, so a classification stays attributable across a switch.
+
+Auth: when `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are
+set, the whole app sits behind Supabase sign-in (enforced in
+`apps/web/src/proxy.ts`, with an optional `AUTH_ALLOWED_EMAILS` allowlist).
+Without them it runs open — the local development mode. Client FAR data is
+confidential; the workspace should never deploy without auth configured.
 
 ### Why two databases
 
@@ -120,13 +313,13 @@ warehouse file locally, or the published Parquet export in a deployment. See
 
 Loaded today — **3.43M account-years across 71 counties in two states**:
 
-| County | State | CAD | Years | Account-years | Acquisition | Filing status |
-|---|---|---|---|---|---|---|
-| Harris | TX | HCAD | 2021–2026 | 1,130,423 | Automatic | Full, including late renditions |
-| Dallas | TX | DCAD | 2022–2026 | 510,589 | Automatic | Filed / did not file; no late flag |
-| Tarrant | TX | TAD | 2021–2026 | 420,519 | Manual download (2 files/yr) | **None published** |
-| Collin | TX | CCAD | 2020–2025 | 213,656 | Automatic (state portal) | **None published** |
-| All 67 counties | FL | — | 2026 only | 1,158,330 | Automatic (state portal) | **None published** |
+| County          | State | CAD  | Years     | Account-years | Acquisition                  | Filing status                      |
+| --------------- | ----- | ---- | --------- | ------------- | ---------------------------- | ---------------------------------- |
+| Harris          | TX    | HCAD | 2021–2026 | 1,130,423     | Automatic                    | Full, including late renditions    |
+| Dallas          | TX    | DCAD | 2022–2026 | 510,589       | Automatic                    | Filed / did not file; no late flag |
+| Tarrant         | TX    | TAD  | 2021–2026 | 420,519       | Manual download (2 files/yr) | **None published**                 |
+| Collin          | TX    | CCAD | 2020–2025 | 213,656       | Automatic (state portal)     | **None published**                 |
+| All 67 counties | FL    | —    | 2026 only | 1,158,330     | Automatic (state portal)     | **None published**                 |
 
 Texas contributes 2.28M account-years with 1.64M of them carrying a filing
 status; Florida contributes 1.16M with none, worth $257.9B assessed. Florida is
@@ -134,18 +327,18 @@ complete — every county the state publishes is loaded.
 
 Florida's twenty largest, by account count:
 
-| County | Accounts | Assessed | County | Accounts | Assessed |
-|---|---|---|---|---|---|
-| Miami-Dade | 116,061 | $25.2B | Volusia | 33,041 | $5.9B |
-| Broward | 89,919 | $13.4B | Duval | 30,491 | $18.8B |
-| Polk | 87,967 | $9.5B | Manatee | 28,120 | $5.3B |
-| Lee | 79,644 | $8.0B | Osceola | 27,977 | $4.5B |
-| Orange | 62,991 | $22.0B | Sarasota | 22,383 | $4.4B |
-| Palm Beach | 57,371 | $16.8B | Marion | 21,477 | $3.4B |
-| Pinellas | 56,315 | $8.1B | Collier | 18,256 | $3.9B |
-| Brevard | 47,347 | $12.9B | Pasco | 18,129 | $4.2B |
-| Hillsborough | 42,711 | $14.4B | Escambia | 13,547 | $4.9B |
-| Lake | 33,346 | $3.2B | Seminole | 13,519 | $3.8B |
+| County       | Accounts | Assessed | County   | Accounts | Assessed |
+| ------------ | -------- | -------- | -------- | -------- | -------- |
+| Miami-Dade   | 116,061  | $25.2B   | Volusia  | 33,041   | $5.9B    |
+| Broward      | 89,919   | $13.4B   | Duval    | 30,491   | $18.8B   |
+| Polk         | 87,967   | $9.5B    | Manatee  | 28,120   | $5.3B    |
+| Lee          | 79,644   | $8.0B    | Osceola  | 27,977   | $4.5B    |
+| Orange       | 62,991   | $22.0B   | Sarasota | 22,383   | $4.4B    |
+| Palm Beach   | 57,371   | $16.8B   | Marion   | 21,477   | $3.4B    |
+| Pinellas     | 56,315   | $8.1B    | Collier  | 18,256   | $3.9B    |
+| Brevard      | 47,347   | $12.9B   | Pasco    | 18,129   | $4.2B    |
+| Hillsborough | 42,711   | $14.4B   | Escambia | 13,547   | $4.9B    |
+| Lake         | 33,346   | $3.2B    | Seminole | 13,519   | $3.8B    |
 
 Account count and value rank differently on purpose: Polk has nearly three times
 Duval's accounts and half its value, while Duval carries $7B in one municipal
@@ -182,16 +375,16 @@ So it is read as compliance only where it earns it. A county qualifies if it has
 at least 100 accounts at the 25% rate, and that rate **declines monotonically as
 accounts get larger**, measured over accounts that actually owe tax. Ten pass:
 
-| County | Taxable accounts | Did not file | 25% share by value band |
-|---|---|---|---|
-| Palm Beach | 16,750 | 3,163 | 27.0% → 9.6% → 3.9% |
-| Manatee | 6,165 | 2,004 | 43.0% → 21.5% → 13.5% |
-| Lee | 10,194 | 1,352 | 17.0% → 10.2% → 3.0% |
-| Lake | 6,128 | 1,224 | 26.3% → 9.0% → 3.4% |
-| Pasco | 5,619 | 1,207 | 28.1% → 11.2% → 6.2% |
-| Escambia | 4,028 | 786 | 26.2% → 14.1% → 4.1% |
-| Charlotte | 4,387 | 622 | 18.6% → 1.2% → 0.7% |
-| Sumter / Putnam / Citrus | 5,097 | 730 | all declining |
+| County                   | Taxable accounts | Did not file | 25% share by value band |
+| ------------------------ | ---------------- | ------------ | ----------------------- |
+| Palm Beach               | 16,750           | 3,163        | 27.0% → 9.6% → 3.9%     |
+| Manatee                  | 6,165            | 2,004        | 43.0% → 21.5% → 13.5%   |
+| Lee                      | 10,194           | 1,352        | 17.0% → 10.2% → 3.0%    |
+| Lake                     | 6,128            | 1,224        | 26.3% → 9.0% → 3.4%     |
+| Pasco                    | 5,619            | 1,207        | 28.1% → 11.2% → 6.2%    |
+| Escambia                 | 4,028            | 786          | 26.2% → 14.1% → 4.1%    |
+| Charlotte                | 4,387            | 622          | 18.6% → 1.2% → 0.7%     |
+| Sumter / Putnam / Citrus | 5,097            | 730          | all declining           |
 
 **58,368 taxable account-years with a filing status, 11,088 apparent non-filers.**
 The declining gradient is the whole argument — a real non-filer population thins
@@ -200,7 +393,7 @@ out at the top, and it is the same test that rejected the Williamson proxy below
 Three caveats travel with those numbers. The rate cannot separate a business that
 never filed from one that filed five or more months late, since late filing
 accrues 5% a month to the same 25% ceiling. The rates are never comparable
-*between* counties. And accounts below the $25,000 exemption are left unknown
+_between_ counties. And accounts below the $25,000 exemption are left unknown
 rather than compliant — the penalty is a share of tax levied, so an account
 owing nothing is penalised nothing either way. Including them made every county
 look flat and nearly caused the signal to be discarded.
@@ -229,7 +422,7 @@ directly; the ten Florida counties above have it inferred from a penalty rate
 that had to pass a test first. The other 59 — Tarrant, Collin and 57 Florida
 counties — say nothing.
 
-Where it is absent, non-filer segments are empty *by design* rather than zero,
+Where it is absent, non-filer segments are empty _by design_ rather than zero,
 and the filing rate reads as unknown rather than 0%. A two-valued boolean would
 have declared every business in 59 counties a chronic non-filer and invented
 hundreds of millions in exposure. Those counties still contribute market size,
@@ -257,12 +450,12 @@ enough to matter — one is a process problem, one is a modelling problem, one i
 a statute. The same survey is in the app behind **What each state publishes**,
 with the specific steps for each.
 
-| State | Account-level BPP | Filing status | Obstacle |
-|---|---|---|---|
-| Florida | **Yes — all 67 counties** | No | Current roll only; back years by request |
-| Georgia | No — county totals only | No | Per-county Open Records Act request |
-| Maryland | No published extract | Possibly, via entity good standing | Assessed centrally, so the unit is the taxpayer, not the county |
-| Virginia | No | No | **Va. Code §58.1-3 makes it confidential**, and FOIA-exempt |
+| State    | Account-level BPP         | Filing status                      | Obstacle                                                        |
+| -------- | ------------------------- | ---------------------------------- | --------------------------------------------------------------- |
+| Florida  | **Yes — all 67 counties** | No                                 | Current roll only; back years by request                        |
+| Georgia  | No — county totals only   | No                                 | Per-county Open Records Act request                             |
+| Maryland | No published extract      | Possibly, via entity good standing | Assessed centrally, so the unit is the taxpayer, not the county |
+| Virginia | No                        | No                                 | **Va. Code §58.1-3 makes it confidential**, and FOIA-exempt     |
 
 - **Georgia** publishes 35 years of county-level digest consolidations through
   the DOR — genuine, long-running data that sizes a market and cannot name a
@@ -287,18 +480,18 @@ Ten Texas counties' portals have been checked. **Only Harris and Dallas publish
 whether a rendition was filed.** That field is the product; without it a county
 can be sized but not sold to.
 
-| County | Access | Rendition status |
-|---|---|---|
-| Harris | Automatic | **Full**, including late |
-| Dallas | Automatic | **Filed / did not file** |
-| Tarrant | Manual download | None |
-| Collin | Automatic (state open-data portal) | None |
-| Williamson | Automatic (own Socrata portal) | None — all 84 datasets swept |
-| Fort Bend | Automatic (direct zip) | **Penalty flag, partial coverage** |
-| El Paso | Blocks automation; free file, manual | Unknown |
-| Denton | Single-page portal, no static links | Unknown |
-| Travis | Public information request | Unknown |
-| Bexar | Sold commercially | Unknown |
+| County     | Access                               | Rendition status                   |
+| ---------- | ------------------------------------ | ---------------------------------- |
+| Harris     | Automatic                            | **Full**, including late           |
+| Dallas     | Automatic                            | **Filed / did not file**           |
+| Tarrant    | Manual download                      | None                               |
+| Collin     | Automatic (state open-data portal)   | None                               |
+| Williamson | Automatic (own Socrata portal)       | None — all 84 datasets swept       |
+| Fort Bend  | Automatic (direct zip)               | **Penalty flag, partial coverage** |
+| El Paso    | Blocks automation; free file, manual | Unknown                            |
+| Denton     | Single-page portal, no static links  | Unknown                            |
+| Travis     | Public information request           | Unknown                            |
+| Bexar      | Sold commercially                    | Unknown                            |
 
 Notes on the three worth revisiting:
 
@@ -314,7 +507,7 @@ Notes on the three worth revisiting:
   has 48 columns, while the full "PropertyDataExport" owner file is redacted to
   19 and omits it. Supplements cover only accounts that changed — 2,231 owner
   rows against 425,966 in the full export — so it is ground truth on a sample,
-  never the whole roll. Useful for *validating* signals; not a substitute for a
+  never the whole roll. Useful for _validating_ signals; not a substitute for a
   filing flag. Data also lags: newest is a January 2025 supplement of the 2024
   roll.
 - **El Paso** blocks automated requests on both its hosts. Its personal property
@@ -333,14 +526,14 @@ does not hold up.
 
 Filing rate by account value, 2026:
 
-| Band | Harris | Dallas | Williamson proxy |
-|---|---|---|---|
-| < $10K | 29.5% | 27.5% | 13.8% |
-| $10–50K | 28.8% | 40.3% | 19.9% |
-| $50–125K | 47.4% | 53.2% | 22.4% |
-| $125–500K | 68.0% | 69.8% | 26.9% |
-| $500K–2M | 74.6% | 81.1% | 27.1% |
-| **$2M+** | **89.9%** | **90.1%** | **21.5%** |
+| Band      | Harris    | Dallas    | Williamson proxy |
+| --------- | --------- | --------- | ---------------- |
+| < $10K    | 29.5%     | 27.5%     | 13.8%            |
+| $10–50K   | 28.8%     | 40.3%     | 19.9%            |
+| $50–125K  | 47.4%     | 53.2%     | 22.4%            |
+| $125–500K | 68.0%     | 69.8%     | 26.9%            |
+| $500K–2M  | 74.6%     | 81.1%     | 27.1%            |
+| **$2M+**  | **89.9%** | **90.1%** | **21.5%**        |
 
 Harris and Dallas are independent counties with published flags, and they track
 each other within a few points at every band while rising steeply with account
@@ -451,7 +644,7 @@ Three modeling decisions worth knowing:
   counted separately as unknown, so a source that omits the field produces no
   non-filer signal rather than a spurious one.
 - **Penalty applies to late filings too**, not just missing ones — Sec. 22.28
-  penalizes a rendition that is not *timely* filed.
+  penalizes a rendition that is not _timely_ filed.
 - **Below-exemption accounts are excluded from exposure.** An account under the
   threshold owes no tax, so it can owe no percentage of that tax.
 
@@ -467,15 +660,15 @@ contents.
 
 ## Commands
 
-| Command | What it does |
-|---|---|
-| `pnpm dev` | Both apps, watching |
-| `pnpm build` | Build everything |
-| `pnpm typecheck` | Typecheck every package |
-| `pnpm ingest --jurisdiction <id> --years <list>` | Pull a real county roll |
-| `pnpm seed [accounts]` | Regenerate the synthetic county |
-| `pnpm export:parquet [dir]` | Publish the warehouse as Parquet for deployment |
-| `pnpm db:push` | Push the Drizzle schema to Supabase |
+| Command                                          | What it does                                    |
+| ------------------------------------------------ | ----------------------------------------------- |
+| `pnpm dev`                                       | Both apps, watching                             |
+| `pnpm build`                                     | Build everything                                |
+| `pnpm typecheck`                                 | Typecheck every package                         |
+| `pnpm ingest --jurisdiction <id> --years <list>` | Pull a real county roll                         |
+| `pnpm seed [accounts]`                           | Regenerate the synthetic county                 |
+| `pnpm export:parquet [dir]`                      | Publish the warehouse as Parquet for deployment |
+| `pnpm db:push`                                   | Push the Drizzle schema to Supabase             |
 
 ## Deploying
 
@@ -570,10 +763,10 @@ Reading Parquet straight over HTTP works, but a page load makes on the order of
 function copies the export to its own temp disk and queries from there. The
 difference, measured against a server with 30ms of injected latency:
 
-| | overview | facets | owners | accounts |
-|---|---|---|---|---|
-| HTTP direct | 2.35s | 7.69s | 2.73s | 2.67s |
-| Local cache | 1.00s | 3.30s | 1.11s | 1.11s |
+|             | overview | facets | owners | accounts |
+| ----------- | -------- | ------ | ------ | -------- |
+| HTTP direct | 2.35s    | 7.69s  | 2.73s  | 2.67s    |
+| Local cache | 1.00s    | 3.30s  | 1.11s  | 1.11s    |
 
 That is the same speed as reading the DuckDB file off local disk, so the cost of
 serving from object storage becomes one ~95 MB copy per instance rather than
@@ -611,16 +804,16 @@ the series CTE and 5ms in the scan**: two window functions across every
 account-year in the jurisdiction, rebuilt on every request, though nothing in it
 depends on the request. Moving it into the export:
 
-| query | rebuilt per request | precomputed |
-|---|---|---|
-| overview | 947ms | 104ms |
-| facets | 3051ms | 10ms |
-| owners | 1119ms | 27ms |
-| accounts | 1065ms | 34ms |
-| **total** | **6225ms** | **218ms** |
+| query     | rebuilt per request | precomputed |
+| --------- | ------------------- | ----------- |
+| overview  | 947ms               | 104ms       |
+| facets    | 3051ms              | 10ms        |
+| owners    | 1119ms              | 27ms        |
+| accounts  | 1065ms              | 34ms        |
+| **total** | **6225ms**          | **218ms**   |
 
-The materialized table is generated *by running the same CTE the queries would
-have run*, which is what keeps the two column-for-column identical — drift would
+The materialized table is generated _by running the same CTE the queries would
+have run_, which is what keeps the two column-for-column identical — drift would
 be a silently wrong answer, not an error. An export without it still works;
 `accountSeriesCte` falls back to computing, and the local warehouse always does.
 
@@ -652,8 +845,8 @@ export const maxDuration = 60;
 
 It does **not** use the `functions` property. Those globs match Pages Router
 files and standalone `/api` directories, not App Router routes — pointed at
-`src/app/api/**/*.ts` the deploy fails with *"doesn't match any Serverless
-Functions inside the `api` directory"*. Segment config is the supported route,
+`src/app/api/**/*.ts` the deploy fails with _"doesn't match any Serverless
+Functions inside the `api` directory"_. Segment config is the supported route,
 and it lands in `.next/server/functions-config-manifest.json`, which is what
 Vercel reads.
 
@@ -679,14 +872,14 @@ rather than failing.
 Running the pipeline against the real 2021–2026 Harris County archives
 reproduces the independent hand analysis of the same data:
 
-| 2026, accounts ≥ $125K | Hand analysis | This pipeline |
-|---|---|---|
-| Taxable accounts | 28,544 | 28,749 |
-| Did not file | 7,207 → $18.7M/yr | 7,223 → $18.77M/yr |
-| Chronic (never filed, 4+ yrs) | 1,584 → $6.3M/yr | 1,587 → $6.29M/yr |
-| Core ICP | 910 → $1.6M/yr | 912 → $1.58M/yr |
-| Median ICP penalty | $804 | $803 |
-| Large accounts with an agent | 39% | 41% |
+| 2026, accounts ≥ $125K        | Hand analysis     | This pipeline      |
+| ----------------------------- | ----------------- | ------------------ |
+| Taxable accounts              | 28,544            | 28,749             |
+| Did not file                  | 7,207 → $18.7M/yr | 7,223 → $18.77M/yr |
+| Chronic (never filed, 4+ yrs) | 1,584 → $6.3M/yr  | 1,587 → $6.29M/yr  |
+| Core ICP                      | 910 → $1.6M/yr    | 912 → $1.58M/yr    |
+| Median ICP penalty            | $804              | $803               |
+| Large accounts with an agent  | 39%               | 41%                |
 
 The named examples line up too — the $78K events company, the $54K machine shop
 and the $45K tree service all appear at the top of the Core ICP list.

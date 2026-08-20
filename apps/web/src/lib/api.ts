@@ -1,18 +1,43 @@
 import type {
   AccountQuery,
   AccountSeries,
+  Asset,
+  AssetQuery,
+  ClassificationDecisionResult,
+  ClassificationQuery,
+  ClassificationQueueItem,
+  ClassificationRunResult,
+  Client,
+  ClientDetail,
+  ClientListItem,
+  ClientLocation,
+  CreateClientRequest,
+  CreateEngagementRequest,
+  CreateLocationRequest,
   DistributionBucket,
+  Engagement,
+  EngagementDetail,
+  EngagementValuation,
+  FarFile,
+  FarMapping,
   FilterFacets,
   IngestRun,
   JurisdictionSummary,
   MarketOverview,
+  NormalizationResult,
   OpportunityModel,
   OwnerRollup,
   OwnerSortField,
   Paginated,
+  Rendition,
+  RenditionBasis,
+  SavingsReport,
   SegmentDefinition,
   SortDirection,
   StartIngestRequest,
+  UpdateClassificationRequest,
+  UpdateClientRequest,
+  UpdateEngagementRequest,
   YearTrendPoint,
 } from '@tangible/types';
 
@@ -82,7 +107,9 @@ export const api = {
   segments: () => request<SegmentDefinition[]>('/jurisdictions/segments'),
 
   overview: (jurisdictionId: string, taxYear: number) =>
-    request<MarketOverview>(`/analytics/overview?jurisdictionId=${jurisdictionId}&taxYear=${taxYear}`),
+    request<MarketOverview>(
+      `/analytics/overview?jurisdictionId=${jurisdictionId}&taxYear=${taxYear}`,
+    ),
 
   trend: (jurisdictionId: string) =>
     request<YearTrendPoint[]>(`/analytics/trend?jurisdictionId=${jurisdictionId}`),
@@ -140,5 +167,105 @@ export const api = {
     }),
 
   /** CSV export runs through the browser so the download stays a normal navigation. */
-  exportUrl: (query: Partial<AccountQuery>) => `${BASE_URL}/api/accounts/export?${toSearchParams(query)}`,
+  exportUrl: (query: Partial<AccountQuery>) =>
+    `${BASE_URL}/api/accounts/export?${toSearchParams(query)}`,
+
+  // -------------------------------------------------------------------------
+  // Workspace: clients, engagements, FAR intake
+  // -------------------------------------------------------------------------
+
+  clients: () => request<ClientListItem[]>('/clients'),
+
+  createClient: (body: CreateClientRequest) =>
+    request<Client>('/clients', { method: 'POST', body: JSON.stringify(body) }),
+
+  client: (clientId: string) => request<ClientDetail>(`/clients/${clientId}`),
+
+  updateClient: (clientId: string, body: UpdateClientRequest) =>
+    request<Client>(`/clients/${clientId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+
+  createLocation: (clientId: string, body: CreateLocationRequest) =>
+    request<ClientLocation>(`/clients/${clientId}/locations`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  createEngagement: (clientId: string, body: CreateEngagementRequest) =>
+    request<Engagement>(`/clients/${clientId}/engagements`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  engagement: (engagementId: string) => request<EngagementDetail>(`/engagements/${engagementId}`),
+
+  updateEngagement: (engagementId: string, body: UpdateEngagementRequest) =>
+    request<Engagement>(`/engagements/${engagementId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  /**
+   * Multipart, so it bypasses `request()` — setting Content-Type by hand here
+   * would strip the boundary the browser generates.
+   */
+  uploadFar: async (engagementId: string, file: File): Promise<FarFile> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await fetch(`${BASE_URL}/api/engagements/${engagementId}/files`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new ApiError(errorMessage(body) || response.statusText, response.status);
+    }
+    return response.json() as Promise<FarFile>;
+  },
+
+  farFile: (fileId: string) => request<FarFile>(`/files/${fileId}`),
+
+  proposeMapping: (fileId: string) =>
+    request<FarFile>(`/files/${fileId}/propose`, { method: 'POST' }),
+
+  confirmMapping: (fileId: string, mapping: FarMapping) =>
+    request<NormalizationResult>(`/files/${fileId}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify({ mapping }),
+    }),
+
+  engagementAssets: (engagementId: string, query: Partial<AssetQuery>) =>
+    request<Paginated<Asset>>(
+      `/engagements/${engagementId}/assets?${toSearchParams(query as never)}`,
+    ),
+
+  // -------------------------------------------------------------------------
+  // Classification and valuation
+  // -------------------------------------------------------------------------
+
+  classify: (engagementId: string, reclassify = false) =>
+    request<ClassificationRunResult>(
+      `/engagements/${engagementId}/classify${reclassify ? '?reclassify=true' : ''}`,
+      { method: 'POST' },
+    ),
+
+  classifications: (engagementId: string, query: Partial<ClassificationQuery>) =>
+    request<Paginated<ClassificationQueueItem>>(
+      `/engagements/${engagementId}/classifications?${toSearchParams(query as never)}`,
+    ),
+
+  decideClassification: (classificationId: string, body: UpdateClassificationRequest) =>
+    request<ClassificationDecisionResult>(`/classifications/${classificationId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  valuation: (engagementId: string) =>
+    request<EngagementValuation>(`/engagements/${engagementId}/valuation`),
+
+  savings: (engagementId: string) => request<SavingsReport>(`/engagements/${engagementId}/savings`),
+
+  rendition: (engagementId: string, options: { basis: RenditionBasis; filedByAgent: boolean }) =>
+    request<Rendition>(
+      `/engagements/${engagementId}/rendition?basis=${options.basis}&filedByAgent=${options.filedByAgent}`,
+    ),
 };

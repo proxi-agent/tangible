@@ -1,0 +1,533 @@
+'use client';
+
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft, Check, Sparkles } from 'lucide-react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { useEffect, useRef, useState } from 'react';
+import type {
+  CanonicalAssetField,
+  FarFile,
+  FarMapping,
+  NormalizationResult,
+  SheetMapping,
+  SheetSummary,
+} from '@tangible/types';
+import { CANONICAL_ASSET_FIELDS, CANONICAL_FIELD_INFO } from '@tangible/types';
+import { ApiError, api } from '@/lib/api';
+import { cn } from '@/lib/cn';
+import { count, moneyExact, percent, plural } from '@/lib/format';
+import { FarFileStatusBadge } from '@/components/workspace/badges';
+import { Button, Select } from '@/components/ui/controls';
+import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { InfoTip } from '@/components/ui/tooltip';
+
+/**
+ * The review screen: the AI's proposed mapping and the human decision meet over
+ * the same preview rows the model saw. Nothing becomes an asset until the
+ * person clicks confirm — this page is the gate that keeps a plausible-but-
+ * wrong column mapping from quietly poisoning the analysis.
+ */
+
+export default function MappingReviewPage() {
+  const { clientId, engagementId, fileId } = useParams<{
+    clientId: string;
+    engagementId: string;
+    fileId: string;
+  }>();
+  const queryClient = useQueryClient();
+
+  const {
+    data: file,
+    isLoading,
+    error,
+  } = useQuery({
+    queryKey: ['far-file', fileId],
+    queryFn: () => api.farFile(fileId),
+  });
+
+  const [mapping, setMapping] = useState<FarMapping | null>(null);
+  const [activeSheet, setActiveSheet] = useState(0);
+  const [aiNotice, setAiNotice] = useState<string | null>(null);
+  const [result, setResult] = useState<NormalizationResult | null>(null);
+  // A proposal that landed while the reviewer was editing, held rather than
+  // applied. Their work is not something a background call gets to discard.
+  const [heldProposal, setHeldProposal] = useState<FarFile | null>(null);
+  const [edited, setEdited] = useState(false);
+  const autoProposed = useRef(false);
+
+  const propose = useMutation({
+    mutationFn: (options: { auto: boolean }) =>
+      api.proposeMapping(fileId).then((updated) => ({ updated, auto: options.auto })),
+    onSuccess: ({ updated, auto }) => {
+      queryClient.setQueryData(['far-file', fileId], updated);
+      // The file list shows a status badge fed by this record.
+      void queryClient.invalidateQueries({ queryKey: ['engagement', engagementId] });
+      setAiNotice(null);
+      if (!updated.proposal) return;
+      if (auto && edited) setHeldProposal(updated);
+      // An explicit re-propose is a request to see the proposal, so it wins
+      // over the confirmed mapping a normalized file still carries.
+      else setMapping(initialMapping(updated, 'proposal'));
+    },
+    onError: (cause: unknown) => {
+      setAiNotice(cause instanceof Error ? cause.message : String(cause));
+    },
+  });
+
+  const confirm = useMutation({
+    mutationFn: () => api.confirmMapping(fileId, mapping!),
+    onSuccess: (normalization: NormalizationResult) => {
+      setResult(normalization);
+      void queryClient.invalidateQueries({ queryKey: ['far-file', fileId] });
+      void queryClient.invalidateQueries({ queryKey: ['engagement', engagementId] });
+      void queryClient.invalidateQueries({ queryKey: ['engagement-assets', engagementId] });
+    },
+  });
+
+  // Adopt the stored mapping once the file arrives; propose automatically the
+  // first time a freshly-parsed file is opened, so the reviewer starts from a
+  // draft rather than a blank grid.
+  const { mutate: proposeMutate, isPending: proposePending } = propose;
+  useEffect(() => {
+    if (!file) return;
+    setMapping((current) => current ?? initialMapping(file));
+    if (file.status === 'parsed' && !file.proposal && !autoProposed.current) {
+      autoProposed.current = true;
+      proposeMutate({ auto: true });
+    }
+  }, [file, proposeMutate]);
+
+  if (error) return <ErrorState error={error} />;
+  if (isLoading || !file || !mapping) return <Skeleton className="h-64 w-full" />;
+  if (!file.sheetSummaries) {
+    return (
+      <ErrorState
+        error={new Error(file.error ?? 'This file has no parsed sheets — re-upload it.')}
+      />
+    );
+  }
+
+  const summaries = file.sheetSummaries;
+  const summary = summaries[activeSheet];
+  const sheetMapping = summary
+    ? mapping.sheets.find((s) => s.sheetName === summary.name)
+    : undefined;
+
+  const updateSheet = (sheetName: string, patch: Partial<SheetMapping>) => {
+    setEdited(true);
+    setMapping((current) =>
+      current
+        ? {
+            sheets: current.sheets.map((s) => (s.sheetName === sheetName ? { ...s, ...patch } : s)),
+          }
+        : current,
+    );
+  };
+
+  const setField = (sheetName: string, index: number, field: CanonicalAssetField | null) => {
+    setEdited(true);
+    setMapping((current) => {
+      if (!current) return current;
+      return {
+        sheets: current.sheets.map((s) => {
+          if (s.sheetName !== sheetName) return s;
+          return {
+            ...s,
+            columns: s.columns.map((column) => {
+              if (column.index === index) return { ...column, field };
+              // One field, one column: assigning it here clears it elsewhere,
+              // because normalization would otherwise silently keep the first.
+              if (field !== null && column.field === field) return { ...column, field: null };
+              return column;
+            }),
+          };
+        }),
+      };
+    });
+  };
+
+  const checklist = mappingChecklist(mapping);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Link
+          href={`/clients/${clientId}/engagements/${engagementId}`}
+          className="flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
+        >
+          <ArrowLeft size={13} strokeWidth={2} />
+          Engagement
+        </Link>
+        <h1 className="text-lg font-semibold tracking-tight">{file.originalFilename}</h1>
+        <FarFileStatusBadge status={file.status} />
+      </div>
+
+      {file.proposal ? (
+        <Card className="px-5 py-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
+              <p className="flex items-center gap-1.5 text-sm font-medium">
+                <Sparkles size={14} strokeWidth={2} className="text-[var(--color-series-1)]" />
+                Proposed by {file.proposalModel ?? 'AI'} · self-rated confidence{' '}
+                {percent(file.proposal.confidence, 0)}
+              </p>
+              <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+                {file.proposal.rationale}
+              </p>
+            </div>
+            <Button onClick={() => propose.mutate({ auto: false })} disabled={proposePending}>
+              {proposePending ? 'Proposing…' : 'Re-propose'}
+            </Button>
+          </div>
+        </Card>
+      ) : proposePending ? (
+        <Card className="px-5 py-4 text-sm text-[var(--color-ink-secondary)]">
+          Asking the model for a column mapping…
+        </Card>
+      ) : null}
+
+      {heldProposal ? (
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)] bg-[color-mix(in_oklab,var(--color-series-1)_8%,transparent)] px-4 py-2.5 text-xs leading-relaxed">
+          <span className="min-w-0 flex-1">
+            A proposed mapping arrived while you were editing, so your work was kept. Applying it
+            replaces every column selection below.
+          </span>
+          <Button
+            onClick={() => {
+              setMapping(initialMapping(heldProposal, 'proposal'));
+              setHeldProposal(null);
+            }}
+          >
+            Apply proposal
+          </Button>
+          <Button variant="ghost" onClick={() => setHeldProposal(null)}>
+            Dismiss
+          </Button>
+        </div>
+      ) : null}
+
+      {aiNotice ? (
+        <div className="rounded-md border border-[color-mix(in_oklab,var(--color-warning)_40%,transparent)] bg-[color-mix(in_oklab,var(--color-warning)_12%,transparent)] px-4 py-2.5 text-xs leading-relaxed">
+          {aiNotice} You can still map every column by hand below.
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {summaries.map((s, index) => {
+          const m = mapping.sheets.find((sheet) => sheet.sheetName === s.name);
+          const active = index === activeSheet;
+          return (
+            <button
+              key={s.name}
+              type="button"
+              onClick={() => setActiveSheet(index)}
+              className={cn(
+                'cursor-pointer rounded-md border px-3 py-1.5 text-sm transition-colors outline-none',
+                'focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
+                active
+                  ? 'border-[var(--color-series-1)] bg-[color-mix(in_oklab,var(--color-series-1)_10%,transparent)] font-medium'
+                  : 'border-[var(--color-hairline)] hover:bg-[var(--color-plane)]',
+                m && !m.include && 'opacity-50',
+              )}
+            >
+              {s.name}
+              {m && !m.include ? ' (excluded)' : ''}
+            </button>
+          );
+        })}
+      </div>
+
+      {summary && sheetMapping ? (
+        <Card>
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--color-hairline)] px-5 py-3 text-sm">
+            <Toggle
+              checked={sheetMapping.include}
+              onChange={(include) => updateSheet(summary.name, { include })}
+              label="Include this sheet"
+              help="Excluded sheets — summaries, rollforwards, notes — contribute no assets."
+            />
+            <label className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+              Header row
+              <Select
+                value={sheetMapping.headerRow === null ? 'none' : String(sheetMapping.headerRow)}
+                onChange={(e) =>
+                  updateSheet(summary.name, {
+                    headerRow: e.target.value === 'none' ? null : Number(e.target.value),
+                  })
+                }
+                className="h-8 w-24 text-[13px]"
+              >
+                <option value="none">none</option>
+                {summary.preview.map((_, i) => (
+                  <option key={i} value={i}>
+                    row {i + 1}
+                  </option>
+                ))}
+              </Select>
+              <InfoTip
+                title="Header row"
+                content="The row holding column titles; data starts below it. Title rows above the real headers are common."
+                size={12}
+              />
+            </label>
+            <Toggle
+              checked={sheetMapping.categoryFromBands}
+              onChange={(categoryFromBands) => updateSheet(summary.name, { categoryFromBands })}
+              label="Sections name the category"
+              help='Hand-built registers often carry the asset class only as a section row — "Machinery & Equipment" above the rows it describes. When on, such rows set the category for everything beneath them instead of becoming assets.'
+            />
+            <span className="ml-auto text-xs text-[var(--color-ink-muted)]">
+              {count(summary.rowCount)} rows × {summary.colCount} columns
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-[var(--color-hairline)]">
+                  <th className="w-10 px-2 py-2 text-right text-[10px] text-[var(--color-ink-muted)]">
+                    #
+                  </th>
+                  {Array.from({ length: Math.min(summary.colCount, 40) }, (_, index) => (
+                    <th key={index} className="min-w-36 px-1.5 py-2">
+                      <FieldSelect
+                        value={fieldAt(sheetMapping, index)}
+                        onChange={(field) => setField(summary.name, index, field)}
+                        disabled={!sheetMapping.include}
+                      />
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {summary.preview.map((row, rowIndex) => {
+                  const isHeader = rowIndex === sheetMapping.headerRow;
+                  return (
+                    <tr
+                      key={rowIndex}
+                      className={cn(
+                        'border-b border-[var(--color-hairline)] last:border-0',
+                        isHeader &&
+                          'bg-[color-mix(in_oklab,var(--color-series-1)_10%,transparent)] font-medium',
+                      )}
+                    >
+                      <td className="tabular px-2 py-1.5 text-right text-[10px] text-[var(--color-ink-muted)]">
+                        {rowIndex + 1}
+                      </td>
+                      {Array.from({ length: Math.min(summary.colCount, 40) }, (_, colIndex) => (
+                        <td key={colIndex} className="max-w-48 truncate px-1.5 py-1.5">
+                          {row[colIndex] ?? ''}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
+
+      <Card className="px-5 py-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {checklist.map((item) => (
+              <Badge key={item.label} tone={item.ok ? 'good' : 'warning'}>
+                {item.ok ? <Check size={11} strokeWidth={3} className="mr-1" /> : null}
+                {item.label}
+              </Badge>
+            ))}
+          </div>
+          <div className="ml-auto flex items-center gap-2">
+            <Button
+              variant="primary"
+              disabled={confirm.isPending || !mapping.sheets.some((s) => s.include)}
+              onClick={() => confirm.mutate()}
+            >
+              {confirm.isPending
+                ? 'Normalizing…'
+                : file.status === 'normalized'
+                  ? 'Re-confirm & replace assets'
+                  : 'Confirm mapping & import assets'}
+            </Button>
+          </div>
+        </div>
+        {!checklist.every((c) => c.ok) ? (
+          <p className="mt-2 text-xs leading-relaxed text-[var(--color-ink-muted)]">
+            Confirming without the amber fields works — the gaps land as per-row warnings instead of
+            silently guessed values.
+          </p>
+        ) : null}
+        {confirm.error ? (
+          <p className="mt-2 text-xs text-[var(--color-critical)]">
+            {confirm.error instanceof ApiError ? confirm.error.message : String(confirm.error)}
+          </p>
+        ) : null}
+      </Card>
+
+      {result ? (
+        <Card>
+          <CardHeader
+            title="Import result"
+            description="What the confirmed mapping produced. Re-confirming replaces these assets wholesale — there is no partial state."
+          />
+          <div className="grid grid-cols-2 gap-3 px-5 py-4 sm:grid-cols-4">
+            <Stat label="Assets imported" value={count(result.inserted)} />
+            <Stat label="Total original cost" value={moneyExact(result.totalCost)} />
+            <Stat label="Rows with warnings" value={count(result.warningCount)} />
+            <Stat label="Rows skipped" value={count(result.skippedCount)} />
+          </div>
+          {result.skipped.length > 0 ? (
+            <div className="border-t border-[var(--color-hairline)] px-5 py-3">
+              <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+                Skipped rows{' '}
+                {result.skippedCount > result.skipped.length
+                  ? `(first ${result.skipped.length} of ${result.skippedCount})`
+                  : ''}
+              </p>
+              <ul className="mt-1.5 space-y-0.5 text-xs text-[var(--color-ink-secondary)]">
+                {result.skipped.slice(0, 12).map((skip, i) => (
+                  <li key={i}>
+                    {skip.sheet}
+                    {skip.row >= 0 ? ` row ${skip.row + 1}` : ''} — {skip.reason}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div className="border-t border-[var(--color-hairline)] px-5 py-3">
+            <Link href={`/clients/${clientId}/engagements/${engagementId}`}>
+              <Button variant="primary">Back to the engagement</Button>
+            </Link>
+          </div>
+        </Card>
+      ) : null}
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+        {label}
+      </p>
+      <p className="tabular mt-0.5 text-lg font-semibold">{value}</p>
+    </div>
+  );
+}
+
+function Toggle({
+  checked,
+  onChange,
+  label,
+  help,
+}: {
+  checked: boolean;
+  onChange: (value: boolean) => void;
+  label: string;
+  help: string;
+}) {
+  return (
+    <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+      <input
+        type="checkbox"
+        checked={checked}
+        onChange={(e) => onChange(e.target.checked)}
+        className="h-3.5 w-3.5 cursor-pointer accent-[var(--color-series-1)]"
+      />
+      {label}
+      <InfoTip title={label} content={help} size={12} />
+    </label>
+  );
+}
+
+function FieldSelect({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: CanonicalAssetField | null;
+  onChange: (field: CanonicalAssetField | null) => void;
+  disabled: boolean;
+}) {
+  return (
+    <Select
+      value={value ?? ''}
+      disabled={disabled}
+      onChange={(e) => onChange((e.target.value || null) as CanonicalAssetField | null)}
+      className={cn(
+        'h-8 w-full text-xs',
+        value
+          ? 'border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)] font-medium'
+          : 'text-[var(--color-ink-muted)]',
+      )}
+    >
+      <option value="">— unmapped</option>
+      {CANONICAL_ASSET_FIELDS.map((field) => (
+        <option key={field} value={field}>
+          {CANONICAL_FIELD_INFO[field].label}
+        </option>
+      ))}
+    </Select>
+  );
+}
+
+function fieldAt(sheet: SheetMapping, index: number): CanonicalAssetField | null {
+  return sheet.columns.find((column) => column.index === index)?.field ?? null;
+}
+
+/**
+ * Build the local editing state. Opening the page shows what was last
+ * confirmed, falling back to the proposal; asking for a proposal shows the
+ * proposal, because a rationale describing a mapping the grid does not show is
+ * worse than no rationale at all. Either way every column index gets an entry so
+ * the selects have something to bind to, and sheets the mapping does not know
+ * about appear excluded.
+ */
+function initialMapping(file: FarFile, prefer: 'confirmed' | 'proposal' = 'confirmed'): FarMapping {
+  const summaries = file.sheetSummaries ?? [];
+  const proposed = file.proposal ? { sheets: file.proposal.sheets } : null;
+  const source =
+    prefer === 'proposal'
+      ? (proposed ?? file.confirmedMapping)
+      : (file.confirmedMapping ?? proposed);
+
+  const sheets = summaries.map((summary): SheetMapping => {
+    const existing = source?.sheets.find((s) => s.sheetName === summary.name);
+    const byIndex = new Map(existing?.columns.map((c) => [c.index, c]) ?? []);
+    return {
+      sheetName: summary.name,
+      include: existing?.include ?? source === null,
+      headerRow: existing ? existing.headerRow : summary.detectedHeaderRow,
+      categoryFromBands: existing?.categoryFromBands ?? false,
+      columns: Array.from({ length: summary.colCount }, (_, index) => ({
+        index,
+        field: byIndex.get(index)?.field ?? null,
+        ...(byIndex.get(index)?.note ? { note: byIndex.get(index)!.note } : {}),
+      })),
+    };
+  });
+
+  return { sheets };
+}
+
+function mappingChecklist(mapping: FarMapping): { label: string; ok: boolean }[] {
+  const included = mapping.sheets.filter((s) => s.include);
+  const mapped = new Set(
+    included.flatMap((s) =>
+      s.columns.map((c) => c.field).filter((f): f is CanonicalAssetField => f !== null),
+    ),
+  );
+  const sheetsLabel = `${included.length} ${plural(included.length, 'sheet')} included`;
+  return [
+    { label: sheetsLabel, ok: included.length > 0 },
+    { label: 'description', ok: mapped.has('description') },
+    { label: 'original cost', ok: mapped.has('originalCost') },
+    {
+      label: 'acquisition date/year',
+      ok: mapped.has('acquisitionDate') || mapped.has('acquisitionYear'),
+    },
+  ];
+}

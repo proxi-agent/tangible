@@ -1,0 +1,375 @@
+'use client';
+
+import { useQuery } from '@tanstack/react-query';
+import { AlertTriangle, ArrowLeft, CalendarDays, CircleCheck, Stamp } from 'lucide-react';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
+import { useState } from 'react';
+import type { Rendition, RenditionBasis } from '@tangible/types';
+import { api } from '@/lib/api';
+import { cn } from '@/lib/cn';
+import { count, money, moneyExact, plural } from '@/lib/format';
+import { Button } from '@/components/ui/controls';
+import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { Tooltip } from '@/components/ui/tooltip';
+
+/**
+ * The rendition draft.
+ *
+ * A rendition is signed under penalty of perjury, so this screen is built to
+ * make the filer's obligations visible rather than to look finished. The
+ * blockers sit above the form, not below it; the basis choice is a real control
+ * with its consequences spelled out; and every asset left off the form is
+ * listed with the reason it was left off.
+ */
+export default function FilingPage() {
+  const { clientId, engagementId } = useParams<{ clientId: string; engagementId: string }>();
+  const [basis, setBasis] = useState<RenditionBasis>('cost');
+  const [filedByAgent, setFiledByAgent] = useState(true);
+
+  const { data, error, isLoading } = useQuery({
+    queryKey: ['engagement-rendition', engagementId, basis, filedByAgent],
+    queryFn: () => api.rendition(engagementId, { basis, filedByAgent }),
+    placeholderData: (previous) => previous,
+  });
+
+  if (error) return <ErrorState error={error} />;
+  if (isLoading || !data) return <Skeleton className="h-96 w-full" />;
+
+  return (
+    <div className="space-y-5">
+      <Link
+        href={`/clients/${clientId}/engagements/${engagementId}`}
+        className="inline-flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
+      >
+        <ArrowLeft size={13} strokeWidth={2} />
+        Back to the engagement
+      </Link>
+
+      <Card>
+        <CardHeader
+          title={`Form 50-144 — ${data.clientName}, tax year ${data.taxYear}`}
+          description={
+            <>
+              {data.jurisdictionName ?? data.jurisdictionId ?? 'No jurisdiction set'}
+              {data.accountId ? ` · account ${data.accountId}` : ' · no account number'}
+              {data.sicCode ? ` · SIC ${data.sicCode}` : ''} · drafted{' '}
+              {new Date(data.generatedAt).toLocaleDateString()}
+            </>
+          }
+        />
+        <BasisControls
+          basis={basis}
+          filedByAgent={filedByAgent}
+          onBasis={setBasis}
+          onAgent={setFiledByAgent}
+          rendition={data}
+        />
+        <Totals rendition={data} />
+      </Card>
+
+      <Blockers rendition={data} />
+      <Schedules rendition={data} />
+      {data.exclusions.length > 0 ? <Exclusions rendition={data} /> : null}
+      <Deadlines rendition={data} />
+    </div>
+  );
+}
+
+function BasisControls({
+  basis,
+  filedByAgent,
+  onBasis,
+  onAgent,
+  rendition,
+}: {
+  basis: RenditionBasis;
+  filedByAgent: boolean;
+  onBasis: (basis: RenditionBasis) => void;
+  onAgent: (value: boolean) => void;
+  rendition: Rendition;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-[var(--color-hairline)] px-5 py-3">
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+          Filed on
+        </span>
+        {(
+          [
+            {
+              value: 'cost' as const,
+              label: 'Cost and year',
+              help: 'Historical cost and year acquired, per Tax Code 22.01(a)(5). Facts from the client’s own books, which the district then values with its own schedules. It also never triggers the 22.24(e) notarization requirement, at any value.',
+            },
+            {
+              value: 'estimate' as const,
+              label: 'Good faith estimate',
+              help: 'A stated opinion of market value. Worth it where the schedules overstate genuinely obsolete equipment — but the chief appraiser can demand support within 21 days (22.07), and an agent-filed estimate over $150,000 must be notarized.',
+            },
+          ] as const
+        ).map((option) => (
+          <Tooltip key={option.value} title={option.label} content={option.help}>
+            <button
+              type="button"
+              onClick={() => onBasis(option.value)}
+              aria-pressed={basis === option.value}
+              className={cn(
+                'cursor-pointer rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
+                basis === option.value
+                  ? 'border-[var(--color-series-1)] bg-[color-mix(in_oklab,var(--color-series-1)_14%,transparent)] text-[var(--color-series-1)]'
+                  : 'border-[var(--color-hairline)] bg-[var(--color-surface)] text-[var(--color-ink-secondary)] hover:bg-[var(--color-plane)]',
+              )}
+            >
+              {option.label}
+            </button>
+          </Tooltip>
+        ))}
+      </div>
+
+      <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--color-ink-secondary)]">
+        <input
+          type="checkbox"
+          checked={filedByAgent}
+          onChange={(e) => onAgent(e.target.checked)}
+          className="cursor-pointer"
+        />
+        Filed by us as agent
+      </label>
+
+      <div
+        className={cn(
+          'ml-auto flex items-center gap-1.5 text-xs',
+          rendition.notarization.required
+            ? 'text-[var(--color-warning)]'
+            : 'text-[var(--color-ink-muted)]',
+        )}
+      >
+        <Stamp size={13} strokeWidth={2} />
+        <Tooltip
+          title={rendition.notarization.required ? 'Notarization required' : 'No notarization'}
+          content={rendition.notarization.reason}
+        >
+          <span className="cursor-help underline decoration-dotted underline-offset-2">
+            {rendition.notarization.required ? 'Notarization required' : 'No notary needed'}
+          </span>
+        </Tooltip>
+      </div>
+    </div>
+  );
+}
+
+function Totals({ rendition }: { rendition: Rendition }) {
+  const tiles = [
+    { label: 'Historical cost filed', value: money(rendition.totalHistoricalCost) },
+    {
+      label: 'Good faith estimate',
+      value:
+        rendition.totalGoodFaithEstimate === null ? '—' : money(rendition.totalGoodFaithEstimate),
+      note: rendition.totalGoodFaithEstimate === null ? 'not filed on this basis' : undefined,
+    },
+    {
+      label: 'District schedule value',
+      value: money(rendition.scheduleValue),
+      note: 'shown for comparison, not filed',
+    },
+  ];
+  return (
+    <div className="grid grid-cols-1 gap-px border-b border-[var(--color-hairline)] bg-[var(--color-hairline)] sm:grid-cols-3">
+      {tiles.map((tile) => (
+        <div key={tile.label} className="bg-[var(--color-surface)] px-5 py-3">
+          <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+            {tile.label}
+          </p>
+          <p className="tabular mt-1 text-xl font-semibold">{tile.value}</p>
+          {tile.note ? (
+            <p className="text-[11px] text-[var(--color-ink-muted)]">{tile.note}</p>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function Blockers({ rendition }: { rendition: Rendition }) {
+  const blocking = rendition.blockers.filter((b) => b.severity === 'blocking');
+  const warnings = rendition.blockers.filter((b) => b.severity === 'warning');
+
+  return (
+    <Card>
+      <CardHeader
+        title={blocking.length > 0 ? 'Not ready to file' : 'Ready to file, with notes'}
+        description="What stands between this draft and a signature. Blocking items would make the form wrong or incomplete; warnings would make it defensible but worse than it needs to be."
+      />
+      {rendition.blockers.length === 0 ? (
+        <p className="flex items-center gap-2 px-5 py-4 text-sm text-[var(--color-good)]">
+          <CircleCheck size={15} strokeWidth={2} />
+          Nothing outstanding.
+        </p>
+      ) : (
+        <ul className="divide-y divide-[var(--color-hairline)]">
+          {[...blocking, ...warnings].map((item) => (
+            <li key={item.key} className="flex items-start gap-3 px-5 py-3">
+              <AlertTriangle
+                size={14}
+                strokeWidth={2}
+                className={cn(
+                  'mt-0.5 shrink-0',
+                  item.severity === 'blocking'
+                    ? 'text-[var(--color-critical)]'
+                    : 'text-[var(--color-warning)]',
+                )}
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">{item.message}</p>
+                <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">{item.resolution}</p>
+              </div>
+              <Badge tone={item.severity === 'blocking' ? 'critical' : 'warning'}>
+                {item.severity === 'blocking' ? 'blocking' : 'note'}
+              </Badge>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+function Schedules({ rendition }: { rendition: Rendition }) {
+  return (
+    <>
+      {rendition.qualifiesForScheduleA ? (
+        <Card>
+          <p className="px-5 py-3 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+            Total value is under $20,000, so the whole rendition goes on Schedule A: a general
+            description and a total, with type, year and cost optional. The itemized detail below is
+            still available if you would rather file it.
+          </p>
+        </Card>
+      ) : null}
+      {rendition.schedules.map((schedule) => (
+        <Card key={schedule.key}>
+          <CardHeader title={schedule.title} description={schedule.instruction} />
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--color-hairline)] text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+                  <th className="px-5 py-2 text-left font-medium">Property type</th>
+                  <th className="px-5 py-2 text-right font-medium">Year acquired</th>
+                  <th className="px-5 py-2 text-right font-medium">Assets</th>
+                  <th className="px-5 py-2 text-right font-medium">Historical cost</th>
+                  {schedule.totalEstimate !== null ? (
+                    <th className="px-5 py-2 text-right font-medium">Good faith estimate</th>
+                  ) : null}
+                </tr>
+              </thead>
+              <tbody>
+                {schedule.lines.map((line) => (
+                  <tr
+                    key={`${line.type}-${line.yearAcquired}`}
+                    className="border-b border-[var(--color-hairline)]"
+                  >
+                    <td className="px-5 py-2">{line.type}</td>
+                    <td className="tabular px-5 py-2 text-right">{line.yearAcquired ?? '—'}</td>
+                    <td className="tabular px-5 py-2 text-right text-[var(--color-ink-secondary)]">
+                      {count(line.assetCount)}
+                    </td>
+                    <td className="tabular px-5 py-2 text-right">
+                      {moneyExact(line.historicalCost)}
+                    </td>
+                    {schedule.totalEstimate !== null ? (
+                      <td className="tabular px-5 py-2 text-right">
+                        {moneyExact(line.goodFaithEstimate)}
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+                <tr className="font-semibold">
+                  <td className="px-5 py-2" colSpan={3}>
+                    Total
+                  </td>
+                  <td className="tabular px-5 py-2 text-right">{moneyExact(schedule.totalCost)}</td>
+                  {schedule.totalEstimate !== null ? (
+                    <td className="tabular px-5 py-2 text-right">
+                      {moneyExact(schedule.totalEstimate)}
+                    </td>
+                  ) : null}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ))}
+    </>
+  );
+}
+
+function Exclusions({ rendition }: { rendition: Rendition }) {
+  return (
+    <Card>
+      <CardHeader
+        title="Deliberately not on this form"
+        description="Property in the register that does not belong on the rendition. Listed with its reason, because “why isn’t this on here” is the first question anyone reviewing it will ask."
+      />
+      <ul className="divide-y divide-[var(--color-hairline)]">
+        {rendition.exclusions.map((exclusion) => (
+          <li
+            key={`${exclusion.categoryKey}-${exclusion.reason}`}
+            className="flex flex-wrap items-baseline gap-x-3 px-5 py-2.5 text-sm"
+          >
+            <span className="font-medium">{exclusion.label}</span>
+            <span className="text-xs text-[var(--color-ink-secondary)]">{exclusion.reason}</span>
+            <span className="tabular ml-auto text-xs text-[var(--color-ink-muted)]">
+              {count(exclusion.assetCount)} {plural(exclusion.assetCount, 'asset')} ·{' '}
+              {moneyExact(exclusion.originalCost)}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function Deadlines({ rendition }: { rendition: Rendition }) {
+  const today = new Date().toISOString().slice(0, 10);
+  return (
+    <Card>
+      <CardHeader
+        title={`${rendition.taxYear} filing calendar`}
+        description="Every date carries the statute it comes from — a deadline nobody can check is one nobody will trust when it matters."
+      />
+      <ul className="divide-y divide-[var(--color-hairline)]">
+        {rendition.deadlines.map((deadline) => {
+          const past = deadline.date < today;
+          return (
+            <li key={deadline.key} className="flex items-start gap-3 px-5 py-2.5">
+              <CalendarDays
+                size={13}
+                strokeWidth={2}
+                className="mt-0.5 shrink-0 text-[var(--color-ink-muted)]"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm">
+                  <span className={cn('font-medium', past ? 'text-[var(--color-ink-muted)]' : '')}>
+                    {deadline.label}
+                  </span>
+                  <span className="tabular ml-2 text-xs text-[var(--color-ink-secondary)]">
+                    {new Date(`${deadline.date}T00:00:00Z`).toLocaleDateString(undefined, {
+                      timeZone: 'UTC',
+                      year: 'numeric',
+                      month: 'short',
+                      day: 'numeric',
+                    })}
+                  </span>
+                </p>
+                <p className="mt-0.5 text-xs leading-relaxed text-[var(--color-ink-muted)]">
+                  {deadline.basis}
+                </p>
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </Card>
+  );
+}
