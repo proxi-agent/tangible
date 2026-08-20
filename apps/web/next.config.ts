@@ -1,6 +1,26 @@
 import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
 
+/**
+ * The single source of env truth is the repo-root .env (apps/api loads the same
+ * file). Next only auto-loads env from its own directory, so it is loaded here
+ * — this runs before anything else in the server process. Real environment
+ * variables win over the file, and a deployment has no file at all: both are
+ * the --env-file semantics loadEnvFile follows.
+ */
+try {
+  process.loadEnvFile(fileURLToPath(new URL('../../.env', import.meta.url)));
+} catch {
+  // No .env — a deployment, or a fresh checkout running on defaults.
+}
+
+/**
+ * Production builds run webpack (`next build --webpack` in package.json): the
+ * Turbopack build chunks this module graph into a cycle and dies collecting
+ * page data with "Cannot access 'b' before initialization" in @tangible/types,
+ * while dev (Turbopack) and the webpack build are both fine. Re-try dropping
+ * the flag on a future Next upgrade.
+ */
 const config: NextConfig = {
   reactStrictMode: true,
   // The shared packages ship TypeScript-built ESM; let Next compile them in-place
