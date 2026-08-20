@@ -48,6 +48,11 @@ export const ClientLocationSchema = z.object({
   zip: z.string().nullable(),
   /** Warehouse jurisdiction slug (e.g. `tx-harris`) once the situs is placed. */
   jurisdictionId: z.string().nullable(),
+  /**
+   * This site's account on the public roll. The district opens one per business
+   * location, so it belongs to the site and not to the season's engagement.
+   */
+  accountId: z.string().nullable(),
   notes: z.string().nullable(),
 });
 
@@ -88,6 +93,52 @@ export const EngagementSiteSchema = z.object({
 export type EngagementSite = z.infer<typeof EngagementSiteSchema>;
 
 /**
+ * One return this engagement owes: a placed site, and the property standing on
+ * it.
+ *
+ * A rendition is a statement about one account, and a district opens one
+ * account per business location, so the unit of filing is the situs and not the
+ * season's engagement. Everything upstream — the register, its classification,
+ * the valuation, the savings report — is engagement-wide and stays that way,
+ * because the client hired us once for a year's work. Only the paper splits.
+ *
+ * A site with no property held on it is not a return. Nothing would go on the
+ * form, and filing an empty rendition on an account the client no longer
+ * occupies invites a district to keep assessing it.
+ */
+export const EngagementReturnSchema = z.object({
+  locationId: z.string(),
+  label: z.string(),
+  /** The site's roll account. Null means the filing cannot cite one yet. */
+  accountId: z.string().nullable(),
+  /** The site's own county where it names one, else the engagement's. */
+  jurisdictionId: z.string().nullable(),
+  /** The situs as the form prints it. Empty until the address is filled in. */
+  addressLines: z.array(z.string()),
+  /** Property held at this site. Disposed rows are on no return at all. */
+  assetCount: z.number().int().nonnegative(),
+  totalCost: z.number(),
+});
+
+export type EngagementReturn = z.infer<typeof EngagementReturnSchema>;
+
+/**
+ * Every return an engagement owes, and the property that is on none of them.
+ *
+ * The unplaced count is reported alongside rather than folded into a return,
+ * because which of the two it means is exactly what nobody knows yet. With a
+ * single site there is only one answer and the rendition takes it; with two,
+ * guessing would file one taxing unit's property in another's.
+ */
+export const EngagementReturnsSchema = z.object({
+  returns: z.array(EngagementReturnSchema),
+  unplacedCount: z.number().int().nonnegative(),
+  unplacedCost: z.number(),
+});
+
+export type EngagementReturns = z.infer<typeof EngagementReturnsSchema>;
+
+/**
  * The facts Form 50-144 asks for that a fixed asset register does not carry.
  *
  * Held once per client rather than per filing: a taxpayer has one identity on
@@ -123,9 +174,8 @@ export const EngagementSchema = z.object({
   id: z.string(),
   clientId: z.string(),
   taxYear: z.number().int(),
+  /** The county this season is for, and the default for its sites. */
   jurisdictionId: z.string().nullable(),
-  /** The account on the public roll, once identified — the analysis baseline. */
-  accountId: z.string().nullable(),
   /** SIC code; decides the machinery life. Falls back to the roll's business code. */
   sicCode: z.string().nullable(),
   notes: z.string().nullable(),
@@ -195,6 +245,7 @@ export const CreateLocationRequestSchema = z.object({
   stateCode: z.string().trim().length(2).toUpperCase().optional(),
   zip: z.string().trim().max(10).optional(),
   jurisdictionId: z.string().trim().optional(),
+  accountId: z.string().trim().max(60).optional(),
   notes: z.string().trim().max(5000).optional(),
 });
 
@@ -215,7 +266,6 @@ export type CreateEngagementRequest = z.infer<typeof CreateEngagementRequestSche
  */
 export const UpdateEngagementRequestSchema = z.object({
   jurisdictionId: z.string().trim().nullable().optional(),
-  accountId: z.string().trim().nullable().optional(),
   sicCode: z.string().trim().max(10).nullable().optional(),
   taxYear: z.coerce.number().int().min(2000).max(2100).optional(),
   notes: z.string().trim().max(5000).nullable().optional(),
@@ -270,6 +320,7 @@ export const UpdateLocationRequestSchema = z.object({
   stateCode: box(z.string().trim().length(2).toUpperCase()).optional(),
   zip: box(z.string().trim().max(10)).optional(),
   jurisdictionId: box(z.string().trim().max(100)).optional(),
+  accountId: box(z.string().trim().max(60)).optional(),
   notes: box(z.string().trim().max(5000)).optional(),
 });
 

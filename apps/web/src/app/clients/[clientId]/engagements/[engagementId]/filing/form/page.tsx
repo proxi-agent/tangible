@@ -5,7 +5,7 @@ import type {
   FormFieldValue,
   FormScheduleTable,
 } from '@tangible/filing';
-import type { RenditionBasis } from '@tangible/types';
+import type { EngagementReturns, RenditionBasis } from '@tangible/types';
 import { buildEngagementForm } from '@/lib/rendition';
 
 export const runtime = 'nodejs';
@@ -28,22 +28,37 @@ export default async function FormPage({
   searchParams,
 }: {
   params: Promise<{ clientId: string; engagementId: string }>;
-  searchParams: Promise<{ basis?: string; agent?: string; copy?: string }>;
+  searchParams: Promise<{ basis?: string; agent?: string; copy?: string; location?: string }>;
 }) {
   const { clientId, engagementId } = await params;
   const query = await searchParams;
   const basis: RenditionBasis = query.basis === 'estimate' ? 'estimate' : 'cost';
   const audience: FormAudience = query.copy === 'district' ? 'district' : 'file';
-  const { form, clientName, printed } = await buildEngagementForm(engagementId, {
+  const filedByAgent = query.agent !== 'false';
+  const { form, clientName, printed, target, owed } = await buildEngagementForm(engagementId, {
     basis,
-    filedByAgent: query.agent !== 'false',
+    filedByAgent,
     audience,
+    locationId: query.location ?? null,
   });
 
   const blocking = form.omissions.filter((o) => o.severity === 'blocking');
   const warnings = form.omissions.filter((o) => o.severity === 'warning');
+  // Every link off this page carries the whole question with it. Dropping the
+  // basis, the agent flag or the site would silently show a different form
+  // under the same heading, which on a page meant to be printed and signed is
+  // the one mistake worth the extra characters.
+  const search = (overrides: { copy?: FormAudience; location?: string | null }) => {
+    const copy = overrides.copy ?? audience;
+    const location = 'location' in overrides ? overrides.location : (target?.locationId ?? null);
+    return (
+      `?basis=${basis}&agent=${filedByAgent}&copy=${copy}` +
+      (location ? `&location=${encodeURIComponent(location)}` : '')
+    );
+  };
   const href = (copy: FormAudience) =>
-    `/clients/${clientId}/engagements/${engagementId}/filing/form?basis=${basis}&copy=${copy}`;
+    `/clients/${clientId}/engagements/${engagementId}/filing/form${search({ copy })}`;
+  const multi = owed.returns.length > 1;
 
   return (
     <div className="mx-auto max-w-[850px] pb-16">
@@ -54,10 +69,25 @@ export default async function FormPage({
         >
           ← Back to the draft
         </Link>
+        {multi ? (
+          <div className="flex items-center gap-1 rounded-md border border-[var(--color-hairline)] p-0.5 text-[13px]">
+            {owed.returns.map((entry) => (
+              <Copy
+                key={entry.locationId}
+                href={`/clients/${clientId}/engagements/${engagementId}/filing/form${search({ location: entry.locationId })}`}
+                active={target?.locationId === entry.locationId}
+                label={entry.label}
+              />
+            ))}
+          </div>
+        ) : null}
         <div className="ml-auto flex items-center gap-3">
           {printed.blocked === null ? (
             <a
-              href={`/api/engagements/${engagementId}/rendition/pdf?basis=${basis}&filedByAgent=${query.agent !== 'false'}`}
+              href={
+                `/api/engagements/${engagementId}/rendition/pdf?basis=${basis}&filedByAgent=${filedByAgent}` +
+                (target ? `&location=${encodeURIComponent(target.locationId)}` : '')
+              }
               className="rounded-md border border-[var(--color-hairline)] px-2.5 py-1.5 text-[13px] hover:bg-[var(--color-surface-raised)]"
             >
               Download Form 50-144
@@ -118,6 +148,9 @@ export default async function FormPage({
           <h1 className="text-[15px] leading-snug font-semibold">{form.formName}</h1>
           <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">
             {form.formRevision} · Tax year {form.taxYear} · {clientName}
+            {multi && target
+              ? ` · ${target.label}, return ${returnOrdinal(owed, target.locationId)}`
+              : ''}
             {audience === 'file' ? ' · file copy, not for filing' : ''}
           </p>
         </header>
@@ -171,6 +204,18 @@ export default async function FormPage({
       </article>
     </div>
   );
+}
+
+/**
+ * "return 2 of 3" on the face of the paper.
+ *
+ * A multi-site filing is several forms that look almost identical, and an
+ * appraiser holding one of them has no way to know the others exist. Numbering
+ * them says so — and says how many should have arrived.
+ */
+function returnOrdinal(owed: EngagementReturns, locationId: string): string {
+  const index = owed.returns.findIndex((r) => r.locationId === locationId);
+  return `${index + 1} of ${owed.returns.length}`;
 }
 
 function Copy({ href, active, label }: { href: string; active: boolean; label: string }) {

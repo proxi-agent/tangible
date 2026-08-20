@@ -28,7 +28,10 @@ export function PATCH(request: Request, { params }: Params): Promise<Response> {
       .update(schema.clientLocations)
       .set(body)
       .where(
-        and(eq(schema.clientLocations.id, locationId), eq(schema.clientLocations.clientId, clientId)),
+        and(
+          eq(schema.clientLocations.id, locationId),
+          eq(schema.clientLocations.clientId, clientId),
+        ),
       )
       .returning();
     if (!row) throw new Error('No such location on this client.');

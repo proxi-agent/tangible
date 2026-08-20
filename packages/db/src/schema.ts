@@ -219,6 +219,17 @@ export const clientLocations = pgTable(
     stateCode: text('state_code'),
     zip: text('zip'),
     jurisdictionId: text('jurisdiction_id'),
+    /**
+     * This site's account on the public roll.
+     *
+     * It lives here rather than on the engagement because that is where the
+     * district puts it: Harris opens one BPP account per business location, so
+     * a taxpayer with two sites has two accounts and files two returns. It is
+     * also durable in a way an engagement is not — the same account number is
+     * the site's identity season after season, which is what lets a 2028
+     * engagement compare against the 2027 assessment without being told again.
+     */
+    accountId: text('account_id'),
     notes: text('notes'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -285,14 +296,12 @@ export const engagements = pgTable(
       .notNull()
       .references(() => clients.id, { onDelete: 'cascade' }),
     taxYear: integer('tax_year').notNull(),
-    jurisdictionId: text('jurisdiction_id'),
     /**
-     * The client's account on the public roll, once identified. This is what
-     * turns the analysis from "here is what your register supports" into "here
-     * is what you are assessed, and here is the gap" — without it there is no
-     * "before" and no saving can honestly be claimed.
+     * The county this season's work is for, and the default for its sites. A
+     * location may name its own, and where it does that one wins — the property
+     * is taxed where it stood, not where the engagement was opened.
      */
-    accountId: text('account_id'),
+    jurisdictionId: text('jurisdiction_id'),
     /**
      * The taxpayer's SIC code. Texas keys the machinery life to what the
      * business does, not to the machine, so this decides the schedule for every

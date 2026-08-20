@@ -38,9 +38,12 @@ export function SitesCard({ clientId, engagementId }: { clientId: string; engage
     void queryClient.invalidateQueries({ queryKey: ['sites', engagementId] });
     void queryClient.invalidateQueries({ queryKey: ['client', clientId] });
     // The rendition reads situs off these placements, so the draft is stale the
-    // moment one moves. Keyed by engagement only — the draft is cached per basis
-    // and per agent flag, and a placement changes every one of them.
+    // moment one moves. Keyed by engagement only — the draft is cached per basis,
+    // per agent flag and per site, and a placement changes every one of them.
     void queryClient.invalidateQueries({ queryKey: ['engagement-rendition', engagementId] });
+    // And a placement can be the moment this engagement becomes two returns
+    // rather than one, which is the picker on the filing screen.
+    void queryClient.invalidateQueries({ queryKey: ['engagement-returns', engagementId] });
   };
 
   const place = useMutation({

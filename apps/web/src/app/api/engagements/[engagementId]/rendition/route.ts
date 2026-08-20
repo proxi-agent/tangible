@@ -27,6 +27,12 @@ export function GET(
       // `z.coerce.boolean()` treats any non-empty string as true, so map it.
       filedByAgent: raw.filedByAgent === undefined ? true : raw.filedByAgent === 'true',
     });
-    return buildEngagementRendition(engagementId, { basis, filedByAgent });
+    // Which return, where the engagement owes more than one. Absent means "the
+    // only one", and the builder blocks rather than guessing when there isn't.
+    return buildEngagementRendition(engagementId, {
+      basis,
+      filedByAgent,
+      locationId: raw.location ?? null,
+    });
   });
 }

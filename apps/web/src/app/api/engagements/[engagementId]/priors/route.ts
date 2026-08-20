@@ -11,6 +11,7 @@ import { uploadFarFile } from '@/lib/far-storage';
 import { mediaTypeFor, priorDocumentDto, runExtraction } from '@/lib/priors';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
+import { engagementAccounts } from '@/lib/sites';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -90,7 +91,7 @@ export function POST(
       documentId: row.id,
       clientName: client.name,
       expectedTaxYear: engagement.taxYear,
-      expectedAccountId: engagement.accountId,
+      expectedAccountIds: await engagementAccounts(engagement.id),
     });
   });
 }

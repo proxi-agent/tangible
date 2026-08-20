@@ -52,7 +52,6 @@ export default function EngagementPage() {
         </Link>
         <h1 className="text-lg font-semibold tracking-tight">Tax year {data.engagement.taxYear}</h1>
         <JurisdictionPicker engagement={data.engagement} />
-        <AccountLink engagement={data.engagement} />
         <SicField engagement={data.engagement} />
         {data.classification.classifiedCount > 0 ? (
           <Link
@@ -147,58 +146,6 @@ function JurisdictionPicker({ engagement }: { engagement: Engagement }) {
         </Tooltip>
       ) : null}
     </div>
-  );
-}
-
-/**
- * The client's account on the public roll.
- *
- * Free text rather than a picker: an operator reads this off a notice or an
- * HCAD search, and forcing them through a lookup screen to record a number they
- * already have in front of them would just mean it never gets recorded. A wrong
- * number fails visibly — the report says it found no account — rather than
- * quietly comparing against someone else's assessment.
- */
-function AccountLink({ engagement }: { engagement: Engagement }) {
-  const queryClient = useQueryClient();
-  const [value, setValue] = useState(engagement.accountId ?? '');
-  const update = useMutation({
-    mutationFn: (accountId: string) => api.updateEngagement(engagement.id, { accountId }),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['engagement', engagement.id] });
-      void queryClient.invalidateQueries({ queryKey: ['engagement-savings', engagement.id] });
-    },
-  });
-
-  return (
-    <form
-      className="flex items-center gap-2"
-      onSubmit={(e) => {
-        e.preventDefault();
-        update.mutate(value.trim());
-      }}
-    >
-      <TextInput
-        placeholder="Roll account #"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={() => {
-          if (value.trim() !== (engagement.accountId ?? '')) update.mutate(value.trim());
-        }}
-        aria-label="Account on the public roll"
-        className="h-8 w-40 text-xs"
-      />
-      {!engagement.accountId ? (
-        <Tooltip
-          title="Why this matters"
-          content="The savings report compares the corrected position against what the district actually assessed. Without the account number there is no “before”, so no saving can be claimed."
-        >
-          <span className="cursor-help text-[11px] text-[var(--color-ink-muted)]">
-            needed to compare
-          </span>
-        </Tooltip>
-      ) : null}
-    </form>
   );
 }
 

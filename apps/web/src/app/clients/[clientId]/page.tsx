@@ -198,11 +198,18 @@ export default function ClientPage() {
  * It stops being optional at the form. Line 1 of Form 50-144 wants the physical
  * location of the property, and a label nobody outside this app recognises will
  * not do.
+ *
+ * The account number sits here for the same reason it sits on the district's
+ * side: Harris opens one BPP account per business location, so the account
+ * belongs to the site rather than to a season's engagement, and it is the same
+ * number next year. It is what each of this client's returns files under, and
+ * what a prior year's assessment is looked up by.
  */
 function LocationRow({ clientId, location }: { clientId: string; location: ClientLocation }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState({
+    accountId: location.accountId ?? '',
     addressLine1: location.addressLine1 ?? '',
     city: location.city ?? '',
     stateCode: location.stateCode ?? '',
@@ -215,8 +222,11 @@ function LocationRow({ clientId, location }: { clientId: string; location: Clien
       setOpen(false);
       void queryClient.invalidateQueries({ queryKey: ['client', clientId] });
       // A situs the rendition could not print may have just become printable,
-      // on whichever of this client's engagements has property here.
+      // on whichever of this client's engagements has property here. The same
+      // goes for the account: the returns list, the savings report's prior
+      // assessment and the form all read it off this row.
       void queryClient.invalidateQueries({ queryKey: ['engagement-rendition'] });
+      void queryClient.invalidateQueries({ queryKey: ['engagement-returns'] });
     },
   });
 
@@ -238,8 +248,15 @@ function LocationRow({ clientId, location }: { clientId: string; location: Clien
         ) : (
           <span className="text-xs text-[var(--color-warning)]">no address yet</span>
         )}
+        {location.accountId ? (
+          <span className="tabular text-xs text-[var(--color-ink-muted)]">
+            account {location.accountId}
+          </span>
+        ) : (
+          <span className="text-xs text-[var(--color-warning)]">no account</span>
+        )}
         <Button variant="ghost" className="ml-auto h-7 text-xs" onClick={() => setOpen(!open)}>
-          {open ? 'Cancel' : address ? 'Edit' : 'Add address'}
+          {open ? 'Cancel' : address || location.accountId ? 'Edit' : 'Add address'}
         </Button>
       </div>
 
@@ -284,8 +301,16 @@ function LocationRow({ clientId, location }: { clientId: string; location: Clien
               className="w-24"
             />
           </Field>
+          <Field label="Account">
+            <TextInput
+              placeholder="2349508"
+              value={draft.accountId}
+              onChange={(e) => setDraft({ ...draft, accountId: e.target.value })}
+              className="w-28"
+            />
+          </Field>
           <Button variant="primary" type="submit" disabled={save.isPending}>
-            {save.isPending ? 'Saving…' : 'Save address'}
+            {save.isPending ? 'Saving…' : 'Save site'}
           </Button>
           {save.error ? (
             <span className="text-xs text-[var(--color-critical)]">

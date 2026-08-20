@@ -14,6 +14,7 @@ import type {
 import { scheduleFor } from '@tangible/valuation';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { fetchMappedDocument } from '@/lib/prior-mapping';
+import { engagementAccounts } from '@/lib/sites';
 import { HttpError } from '@/lib/route';
 import { getWarehouse } from '@/lib/warehouse';
 import { fetchEngagement } from '@/lib/workspace';
@@ -80,7 +81,11 @@ export async function buildSavingsAnalysis(engagementId: string): Promise<Saving
     : null;
 
   const [assessed, blendedTaxRate, fingerprint] = await Promise.all([
-    lookupAssessed(engagement.jurisdictionId, engagement.accountId, engagement.taxYear),
+    lookupAssessed(
+      engagement.jurisdictionId,
+      await engagementAccounts(engagementId),
+      engagement.taxYear,
+    ),
     lookupRate(engagement.jurisdictionId),
     analysisFingerprint({ engagementId, source: 'savings' }),
   ]);
@@ -214,12 +219,7 @@ export async function analysisFingerprint(options: {
  * because someone fixed a typo teaches people to ignore the word.
  */
 function engagementParts(engagement: EngagementRow): Array<string | number | null> {
-  return [
-    engagement.taxYear,
-    engagement.jurisdictionId,
-    engagement.accountId,
-    engagement.sicCode,
-  ];
+  return [engagement.taxYear, engagement.jurisdictionId, engagement.sicCode];
 }
 
 /**
@@ -289,43 +289,6 @@ async function mappingFingerprint(documentId: string): Promise<Array<string | nu
  * other half is fully computable. A missing roll means the report says it has
  * no "before" rather than failing.
  */
-async function lookupAssessed(
-  jurisdictionId: string | null,
-  accountId: string | null,
-  taxYear: number,
-): Promise<AssessedPosition | null> {
-  if (!jurisdictionId || !accountId) return null;
-  try {
-    const warehouse = await getWarehouse();
-    // The engagement is usually for a season the roll has not published yet —
-    // a 2027 filing prepared in 2026 against a roll that ends at 2026. Asking
-    // for a year the warehouse does not hold returns nothing, so fall back to
-    // the most recent year it does and let the report label which year it
-    // compared against.
-    const years = await listAvailableYears(warehouse, jurisdictionId);
-    if (years.length === 0) return null;
-    const lookupYear = years.includes(taxYear) ? taxYear : Math.max(...years);
-    const account = await getAccount(warehouse, jurisdictionId, lookupYear, accountId);
-    if (!account) return null;
-    // Prefer the engagement's own year; fall back to the most recent on the
-    // roll, and say which — comparing a corrected 2027 position against a 2025
-    // assessment without labelling the year would be quietly misleading.
-    const year =
-      account.history.find((point) => point.taxYear === taxYear) ?? account.history.at(-1);
-    return {
-      accountId: account.accountId,
-      taxYear: year?.taxYear ?? taxYear,
-      appraisedValue: year?.appraisedValue ?? null,
-      assessedValue: year?.assessedValue ?? null,
-      renditionFiled: year?.renditionFiled ?? null,
-      ownerName: account.ownerName,
-    };
-  } catch (cause) {
-    console.warn('[savings] roll lookup unavailable', cause);
-    return null;
-  }
-}
-
 async function lookupRate(jurisdictionId: string | null): Promise<number> {
   if (!jurisdictionId) return FALLBACK_BLENDED_RATE;
   try {
@@ -338,4 +301,77 @@ async function lookupRate(jurisdictionId: string | null): Promise<number> {
   } catch {
     return FALLBACK_BLENDED_RATE;
   }
+}
+
+async function lookupAssessed(
+  jurisdictionId: string | null,
+  accountIds: readonly string[],
+  taxYear: number,
+): Promise<AssessedPosition | null> {
+  if (!jurisdictionId || accountIds.length === 0) return null;
+  try {
+    const warehouse = await getWarehouse();
+    // The engagement is usually for a season the roll has not published yet —
+    // a 2027 filing prepared in 2026 against a roll that ends at 2026. Asking
+    // for a year the warehouse does not hold returns nothing, so fall back to
+    // the most recent year it does and let the report label which year it
+    // compared against.
+    const years = await listAvailableYears(warehouse, jurisdictionId);
+    if (years.length === 0) return null;
+    const lookupYear = years.includes(taxYear) ? taxYear : Math.max(...years);
+    const found = (
+      await Promise.all(
+        accountIds.map((accountId) => getAccount(warehouse, jurisdictionId, lookupYear, accountId)),
+      )
+    ).filter((account) => account !== null);
+    if (found.length === 0) return null;
+
+    const positions = found.map((account) => {
+      // Prefer the engagement's own year; fall back to the most recent on the
+      // roll, and say which — comparing a corrected 2027 position against a 2025
+      // assessment without labelling the year would be quietly misleading.
+      const year =
+        account.history.find((point) => point.taxYear === taxYear) ?? account.history.at(-1);
+      return {
+        accountId: account.accountId,
+        taxYear: year?.taxYear ?? taxYear,
+        appraisedValue: year?.appraisedValue ?? null,
+        assessedValue: year?.assessedValue ?? null,
+        renditionFiled: year?.renditionFiled ?? null,
+        ownerName: account.ownerName,
+      } satisfies AssessedPosition;
+    });
+    return positions.length === 1 ? positions[0]! : combine(positions);
+  } catch (cause) {
+    console.warn('[savings] roll lookup unavailable', cause);
+    return null;
+  }
+}
+
+/**
+ * Several accounts read as one position.
+ *
+ * The report is engagement-wide — one register, one classification, one set of
+ * findings — while the roll is per site, so the "before" a multi-location
+ * client is compared against is the sum of what the district has them at. Sums
+ * for the money, because that is what the client pays; `null` where every
+ * account is silent, so a missing figure stays missing rather than becoming a
+ * zero that reads as "assessed at nothing". `renditionFiled` is true only if
+ * every site filed: one site that did not is a client who did not, which is the
+ * fact the report is trying to surface.
+ */
+function combine(positions: readonly AssessedPosition[]): AssessedPosition {
+  const sum = (pick: (p: AssessedPosition) => number | null) => {
+    const values = positions.map(pick).filter((value): value is number => value !== null);
+    return values.length === 0 ? null : values.reduce((total, value) => total + value, 0);
+  };
+  const filed = positions.map((p) => p.renditionFiled).filter((f) => f !== null);
+  return {
+    accountId: positions.map((p) => p.accountId).join(', '),
+    taxYear: Math.max(...positions.map((p) => p.taxYear)),
+    appraisedValue: sum((p) => p.appraisedValue),
+    assessedValue: sum((p) => p.assessedValue),
+    renditionFiled: filed.length === 0 ? null : filed.every(Boolean),
+    ownerName: positions.find((p) => p.ownerName)?.ownerName ?? null,
+  };
 }

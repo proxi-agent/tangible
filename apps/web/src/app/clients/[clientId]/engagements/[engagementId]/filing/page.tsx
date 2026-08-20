@@ -8,12 +8,19 @@ import {
   CircleCheck,
   FileText,
   Gavel,
+  MapPin,
   Stamp,
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
-import type { Rendition, RenditionDecision, RenditionBasis } from '@tangible/types';
+import type {
+  EngagementReturn,
+  EngagementReturns,
+  Rendition,
+  RenditionDecision,
+  RenditionBasis,
+} from '@tangible/types';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { count, money, moneyExact, plural } from '@/lib/format';
@@ -34,15 +41,25 @@ export default function FilingPage() {
   const { clientId, engagementId } = useParams<{ clientId: string; engagementId: string }>();
   const [basis, setBasis] = useState<RenditionBasis>('cost');
   const [filedByAgent, setFiledByAgent] = useState(true);
+  // Null is "no return chosen". For the ordinary one-site engagement that is
+  // also the answer, and the server resolves it to the only return there is.
+  const [locationId, setLocationId] = useState<string | null>(null);
+
+  const returns = useQuery({
+    queryKey: ['engagement-returns', engagementId],
+    queryFn: () => api.returns(engagementId),
+  });
 
   const { data, error, isLoading } = useQuery({
-    queryKey: ['engagement-rendition', engagementId, basis, filedByAgent],
-    queryFn: () => api.rendition(engagementId, { basis, filedByAgent }),
+    queryKey: ['engagement-rendition', engagementId, basis, filedByAgent, locationId],
+    queryFn: () => api.rendition(engagementId, { basis, filedByAgent, locationId }),
     placeholderData: (previous) => previous,
   });
 
   if (error) return <ErrorState error={error} />;
   if (isLoading || !data) return <Skeleton className="h-96 w-full" />;
+
+  const site = locationId ? `&location=${encodeURIComponent(locationId)}` : '';
 
   return (
     <div className="space-y-5">
@@ -55,7 +72,7 @@ export default function FilingPage() {
           Back to the engagement
         </Link>
         <Link
-          href={`/clients/${clientId}/engagements/${engagementId}/filing/form?basis=${basis}&agent=${filedByAgent}`}
+          href={`/clients/${clientId}/engagements/${engagementId}/filing/form?basis=${basis}&agent=${filedByAgent}${site}`}
           className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-[var(--color-ink)] hover:underline"
         >
           <FileText size={13} strokeWidth={2} />
@@ -63,9 +80,13 @@ export default function FilingPage() {
         </Link>
       </div>
 
+      {returns.data && returns.data.returns.length > 1 ? (
+        <ReturnPicker owed={returns.data} chosen={locationId} onChoose={setLocationId} />
+      ) : null}
+
       <Card>
         <CardHeader
-          title={`Form 50-144 — ${data.clientName}, tax year ${data.taxYear}`}
+          title={`Form 50-144 — ${data.clientName}${chosenLabel(returns.data, locationId)}, tax year ${data.taxYear}`}
           description={
             <>
               {data.jurisdictionName ?? data.jurisdictionId ?? 'No jurisdiction set'}
@@ -92,6 +113,103 @@ export default function FilingPage() {
       <Deadlines rendition={data} />
     </div>
   );
+}
+
+/**
+ * Which of this engagement's returns is on screen.
+ *
+ * A district opens one account per business location, so a client with two
+ * sites files two forms — not one form covering both. This strip exists to make
+ * that visible before anyone signs anything: the returns are listed whether or
+ * not one is picked, with the property and the account behind each, so the
+ * count is a fact about the engagement rather than a surprise at the printer.
+ *
+ * Nothing is selected to begin with, deliberately. The draft below then comes
+ * back covering the whole register and blocked, which is the honest answer to a
+ * screen that assumed a single form — and it is a worse outcome to quietly show
+ * one site's return as if it were the filing.
+ */
+function ReturnPicker({
+  owed,
+  chosen,
+  onChoose,
+}: {
+  owed: EngagementReturns;
+  chosen: string | null;
+  onChoose: (locationId: string | null) => void;
+}) {
+  return (
+    <Card>
+      <CardHeader
+        title={`${count(owed.returns.length)} returns for this engagement`}
+        description="Property is assessed where it stood on January 1 and each business location has its own account, so each site here is its own Form 50-144. Pick the one you are working on — the schedules, the totals and the findings below are all measured against that site alone."
+        action={
+          owed.unplacedCount > 0 ? (
+            <span className="text-xs text-[var(--color-warning)]">
+              {count(owed.unplacedCount)} {plural(owed.unplacedCount, 'asset')} on no return
+            </span>
+          ) : null
+        }
+      />
+      <div className="flex flex-wrap gap-2 px-5 py-3">
+        {owed.returns.map((entry) => (
+          <ReturnChip
+            key={entry.locationId}
+            entry={entry}
+            active={chosen === entry.locationId}
+            onClick={() => onChoose(chosen === entry.locationId ? null : entry.locationId)}
+          />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function ReturnChip({
+  entry,
+  active,
+  onClick,
+}: {
+  entry: EngagementReturn;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={`The return for ${entry.label}`}
+      className={cn(
+        'cursor-pointer rounded-lg border px-3 py-2 text-left transition-colors',
+        active
+          ? 'border-[var(--color-series-1)] bg-[color-mix(in_oklab,var(--color-series-1)_10%,transparent)]'
+          : 'border-[var(--color-hairline)] bg-[var(--color-surface)] hover:bg-[var(--color-plane)]',
+      )}
+    >
+      <span className="flex items-center gap-1.5 text-sm font-medium">
+        <MapPin size={13} strokeWidth={2} className="text-[var(--color-ink-muted)]" />
+        {entry.label}
+      </span>
+      <span className="tabular mt-0.5 block text-xs text-[var(--color-ink-secondary)]">
+        {count(entry.assetCount)} {plural(entry.assetCount, 'asset')} · {money(entry.totalCost)}
+      </span>
+      <span className="block text-[11px] text-[var(--color-ink-muted)]">
+        {entry.accountId ? (
+          `account ${entry.accountId}`
+        ) : (
+          <span className="text-[var(--color-warning)]">no account number</span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+/** The site's name in the heading, but only where there is more than one. */
+function chosenLabel(owed: EngagementReturns | undefined, locationId: string | null): string {
+  if (!owed || owed.returns.length < 2 || !locationId) return '';
+  const entry = owed.returns.find((r) => r.locationId === locationId);
+  return entry ? ` at ${entry.label}` : '';
 }
 
 function BasisControls({

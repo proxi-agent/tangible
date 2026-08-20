@@ -92,7 +92,7 @@ export interface ExtractOptions {
   documentId: string;
   clientName: string | null;
   expectedTaxYear: number | null;
-  expectedAccountId: string | null;
+  expectedAccountIds: readonly string[];
 }
 
 /**
@@ -152,7 +152,7 @@ export async function runExtraction(options: ExtractOptions): Promise<PriorDocum
     });
     const footing = verifyRendition(parsed, {
       expectedTaxYear: options.expectedTaxYear,
-      expectedAccountId: options.expectedAccountId,
+      expectedAccountIds: options.expectedAccountIds,
     });
 
     // Lines are replaced wholesale: a re-extraction is a fresh reading of the

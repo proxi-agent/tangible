@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, isNull, or, type SQL } from 'drizzle-orm';
 import {
   buildForm50144,
   buildRendition,
@@ -14,17 +14,35 @@ import {
   type RenditionAsset,
 } from '@tangible/filing';
 import type { ClientFilingProfileRow } from '@tangible/db';
-import type { ClassificationStatus, Rendition, RenditionBasis } from '@tangible/types';
+import type {
+  ClassificationStatus,
+  EngagementReturn,
+  EngagementReturns,
+  FilingBlocker,
+  Rendition,
+  RenditionBasis,
+} from '@tangible/types';
 import { scheduleFor } from '@tangible/valuation';
 import { currentActor } from '@/lib/actor';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { renditionPositions } from '@/lib/findings';
+import { HttpError } from '@/lib/route';
+import { engagementReturns } from '@/lib/sites';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 export interface RenditionOptions {
   basis: RenditionBasis;
   filedByAgent: boolean;
+  /**
+   * Which of the engagement's returns to build.
+   *
+   * Optional because most engagements are one site and nobody should have to
+   * name it. Omitted, {@link resolveReturn} takes the only return there is;
+   * where there are several it builds the register whole and blocks, which is
+   * the honest answer to "show me the form" when the answer is "there are two".
+   */
+  locationId?: string | null;
 }
 
 /**
@@ -36,6 +54,58 @@ export interface RenditionOptions {
  * — the moment two callers assemble the inputs themselves, they drift, and the
  * drift shows up on a document somebody signed.
  */
+/**
+ * Which return we are building, and which property is on it.
+ *
+ * A rendition states one account's property, so the target has to be settled
+ * before a single asset is read. Three cases, and the middle one is the whole
+ * reason this exists:
+ *
+ * - a site named explicitly, which must be one this engagement actually owes;
+ * - nothing named and one return owed, which is that return — the ordinary
+ *   single-site engagement, where making somebody pick from a list of one
+ *   would be ceremony;
+ * - nothing named and several owed, which is no return at all. The register is
+ *   built whole so the screen has something true to show, and the form blocks.
+ */
+async function resolveReturn(
+  engagementId: string,
+  locationId: string | null | undefined,
+): Promise<{ target: EngagementReturn | null; owed: EngagementReturns }> {
+  const owed = await engagementReturns(engagementId);
+  if (locationId) {
+    const target = owed.returns.find((r) => r.locationId === locationId);
+    if (!target) {
+      throw new HttpError(404, 'That site holds none of this engagement’s property.');
+    }
+    return { target, owed };
+  }
+  return { target: owed.returns.length === 1 ? owed.returns[0]! : null, owed };
+}
+
+/**
+ * The rows on one return.
+ *
+ * The subtle case is property the register placed nowhere. With a single site
+ * it stays on the return: the client has nowhere else to put it, filing it is
+ * the safe position under 22.28, and the form says out loud that it was
+ * assumed. With two sites we genuinely do not know which, so it stays off every
+ * return and blocks — a guess there would file one district's property in
+ * another's, and the client would find out from a bill.
+ */
+function returnAssetsWhere(
+  engagementId: string,
+  target: EngagementReturn | null,
+  owed: EngagementReturns,
+): SQL | undefined {
+  if (!target) return engagementAssetsWhere(engagementId);
+  const placement =
+    owed.returns.length === 1
+      ? or(eq(schema.assets.locationId, target.locationId), isNull(schema.assets.locationId))
+      : eq(schema.assets.locationId, target.locationId);
+  return and(engagementAssetsWhere(engagementId), placement);
+}
+
 export async function buildEngagementRendition(
   engagementId: string,
   options: RenditionOptions,
@@ -44,15 +114,23 @@ export async function buildEngagementRendition(
   const db = requireDb();
   // The decision log, read alongside the register. Empty until somebody has
   // committed a set, which is the normal state of a new engagement.
+  //
+  // Engagement-wide on purpose, even when the form is one site's. A position
+  // names a category and re-derives its property from whatever register it is
+  // handed, so the same accepted finding takes the same class of property off
+  // each site's return, measured against that site — which is what accepting it
+  // meant.
+  const { target, owed } = await resolveReturn(engagementId, options.locationId);
   const positions = await renditionPositions(engagementId);
   const rows = await db
     .select({ asset: schema.assetVersions, classification: schema.assetClassifications })
     .from(schema.assetVersions)
+    .innerJoin(schema.assets, eq(schema.assets.id, schema.assetVersions.assetId))
     .leftJoin(
       schema.assetClassifications,
       eq(schema.assetClassifications.assetId, schema.assetVersions.assetId),
     )
-    .where(engagementAssetsWhere(engagementId));
+    .where(returnAssetsWhere(engagementId, target, owed));
 
   const assets: RenditionAsset[] = rows.map(({ asset, classification }) => ({
     id: asset.assetId,
@@ -65,72 +143,40 @@ export async function buildEngagementRendition(
     status: (classification?.status as ClassificationStatus | undefined) ?? null,
   }));
 
-  return buildRendition({
+  // The site's county where it has one — the schedules that value this property
+  // are the ones published where it stood, not where the engagement was opened.
+  const jurisdictionId = target?.jurisdictionId ?? engagement.jurisdictionId;
+
+  const rendition = buildRendition({
     engagementId,
     clientName: client.name,
     taxYear: engagement.taxYear,
-    jurisdictionId: engagement.jurisdictionId,
-    accountId: engagement.accountId,
+    jurisdictionId,
+    accountId: target?.accountId ?? null,
     sicCode: engagement.sicCode,
     assets,
     positions,
-    schedule: engagement.jurisdictionId
-      ? (scheduleFor(engagement.jurisdictionId, engagement.taxYear) ?? null)
-      : null,
+    schedule: jurisdictionId ? (scheduleFor(jurisdictionId, engagement.taxYear) ?? null) : null,
     basis: options.basis,
     filedByAgent: options.filedByAgent,
     generatedAt: new Date().toISOString(),
   });
+
+  // Where the property stood is an engagement-level fact, so the filing package
+  // — which is handed one return's assets and nothing about the others — has no
+  // way to raise it. The draft would otherwise show a register spanning two
+  // sites under a heading that says one form.
+  rendition.blockers.push(...situsProblems(target, owed));
+  return rendition;
 }
-
-/**
- * Where this engagement's property stood on January 1, read off the assets.
- *
- * Situs is a fact about the property, not about the engagement, which is why it
- * is resolved per asset (`assets.location_id`) rather than stored once on the
- * engagement. That has a consequence the form cannot paper over: a register
- * covering two sites is two renditions, because the situs decides which taxing
- * units get the property and the district assesses per location. So this
- * returns every location it finds and lets the caller refuse rather than
- * silently filing the first one.
- */
-async function situsFor(engagementId: string) {
-  const db = requireDb();
-  const rows = await db
-    .selectDistinct({ locationId: schema.assets.locationId })
-    .from(schema.assetVersions)
-    .innerJoin(schema.assets, eq(schema.assets.id, schema.assetVersions.assetId))
-    // Held property only. A disposed asset is not on the return, so where it
-    // used to sit cannot decide where the return is filed — and an unplaced
-    // one must not be able to block a form it does not appear on.
-    .where(and(engagementAssetsWhere(engagementId), eq(schema.assetVersions.isDisposed, false)));
-
-  const ids = rows.map((row) => row.locationId).filter((id): id is string => id !== null);
-  if (ids.length === 0) return { locations: [], unresolved: rows.length > 0 };
-
-  const locations = await db
-    .select()
-    .from(schema.clientLocations)
-    .where(inArray(schema.clientLocations.id, ids));
-  // A null location_id on any asset means the register named a site we have not
-  // resolved yet — worth saying, because it might be a *different* site.
-  return { locations, unresolved: rows.some((row) => row.locationId === null) };
-}
-
-const addressLines = (location: typeof schema.clientLocations.$inferSelect): string[] =>
-  [
-    location.addressLine1,
-    [location.city, location.stateCode].filter(Boolean).join(', '),
-    location.zip,
-  ].filter((line): line is string => Boolean(line && line.trim()));
 
 /**
  * The owner's mailing address, from the filing profile.
  *
- * Kept separate from {@link addressLines} on purpose even though the shape is
- * nearly the same. A situs is where property stood on January 1 and comes off a
- * location row; a mailing address is where the district sends the notice that
- * starts the 41.44 protest clock, and comes off the taxpayer. Collapsing them
+ * Kept separate from {@link locationAddressLines} on purpose even though the
+ * shape is nearly the same. A situs is where property stood on January 1 and
+ * comes off a location row; a mailing address is where the district sends the
+ * notice that starts the 41.44 protest clock, and comes off the taxpayer. Collapsing them
  * into one helper is how a warehouse ends up receiving the appeal deadline.
  */
 const mailingLines = (profile: ClientFilingProfileRow | null): string[] =>
@@ -148,6 +194,13 @@ export interface EngagementForm {
   /** The engagement and client names, for the page chrome. */
   clientName: string;
   taxYear: number;
+  /**
+   * Which of the engagement's returns this is, and how many there are. The page
+   * needs both: a form that is one of two has to say so on its face, and the
+   * picker that switches between them has to know what to offer.
+   */
+  target: EngagementReturn | null;
+  owed: EngagementReturns;
   /**
    * What the printed PDF can and cannot carry, which the document model has no
    * way to know — it describes the rendition, not the piece of paper. Kept
@@ -173,9 +226,9 @@ export interface EngagementForm {
 async function formInputs(engagementId: string, options: RenditionOptions) {
   const { engagement, client } = await fetchEngagement(engagementId);
   const db = requireDb();
-  const [rendition, situs, actor, profiles] = await Promise.all([
+  const [rendition, resolved, actor, profiles] = await Promise.all([
     buildEngagementRendition(engagementId, options),
-    situsFor(engagementId),
+    resolveReturn(engagementId, options.locationId),
     currentActor(),
     db
       .select()
@@ -183,7 +236,7 @@ async function formInputs(engagementId: string, options: RenditionOptions) {
       .where(eq(schema.clientFilingProfiles.clientId, client.id)),
   ]);
 
-  const single = situs.locations.length === 1 ? situs.locations[0]! : null;
+  const { target, owed } = resolved;
   const profile = profiles[0] ?? null;
 
   const party: FormParty = {
@@ -191,7 +244,7 @@ async function formInputs(engagementId: string, options: RenditionOptions) {
     // and legally need not be. Ours stands until somebody records that it does.
     ownerName: profile?.ownerName ?? client.name,
     mailingAddress: mailingLines(profile),
-    situsAddress: single ? addressLines(single) : [],
+    situsAddress: target?.addressLines ?? [],
     businessDescription: profile?.businessDescription ?? null,
   };
 
@@ -204,7 +257,7 @@ async function formInputs(engagementId: string, options: RenditionOptions) {
 
   // What the pure builders cannot see, because it is a fact about the database
   // rather than about the register.
-  const extra = situsOmissions(situs, single !== null);
+  const extra = situsOmissions(target, owed);
   if (!actor) {
     extra.push({
       field: 'Signature',
@@ -213,14 +266,23 @@ async function formInputs(engagementId: string, options: RenditionOptions) {
     });
   }
 
-  return { rendition, party, signer, extra, clientName: client.name, taxYear: engagement.taxYear };
+  return {
+    rendition,
+    party,
+    signer,
+    extra,
+    target,
+    owed,
+    clientName: client.name,
+    taxYear: engagement.taxYear,
+  };
 }
 
 export async function buildEngagementForm(
   engagementId: string,
   options: RenditionOptions & { audience: FormAudience },
 ): Promise<EngagementForm> {
-  const { rendition, party, signer, extra, clientName, taxYear } = await formInputs(
+  const { rendition, party, signer, extra, target, owed, clientName, taxYear } = await formInputs(
     engagementId,
     options,
   );
@@ -231,6 +293,8 @@ export async function buildEngagementForm(
     form,
     clientName,
     taxYear,
+    target,
+    owed,
     printed: { revision: plan.revision, blocked: plan.blocked, overflow: plan.overflow },
   };
 }
@@ -254,41 +318,103 @@ export async function buildEngagementFormPdf(
   engagementId: string,
   options: RenditionOptions,
 ): Promise<EngagementFormPdf> {
-  const { rendition, party, signer, extra, clientName } = await formInputs(engagementId, options);
+  const { rendition, party, signer, extra, target, owed, clientName } = await formInputs(
+    engagementId,
+    options,
+  );
   const plan = planFormFill({ rendition, party, signer });
   const bytes = await renderForm50144(plan);
-  const slug = clientName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const slug = (value: string) =>
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+  // Two returns for one client in one year would otherwise download as the same
+  // filename twice, and the second would be filed as a copy of the first.
+  const site = owed.returns.length > 1 && target ? `-${slug(target.label)}` : '';
   return {
     bytes,
     plan: { ...plan, omissions: [...plan.omissions, ...extra] },
-    filename: `50-144-${slug}-${rendition.taxYear}.pdf`,
+    filename: `50-144-${slug(clientName)}${site}-${rendition.taxYear}.pdf`,
   };
 }
 
-function situsOmissions(
-  situs: Awaited<ReturnType<typeof situsFor>>,
-  resolved: boolean,
-): FormOmission[] {
-  const omissions: FormOmission[] = [];
-  if (situs.locations.length > 1) {
-    omissions.push({
-      field: 'Situs address',
-      missing: `This engagement's property sits at ${situs.locations.length} locations (${situs.locations
-        .map((location) => location.label)
+/**
+ * What is still unsettled about where this property stood.
+ *
+ * Three separate failures, and they are worth keeping apart because the fix for
+ * each is different. Nothing placed at all is a register nobody has read the
+ * situs off yet. Several returns owed and none picked is a question to the
+ * operator, not a defect. Property placed nowhere while other property is
+ * placed somewhere is the dangerous one: it is under-rendering, which is what
+ * Tax Code 22.28 penalises, and it hides behind a form that otherwise looks
+ * complete.
+ *
+ * Stated once here and then handed to both screens. The draft lists blockers
+ * and the form lists omissions — different words for the same page of the same
+ * filing, and the one thing worse than saying this twice would be saying it
+ * twice differently.
+ */
+function situsProblems(target: EngagementReturn | null, owed: EngagementReturns): FilingBlocker[] {
+  const problems: FilingBlocker[] = [];
+
+  if (owed.returns.length === 0) {
+    problems.push({
+      key: 'situs-none',
+      severity: 'blocking',
+      message:
+        'No property on this engagement has a resolved location, so there is no situs to file it at.',
+      resolution: 'Place the register’s locations against sites on the engagement.',
+    });
+    return problems;
+  }
+
+  if (!target) {
+    problems.push({
+      key: 'situs-unchosen',
+      severity: 'blocking',
+      message: `This engagement is ${owed.returns.length} returns, one per site (${owed.returns
+        .map((r) => r.label)
         .join(
           ', ',
-        )}). Property is taxed where it stood on January 1, so this is that many renditions, not one form with several addresses.`,
+        )}), and this is the register whole rather than any one of them. Property is taxed where it stood on January 1 and the district opens an account per location, so a single form covering both would put one site’s property in the other’s taxing units.`,
+      resolution: 'Pick the site this form is for.',
+    });
+    return problems;
+  }
+
+  if (owed.unplacedCount > 0) {
+    const many = owed.returns.length > 1;
+    const n = owed.unplacedCount;
+    problems.push({
+      key: 'situs-unplaced',
+      severity: many ? 'blocking' : 'warning',
+      message: many
+        ? `${n} held ${n === 1 ? 'asset is' : 'assets are'} at no resolved site, so ${n === 1 ? 'it is' : 'they are'} on none of this engagement’s ${owed.returns.length} returns. Property left off every rendition is under-rendered, whichever site it turns out to sit at.`
+        : `${n} held ${n === 1 ? 'asset has' : 'assets have'} no resolved location. ${n === 1 ? 'It is' : 'They are'} filed at ${target.label} because it is the only site this engagement has, which is right only if that is where ${n === 1 ? 'it' : 'they'} actually ${n === 1 ? 'is' : 'are'}.`,
+      resolution: many
+        ? 'Place them on the sites card, so each one lands on the return for the site it sits at.'
+        : `Confirm they belong at ${target.label}, or record the site they are actually at.`,
+    });
+  }
+
+  if (target.addressLines.length === 0) {
+    problems.push({
+      key: 'situs-address',
       severity: 'blocking',
+      message: `${target.label} has no address recorded, and the form asks for the physical address the property is at — a label the client uses internally is not one.`,
+      resolution: 'Add the street address to the site on the client page.',
     });
   }
-  if (situs.unresolved) {
-    omissions.push({
-      field: 'Situs address',
-      missing: resolved
-        ? 'Some assets have no resolved location. They are being filed at the one site we do know about, which is only right if that is where they actually are.'
-        : 'No asset on this engagement has a resolved location.',
-      severity: resolved ? 'warning' : 'blocking',
-    });
-  }
-  return omissions;
+
+  return problems;
+}
+
+/** The situs problems as the printed form words them. */
+function situsOmissions(target: EngagementReturn | null, owed: EngagementReturns): FormOmission[] {
+  return situsProblems(target, owed).map((problem) => ({
+    field: 'Situs address',
+    missing: `${problem.message} ${problem.resolution}`,
+    severity: problem.severity,
+  }));
 }

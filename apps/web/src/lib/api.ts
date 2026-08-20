@@ -19,6 +19,7 @@ import type {
   CommitFindingsRequest,
   Engagement,
   EngagementDetail,
+  EngagementReturns,
   EngagementSite,
   EngagementValuation,
   FarFile,
@@ -249,6 +250,10 @@ export const api = {
 
   sites: (engagementId: string) => request<EngagementSite[]>(`/engagements/${engagementId}/sites`),
 
+  /** One entry per site holding property — the returns this engagement owes. */
+  returns: (engagementId: string) =>
+    request<EngagementReturns>(`/engagements/${engagementId}/returns`),
+
   /**
    * Placing returns the recomputed sites, not just a count — one placement
    * changes how the rest read.
@@ -325,9 +330,19 @@ export const api = {
 
   savings: (engagementId: string) => request<SavingsReport>(`/engagements/${engagementId}/savings`),
 
-  rendition: (engagementId: string, options: { basis: RenditionBasis; filedByAgent: boolean }) =>
+  /**
+   * `locationId` names which return, for an engagement that owes more than
+   * one. Left out it means the only one there is — and where there are
+   * several, the draft comes back covering the whole register and blocked,
+   * which is the true answer to a question that assumed one form.
+   */
+  rendition: (
+    engagementId: string,
+    options: { basis: RenditionBasis; filedByAgent: boolean; locationId?: string | null },
+  ) =>
     request<Rendition>(
-      `/engagements/${engagementId}/rendition?basis=${options.basis}&filedByAgent=${options.filedByAgent}`,
+      `/engagements/${engagementId}/rendition?basis=${options.basis}&filedByAgent=${options.filedByAgent}` +
+        (options.locationId ? `&location=${encodeURIComponent(options.locationId)}` : ''),
     ),
 
   // -------------------------------------------------------------------------
@@ -361,8 +376,7 @@ export const api = {
     return response.json() as Promise<PriorDocument>;
   },
 
-  priorDocument: (documentId: string) =>
-    request<MappedPriorDocument>(`/priors/${documentId}`),
+  priorDocument: (documentId: string) => request<MappedPriorDocument>(`/priors/${documentId}`),
 
   priorComparison: (documentId: string) =>
     request<RegisterComparison>(`/priors/${documentId}/comparison`),

@@ -70,7 +70,6 @@ export function PATCH(
         ...(body.jurisdictionId !== undefined
           ? { jurisdictionId: body.jurisdictionId || null }
           : {}),
-        ...(body.accountId !== undefined ? { accountId: body.accountId || null } : {}),
         ...(body.sicCode !== undefined ? { sicCode: body.sicCode || null } : {}),
         ...(body.taxYear !== undefined ? { taxYear: body.taxYear } : {}),
         ...(body.notes !== undefined ? { notes: body.notes } : {}),

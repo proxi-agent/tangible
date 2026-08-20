@@ -72,8 +72,12 @@ const SCHEDULE_A_CEILING = 20_000;
 export interface VerifyOptions {
   /** The engagement's tax year, to sanity-check the one printed on the form. */
   expectedTaxYear?: number | null;
-  /** The account we believe this client is, to catch a misfiled document. */
-  expectedAccountId?: string | null;
+  /**
+   * The accounts the engagement files under. A district opens one per business
+   * location, so a multi-site client has several and a prior return is only the
+   * wrong document if it names none of them.
+   */
+  expectedAccountIds?: readonly string[];
 }
 
 export function verifyRendition(
@@ -188,14 +192,18 @@ export function verifyRendition(
   }
 
   // Identity: is this the document we think it is?
-  if (options.expectedAccountId && rendition.accountId) {
+  if (options.expectedAccountIds?.length && rendition.accountId) {
     const filed = rendition.accountId.replace(/\D/g, '');
-    const ours = options.expectedAccountId.replace(/\D/g, '');
-    if (filed && ours && filed !== ours) {
+    const ours = options.expectedAccountIds.map((id) => id.replace(/\D/g, '')).filter(Boolean);
+    if (filed && ours.length > 0 && !ours.includes(filed)) {
+      const named =
+        options.expectedAccountIds.length === 1
+          ? `account ${options.expectedAccountIds[0]}`
+          : `accounts ${options.expectedAccountIds.join(', ')}`;
       push(
         'error',
         'account-mismatch',
-        `This return is filed under account ${rendition.accountId}, but the engagement is on account ${options.expectedAccountId}. Comparing a different account's filing would attribute someone else's numbers to this client.`,
+        `This return is filed under account ${rendition.accountId}, but the engagement files under ${named}. Comparing a different account's filing would attribute someone else's numbers to this client.`,
       );
     }
   }

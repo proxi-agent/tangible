@@ -1,6 +1,6 @@
 import 'server-only';
 import { and, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { EngagementSite } from '@tangible/types';
+import type { EngagementReturn, EngagementReturns, EngagementSite } from '@tangible/types';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
@@ -92,6 +92,97 @@ export async function engagementSites(engagementId: string): Promise<EngagementS
     if ((a.text === null) !== (b.text === null)) return a.text === null ? 1 : -1;
     return b.assetCount - a.assetCount || (a.text ?? '').localeCompare(b.text ?? '');
   });
+}
+
+/**
+ * The situs as Form 50-144 wants it printed.
+ *
+ * Kept beside the returns rather than in the form builder because it is a fact
+ * about the site, not about the paper — and because the picker on screen has to
+ * show the operator the same address the form will.
+ */
+export function locationAddressLines(row: {
+  addressLine1: string | null;
+  city: string | null;
+  stateCode: string | null;
+  zip: string | null;
+}): string[] {
+  return [row.addressLine1, [row.city, row.stateCode].filter(Boolean).join(', '), row.zip].filter(
+    (line): line is string => Boolean(line && line.trim()),
+  );
+}
+
+/**
+ * How many returns this engagement owes, and what is on each.
+ *
+ * One per placed site holding property, because that is how a district files
+ * it: Harris opens an account per business location, and the situs decides
+ * which taxing units get the value. An engagement covering two sites is two
+ * renditions — not one form listing two addresses, which would put one site's
+ * property in the other's units and is the kind of error nobody notices until a
+ * bill arrives from a school district the client has never heard of.
+ *
+ * Held property only. A site whose every row is disposed owes no return: there
+ * is nothing to state, and filing an empty one on an account the client has
+ * left invites the district to keep assessing it.
+ */
+export async function engagementReturns(engagementId: string): Promise<EngagementReturns> {
+  const db = requireDb();
+  const { engagement } = await fetchEngagement(engagementId);
+  const rows = await db
+    .select({
+      location: schema.clientLocations,
+      locationId: schema.assets.locationId,
+      assetCount: sql<number>`count(*)::int`,
+      totalCost: sql<number>`coalesce(sum(${schema.assetVersions.originalCost}), 0)::float8`,
+    })
+    .from(schema.assetVersions)
+    .innerJoin(schema.assets, eq(schema.assets.id, schema.assetVersions.assetId))
+    .leftJoin(schema.clientLocations, eq(schema.clientLocations.id, schema.assets.locationId))
+    .where(and(engagementAssetsWhere(engagementId), eq(schema.assetVersions.isDisposed, false)))
+    .groupBy(schema.clientLocations.id, schema.assets.locationId);
+
+  const returns: EngagementReturn[] = [];
+  let unplacedCount = 0;
+  let unplacedCost = 0;
+  for (const row of rows) {
+    if (row.locationId === null || row.location === null) {
+      // Either the register named no site, or it named one nobody has resolved.
+      // Both mean the same thing here: this property is on no return yet.
+      unplacedCount += row.assetCount;
+      unplacedCost += row.totalCost;
+      continue;
+    }
+    returns.push({
+      locationId: row.location.id,
+      label: row.location.label,
+      accountId: row.location.accountId,
+      // The site's own county wins where it names one. A client whose plant is
+      // in the next county over files there, whatever county the engagement
+      // was opened under.
+      jurisdictionId: row.location.jurisdictionId ?? engagement.jurisdictionId,
+      addressLines: locationAddressLines(row.location),
+      assetCount: row.assetCount,
+      totalCost: row.totalCost,
+    });
+  }
+
+  // Biggest first, then by label — a stable order, so the default return and
+  // the picker do not reshuffle between two reads of the same data.
+  returns.sort((a, b) => b.totalCost - a.totalCost || a.label.localeCompare(b.label));
+  return { returns, unplacedCount, unplacedCost };
+}
+
+/**
+ * The roll accounts this engagement files under: one per site holding property.
+ *
+ * Read off the sites rather than stored on the engagement, because that is
+ * where the district puts them — and because it means the report cannot end up
+ * comparing against an account no return is being filed on.
+ */
+export async function engagementAccounts(engagementId: string): Promise<string[]> {
+  const { returns } = await engagementReturns(engagementId);
+  return returns.map((r) => r.accountId).filter((id): id is string => id !== null);
 }
 
 /**

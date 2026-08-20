@@ -3,6 +3,7 @@ import { handle, notFound } from '@/lib/route';
 import { runExtraction } from '@/lib/priors';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
+import { engagementAccounts } from '@/lib/sites';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -33,7 +34,7 @@ export function POST(
       documentId,
       clientName: client.name,
       expectedTaxYear: engagement.taxYear,
-      expectedAccountId: engagement.accountId,
+      expectedAccountIds: await engagementAccounts(engagement.id),
     });
   });
 }

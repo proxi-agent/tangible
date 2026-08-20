@@ -82,6 +82,13 @@ export default function PriorDocumentPage() {
     queryFn: () => api.engagement(engagementId),
   });
 
+  // The accounts this engagement files under — one per site, so a return
+  // naming any of them is one of ours.
+  const { data: owed } = useQuery({
+    queryKey: ['engagement-returns', engagementId],
+    queryFn: () => api.returns(engagementId),
+  });
+
   if (error) return <ErrorState error={error} />;
   if (isLoading || !data) return <Skeleton className="h-64 w-full" />;
 
@@ -113,7 +120,9 @@ export default function PriorDocumentPage() {
       <IdentityCard
         document={document}
         engagementTaxYear={engagement?.engagement.taxYear ?? null}
-        engagementAccountId={engagement?.engagement.accountId ?? null}
+        engagementAccountIds={
+          owed?.returns.map((r) => r.accountId).filter((id): id is string => id !== null) ?? []
+        }
         clientName={engagement?.client.name ?? null}
       />
 
@@ -194,15 +203,24 @@ function ComparisonSection({
 function IdentityCard({
   document,
   engagementTaxYear,
-  engagementAccountId,
+  engagementAccountIds,
   clientName,
 }: {
   document: PriorDocument;
   engagementTaxYear: number | null;
-  engagementAccountId: string | null;
+  /** One per site. A multi-location client files a return against each. */
+  engagementAccountIds: string[];
   clientName: string | null;
 }) {
   const extracted = document.extracted as (ExtractedRendition & ExtractedNotice) | null;
+
+  // A document naming one of the engagement's accounts is the right document,
+  // so the account row only disagrees when it names none of them — and then it
+  // shows every account it could have been, since "not this one" is not an
+  // answer somebody can act on.
+  const filed = document.documentAccountId?.replace(/\D/g, '') ?? null;
+  const matched =
+    filed !== null && engagementAccountIds.some((id) => id.replace(/\D/g, '') === filed);
 
   const rows: { label: string; onForm: string | null; expected: string | null }[] = [
     { label: 'Owner', onForm: extracted?.ownerName ?? null, expected: clientName },
@@ -211,7 +229,16 @@ function IdentityCard({
       onForm: document.documentTaxYear ? String(document.documentTaxYear) : null,
       expected: engagementTaxYear ? String(engagementTaxYear) : null,
     },
-    { label: 'Account', onForm: document.documentAccountId, expected: engagementAccountId },
+    {
+      label: 'Account',
+      onForm: document.documentAccountId,
+      expected:
+        engagementAccountIds.length === 0
+          ? null
+          : matched
+            ? document.documentAccountId
+            : engagementAccountIds.join(', '),
+    },
     { label: 'District', onForm: extracted?.districtName ?? null, expected: null },
   ];
 
@@ -288,8 +315,7 @@ function FootingCard({ document }: { document: PriorDocument }) {
     );
   }
 
-  const delta =
-    footing.statedTotal === null ? null : footing.derivedTotal - footing.statedTotal;
+  const delta = footing.statedTotal === null ? null : footing.derivedTotal - footing.statedTotal;
   const errors = footing.issues.filter((issue) => issue.severity === 'error');
   const warnings = footing.issues.filter((issue) => issue.severity === 'warning');
 
@@ -335,8 +361,8 @@ function FootingCard({ document }: { document: PriorDocument }) {
       {errors.length > 0 ? (
         <p className="border-t border-[var(--color-hairline)] px-5 py-3 text-xs text-[var(--color-ink-secondary)]">
           A return that does not foot is kept as filed, discrepancies and all — the error may be the
-          client&rsquo;s rather than ours, and that is a finding. What it withholds is the right to be
-          treated as a settled baseline until someone has looked at the page.
+          client&rsquo;s rather than ours, and that is a finding. What it withholds is the right to
+          be treated as a settled baseline until someone has looked at the page.
         </p>
       ) : null}
     </Card>
@@ -485,12 +511,14 @@ const STATUS_FILTERS: ChipOption<ClassificationStatus>[] = [
   {
     value: 'auto-accepted',
     label: 'Settled without asking',
-    description: 'The schedule letter or a confident reading decided it. Worth spot-checking, not worth clicking through.',
+    description:
+      'The schedule letter or a confident reading decided it. Worth spot-checking, not worth clicking through.',
   },
   {
     value: 'confirmed',
     label: 'Confirmed by a reviewer',
-    description: 'A person read this wording. It will replay on every return that uses these words.',
+    description:
+      'A person read this wording. It will replay on every return that uses these words.',
   },
 ];
 
@@ -514,9 +542,10 @@ function WordingCard({ documentId, lines }: { documentId: string; lines: MappedP
 
   const queued = groups.filter((g) => g.representative.mapping.status === 'needs-review');
   const unread = groups.filter((g) => g.representative.mapping.categoryKey === null);
-  const shown = filters.length === 0
-    ? groups
-    : groups.filter((g) => filters.includes(g.representative.mapping.status));
+  const shown =
+    filters.length === 0
+      ? groups
+      : groups.filter((g) => filters.includes(g.representative.mapping.status));
 
   const fromForm = groups.filter((g) => g.representative.mapping.source === 'schedule').length;
   const fromMemory = groups.filter((g) => g.representative.mapping.source === 'memory').length;
@@ -544,11 +573,7 @@ function WordingCard({ documentId, lines }: { documentId: string; lines: MappedP
               title="Re-read every wording"
               content="Discards the machine readings and asks again from scratch. Anything a reviewer confirmed is kept — a human decision is never overwritten by a re-run."
             >
-              <Button
-                variant="ghost"
-                onClick={() => run.mutate(true)}
-                disabled={run.isPending}
-              >
+              <Button variant="ghost" onClick={() => run.mutate(true)} disabled={run.isPending}>
                 Re-read all
               </Button>
             </Tooltip>
@@ -593,9 +618,7 @@ function WordingCard({ documentId, lines }: { documentId: string; lines: MappedP
           selected={filters}
           onToggle={(value) =>
             setFilters((current) =>
-              current.includes(value)
-                ? current.filter((v) => v !== value)
-                : [...current, value],
+              current.includes(value) ? current.filter((v) => v !== value) : [...current, value],
             )
           }
         />
@@ -708,7 +731,8 @@ function WordingRow({ group, documentId }: { group: WordingGroup; documentId: st
           {/* Verbatim, in quotation marks, because it is a quotation from a
               filed document and not our own label for anything. */}
           <p className="min-w-0 text-sm font-medium">
-            &ldquo;{group.wording || <span className="text-[var(--color-ink-muted)]">blank</span>}&rdquo;
+            &ldquo;{group.wording || <span className="text-[var(--color-ink-muted)]">blank</span>}
+            &rdquo;
           </p>
         </div>
 
@@ -882,13 +906,7 @@ type MappedBasis = MappedPriorDocument['basis'];
  * in a category or carried below with a reason, and the two always sum back to
  * what the form printed.
  */
-function ReconciliationCard({
-  basis,
-  document,
-}: {
-  basis: MappedBasis;
-  document: PriorDocument;
-}) {
+function ReconciliationCard({ basis, document }: { basis: MappedBasis; document: PriorDocument }) {
   const byCategory = useMemo(() => {
     const map = new Map<
       string,
@@ -945,8 +963,8 @@ function ReconciliationCard({
                     <p className="tabular mt-0.5 text-xs text-[var(--color-ink-muted)]">
                       {entry.years
                         .sort((a, b) => (b.year ?? 0) - (a.year ?? 0))
-                        .map((year) =>
-                          `${year.year ?? 'no year given'} ${moneyExact(year.reported)}`,
+                        .map(
+                          (year) => `${year.year ?? 'no year given'} ${moneyExact(year.reported)}`,
                         )
                         .join('  ·  ')}
                     </p>
@@ -1067,16 +1085,14 @@ function NoticeCard({ extracted }: { extracted: ExtractedNotice | null }) {
       {extracted.renditionPenaltyApplied === true ? (
         <p className="flex items-start gap-2 px-5 py-3 text-sm text-[var(--color-warning)]">
           <AlertTriangle size={14} strokeWidth={2} className="mt-0.5 shrink-0" />
-          The notice says the value was set without a rendition on file — so it is the district&rsquo;s
-          own estimate, and it carries the 10% failure-to-render penalty.
+          The notice says the value was set without a rendition on file — so it is the
+          district&rsquo;s own estimate, and it carries the 10% failure-to-render penalty.
         </p>
       ) : null}
 
       {extracted.unreadable.length > 0 ? (
         <div className="border-t border-[var(--color-hairline)] px-5 py-3">
-          <p className="text-xs font-medium text-[var(--color-ink-secondary)]">
-            Could not be read
-          </p>
+          <p className="text-xs font-medium text-[var(--color-ink-secondary)]">Could not be read</p>
           <ul className="mt-1 list-disc space-y-0.5 pl-4 text-xs text-[var(--color-ink-muted)]">
             {extracted.unreadable.map((item) => (
               <li key={item}>{item}</li>

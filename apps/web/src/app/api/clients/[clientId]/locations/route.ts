@@ -26,6 +26,7 @@ export function POST(
         stateCode: body.stateCode ?? null,
         zip: body.zip ?? null,
         jurisdictionId: body.jurisdictionId ?? null,
+        accountId: body.accountId ?? null,
         notes: body.notes ?? null,
       })
       .returning();

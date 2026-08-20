@@ -51,6 +51,7 @@ export function locationDto(row: ClientLocationRow): ClientLocation {
     stateCode: row.stateCode,
     zip: row.zip,
     jurisdictionId: row.jurisdictionId,
+    accountId: row.accountId,
     notes: row.notes,
   };
 }
@@ -76,7 +77,6 @@ export function engagementDto(row: EngagementRow): Engagement {
     clientId: row.clientId,
     taxYear: row.taxYear,
     jurisdictionId: row.jurisdictionId,
-    accountId: row.accountId,
     sicCode: row.sicCode,
     notes: row.notes,
     createdAt: iso(row.createdAt),

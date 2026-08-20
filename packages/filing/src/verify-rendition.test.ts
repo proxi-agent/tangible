@@ -152,7 +152,7 @@ describe('verifyRendition', () => {
 
   it('flags a return filed under a different account as an error', () => {
     const result = verifyRendition(rendition({ accountId: '9999999' }), {
-      expectedAccountId: '2349508',
+      expectedAccountIds: ['2349508'],
     });
     expect(result.status).toBe('discrepant');
     expect(codes(result)).toContain('account-mismatch');
@@ -160,7 +160,19 @@ describe('verifyRendition', () => {
 
   it('ignores account punctuation when comparing', () => {
     const result = verifyRendition(rendition({ accountId: '234-9508' }), {
-      expectedAccountId: '2349508',
+      expectedAccountIds: ['2349508'],
+    });
+    expect(codes(result)).not.toContain('account-mismatch');
+  });
+
+  /**
+   * A multi-site client files one return per location, so the engagement has an
+   * account per site and a prior return is the wrong document only if it is
+   * none of them.
+   */
+  it('accepts a return filed under any of the engagement’s accounts', () => {
+    const result = verifyRendition(rendition({ accountId: '9999999' }), {
+      expectedAccountIds: ['2349508', '9999999'],
     });
     expect(codes(result)).not.toContain('account-mismatch');
   });

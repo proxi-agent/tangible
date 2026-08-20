@@ -31,6 +31,7 @@ export async function GET(
     const { bytes, plan, filename } = await buildEngagementFormPdf(engagementId, {
       basis,
       filedByAgent,
+      locationId: raw.location ?? null,
     });
     const blocking = plan.omissions.filter((o) => o.severity === 'blocking').length;
     return new Response(bytes as BodyInit, {
