@@ -3,6 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { ExternalLink } from 'lucide-react';
 import type { EngagementValuation } from '@tangible/types';
+import { CATEGORY_BY_KEY } from '@tangible/valuation';
 import { api } from '@/lib/api';
 import { count, money, moneyExact, percent, plural } from '@/lib/format';
 import {
@@ -14,6 +15,9 @@ import {
   Skeleton,
 } from '@/components/ui/primitives';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
+
+/** The placeholder machinery falls back to when the engagement carries no SIC. */
+const DEFAULT_MACHINERY_LIFE = CATEGORY_BY_KEY['machinery-equipment']?.schedule as number;
 
 /**
  * What the classifications are worth, run through the district's own arithmetic.
@@ -70,6 +74,23 @@ function ScheduleNote({ valuation }: { valuation: EngagementValuation }) {
         <ExternalLink size={10} strokeWidth={2} />
       </a>{' '}
       (p. {schedule.pages}).{' '}
+      {/* Which machinery life applied. Texas reads it from the line of business
+          rather than from the machine, so this one fact moves the machinery
+          total by a third or more — it belongs beside the number, not in a
+          field at the top of the page. */}
+      {valuation.sic ? (
+        <>
+          Machinery on the {valuation.sic.machineryLife}-year life for SIC {valuation.sic.code} (
+          {/* The guide prints these in caps; lowercasing matches the report. */}
+          {valuation.sic.description.toLowerCase()}), not the {valuation.sic.defaultLife}-year
+          default.{' '}
+        </>
+      ) : (
+        <span className="text-[var(--color-warning)]">
+          No SIC set, so machinery falls back to the {DEFAULT_MACHINERY_LIFE}-year placeholder
+          rather than a published life.{' '}
+        </span>
+      )}
       {schedule.isFallbackYear ? (
         <span className="text-[var(--color-warning)]">
           Valued on the {schedule.taxYear} schedule — nothing is published yet for{' '}

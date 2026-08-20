@@ -199,9 +199,39 @@ export type ValuationGap = z.infer<typeof ValuationGapSchema>;
  * derived — no stored totals — so it can never drift from the classifications
  * and schedules it came from.
  */
+/**
+ * The line of business the machinery life was read from.
+ *
+ * Texas keys machinery life to what the business does rather than to the
+ * machine, so this single field moves the machinery total by a third or more —
+ * SIC 3599 puts Acme's machinery on fifteen years instead of the category's
+ * ten-year placeholder, which is $108,178 on one small register. A number that
+ * large cannot be applied silently, so every surface that values machinery
+ * reports which life it used.
+ *
+ * Shared between the valuation and the savings report deliberately: they are the
+ * internal working view and the client-facing document of the same arithmetic,
+ * and the two disagreeing about it is worse than either being wrong alone.
+ */
+export const MachinerySicSchema = z.object({
+  code: z.string(),
+  description: z.string(),
+  machineryLife: z.number().int(),
+  /** The placeholder it replaced, for the size of the correction. */
+  defaultLife: z.number().int(),
+});
+
+export type MachinerySic = z.infer<typeof MachinerySicSchema>;
+
 export const EngagementValuationSchema = z.object({
   jurisdictionId: z.string().nullable(),
   taxYear: z.number().int(),
+  /**
+   * Null means no SIC was set and machinery fell back to the ten-year
+   * placeholder — a real difference in the numbers, so this says which applied
+   * rather than letting a placeholder pass for a published life.
+   */
+  sic: MachinerySicSchema.nullable(),
   /** Null when no schedule is published for this jurisdiction; nothing is guessed. */
   schedule: z
     .object({

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MachinerySicSchema } from './classification.js';
 
 /**
  * The savings report: what the client is assessed, what the register actually
@@ -130,15 +131,7 @@ export const SavingsReportSchema = z.object({
    * which is a real difference in the numbers, so the report says which applied
    * rather than letting a placeholder pass for a published life.
    */
-  sic: z
-    .object({
-      code: z.string(),
-      description: z.string(),
-      machineryLife: z.number().int(),
-      /** The placeholder it replaced, for the size of the correction. */
-      defaultLife: z.number().int(),
-    })
-    .nullable(),
+  sic: MachinerySicSchema.nullable(),
 
   /** Value of settled, in-service, taxable assets on the district's schedules. */
   farImpliedValue: z.number(),

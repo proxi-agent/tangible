@@ -6,7 +6,13 @@ import type {
   EngagementValuation,
   ValuationGap,
 } from '@tangible/types';
-import { appraise, scheduleFor, type LifeClass } from '@tangible/valuation';
+import {
+  appraise,
+  CATEGORY_BY_KEY,
+  lookupSicProfile,
+  scheduleFor,
+  type LifeClass,
+} from '@tangible/valuation';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { handle } from '@/lib/route';
 import { fetchEngagement } from '@/lib/workspace';
@@ -54,9 +60,23 @@ export function GET(
       ? scheduleFor(engagement.jurisdictionId, engagement.taxYear)
       : undefined;
 
+    // Which line of business the machinery life came from, if any. Reported so
+    // a reader can tell a published life from the placeholder standing in for
+    // it — and so this card and the savings report say the same thing.
+    const found =
+      schedule && engagement.sicCode ? lookupSicProfile(schedule, engagement.sicCode) : null;
+
     const result: EngagementValuation = {
       jurisdictionId: engagement.jurisdictionId,
       taxYear: engagement.taxYear,
+      sic: found
+        ? {
+            code: found.sic,
+            description: found.profile.description,
+            machineryLife: found.profile.machineryLife,
+            defaultLife: CATEGORY_BY_KEY['machinery-equipment']?.schedule as number,
+          }
+        : null,
       schedule: schedule
         ? {
             taxYear: schedule.taxYear,
@@ -161,6 +181,12 @@ export function GET(
           categoryKey,
           lifeClassOverride: (classification.lifeClassOverride ?? undefined) as
             LifeClass | undefined,
+          // Texas keys the machinery life to what the business does, not to the
+          // machine. Omitting this valued machinery on the category's ten-year
+          // placeholder while the savings report used the SIC-derived life, so
+          // the working view and the document handed to the client disagreed
+          // about the same engagement by $108,178.
+          businessSic: engagement.sicCode,
         },
         schedule,
       );
