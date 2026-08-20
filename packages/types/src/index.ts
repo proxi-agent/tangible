@@ -5,3 +5,8 @@ export * from './segments.js';
 export * from './metrics.js';
 export * from './ingest.js';
 export * from './query.js';
+export * from './far.js';
+export * from './classification.js';
+export * from './savings.js';
+export * from './filing.js';
+export * from './client.js';

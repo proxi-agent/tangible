@@ -114,8 +114,7 @@ export const SEGMENTS: Readonly<Record<SegmentKey, SegmentDefinition>> = {
   agent_represented: {
     key: 'agent_represented',
     label: 'Agent represented',
-    description:
-      'A tax firm is already registered with the county to act for this business.',
+    description: 'A tax firm is already registered with the county to act for this business.',
     caveat: 'Already served by an incumbent, so treat as a competitive account rather than a lead.',
     tier: 'signal',
   },
