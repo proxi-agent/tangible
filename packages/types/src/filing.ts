@@ -205,3 +205,157 @@ export const RenditionRequestSchema = z.object({
 });
 
 export type RenditionRequest = z.infer<typeof RenditionRequestSchema>;
+
+/**
+ * How the return physically reached the district.
+ *
+ * Recorded because the proof of timely filing depends on it. Tax Code 1.08
+ * makes a properly addressed, postmarked return timely on the postmark date,
+ * so a mailed rendition's evidence is the postmark and — where it was sent
+ * certified — the receipt number. An e-filed one has a confirmation, a
+ * hand-delivered one has a stamped copy and nothing else. Come the penalty
+ * argument under 22.28, "we filed in April" is worth nothing next to "certified
+ * article 7020 1290 0001 2345 6789, postmarked April 14".
+ */
+export const FILING_METHODS = [
+  'certified-mail',
+  'mail',
+  'efile',
+  'email',
+  'hand-delivered',
+] as const;
+
+export const FilingMethodSchema = z.enum(FILING_METHODS);
+export type FilingMethod = (typeof FILING_METHODS)[number];
+
+export const FILING_RECORD_STATUSES = [
+  /** The return that stands for this site and year. */
+  'filed',
+  /** Replaced by a later filing for the same site and year — an amendment. */
+  'superseded',
+  /** Recorded in error. Kept, because a rendition record is evidence. */
+  'void',
+] as const;
+
+export const FilingRecordStatusSchema = z.enum(FILING_RECORD_STATUSES);
+export type FilingRecordStatus = (typeof FILING_RECORD_STATUSES)[number];
+
+/**
+ * A rendition that was actually filed, frozen as it went out.
+ *
+ * Everything else in this app is derived from the register as it stands right
+ * now, which is correct until the moment a document is sworn to. After that the
+ * register keeps moving — a late invoice, a corrected cost, a disposal nobody
+ * had recorded — and the form on screen quietly stops being the form that was
+ * filed. Three things then break at once: there is no answer to "what did we
+ * render", 22.28's penalty turns on a figure nobody can reproduce, and next
+ * season's comparison is against a document we hold no copy of.
+ *
+ * So this freezes the *inputs* — the rendition, the party, the signer — rather
+ * than the printed output. They are pure data, the builders that turn them into
+ * paper are pure functions, and a frozen input re-renders through whatever the
+ * current renderer is. Freezing the output instead would mean two copies of
+ * every number and a slow drift between them. What that costs is that a later
+ * form revision re-renders the same content on a different sheet, which is why
+ * the revision and the checksum of the PDF that was actually filled are
+ * recorded alongside: the record can then say so out loud.
+ */
+export const RenditionFilingSchema = z.object({
+  id: z.string(),
+  engagementId: z.string(),
+  /** The site this return was for. A filing is always one account's. */
+  locationId: z.string(),
+  locationLabel: z.string(),
+  /** The account as it stood when filed, which the district may later change. */
+  accountId: z.string().nullable(),
+  taxYear: z.number().int(),
+  jurisdictionId: z.string().nullable(),
+
+  status: FilingRecordStatusSchema,
+  basis: RenditionBasisSchema,
+  filedByAgent: z.boolean(),
+  method: FilingMethodSchema,
+  /** ISO date. The postmark or submission date, not when somebody typed it in. */
+  filedOn: z.string(),
+  /** Certified article number, e-file confirmation — whatever proves it went. */
+  confirmation: z.string().nullable(),
+  note: z.string().nullable(),
+
+  /** What the form said, kept as columns so a list needs no unpacking. */
+  totalHistoricalCost: z.number(),
+  totalGoodFaithEstimate: z.number().nullable(),
+  scheduleValue: z.number(),
+  /** Assets on the schedules — the property sworn to, not the register slice. */
+  assetCount: z.number().int().nonnegative(),
+
+  /** The revision and checksum of the PDF that was filled at the time. */
+  formRevision: z.string(),
+  formSha256: z.string(),
+
+  recordedBy: z.string().nullable(),
+  recordedAt: z.string(),
+  voidedBy: z.string().nullable(),
+  voidedAt: z.string().nullable(),
+  voidReason: z.string().nullable(),
+});
+
+export type RenditionFiling = z.infer<typeof RenditionFilingSchema>;
+
+/**
+ * A filing with the frozen document itself, for reproducing the paper.
+ *
+ * Split from the summary because the document is large and every list of
+ * filings would otherwise carry a full rendition per row.
+ */
+export const RenditionFilingRecordSchema = RenditionFilingSchema.extend({
+  rendition: RenditionSchema,
+  /**
+   * The register rows this return was built from, by id.
+   *
+   * Not the same as what reached a schedule: the rendition sets some of them
+   * aside and says why. This is the provenance — which rows produced this
+   * document — and `assetCount` is the narrower figure, the property actually
+   * reported.
+   */
+  assetIds: z.array(z.string()),
+});
+
+export type RenditionFilingRecord = z.infer<typeof RenditionFilingRecordSchema>;
+
+/**
+ * Record that a return went out.
+ *
+ * The rendition itself is not sent: it is rebuilt server-side from the
+ * engagement and frozen there. A client that posted its own numbers could
+ * record a filing that never matched anything the app would have produced,
+ * which is the one thing this record exists to rule out.
+ */
+export const RecordFilingRequestSchema = z.object({
+  locationId: z.string(),
+  basis: RenditionBasisSchema.default('cost'),
+  filedByAgent: z.boolean().default(true),
+  method: FilingMethodSchema,
+  /** ISO date (YYYY-MM-DD). Defaults to today on the client, never here. */
+  filedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a YYYY-MM-DD date.'),
+  confirmation: z
+    .string()
+    .trim()
+    .max(120)
+    .nullish()
+    .transform((v) => (v ? v : null)),
+  note: z
+    .string()
+    .trim()
+    .max(1000)
+    .nullish()
+    .transform((v) => (v ? v : null)),
+});
+
+export type RecordFilingRequest = z.infer<typeof RecordFilingRequestSchema>;
+
+/** Marking a recorded filing as never having happened. */
+export const VoidFilingRequestSchema = z.object({
+  reason: z.string().trim().min(1, 'Say why, so the record explains itself.').max(500),
+});
+
+export type VoidFilingRequest = z.infer<typeof VoidFilingRequestSchema>;

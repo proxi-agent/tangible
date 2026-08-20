@@ -49,6 +49,16 @@ export interface RenditionInput {
   schedule: DepreciationSchedule | null;
   basis: RenditionBasis;
   filedByAgent: boolean;
+  /**
+   * The date of the Form 50-162 appointment, where one is on file.
+   *
+   * Optional because a caller with no filing profile to read has nothing to
+   * say here, and `undefined` and `null` mean the same thing: no appointment
+   * we know of. A date turns the agent reminder below into a question already
+   * answered, which is the difference between a draft that reads as blocked
+   * and one that reads as ready.
+   */
+  agentAppointmentDate?: string | null;
   generatedAt: string;
   /**
    * Committed findings and the decisions standing against them. Optional, and
@@ -531,7 +541,10 @@ function blockersFor(context: {
       resolution: 'Check the register’s disposal dates against the assessment date.',
     });
   }
-  if (input.filedByAgent) {
+  // Only where we have no appointment to point at. Filing as agent is not the
+  // problem — filing as agent unappointed is, and a caller that has read the
+  // client's filing profile says so by handing over the date.
+  if (input.filedByAgent && !input.agentAppointmentDate) {
     blockers.push({
       key: 'agent-appointment',
       severity: 'blocking',

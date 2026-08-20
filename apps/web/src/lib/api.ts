@@ -42,8 +42,11 @@ import type {
   PlaceSiteRequest,
   PriorDocument,
   PriorDocumentKind,
+  RecordFilingRequest,
   Rendition,
   RenditionBasis,
+  RenditionFiling,
+  RenditionFilingRecord,
   SavingsReport,
   SegmentDefinition,
   SortDirection,
@@ -344,6 +347,30 @@ export const api = {
       `/engagements/${engagementId}/rendition?basis=${options.basis}&filedByAgent=${options.filedByAgent}` +
         (options.locationId ? `&location=${encodeURIComponent(options.locationId)}` : ''),
     ),
+
+  /** Every return recorded as filed on this engagement, newest first. */
+  filings: (engagementId: string) =>
+    request<RenditionFiling[]>(`/engagements/${engagementId}/filings`),
+
+  /**
+   * Record that a return went out.
+   *
+   * Deliberately sends no numbers. The server rebuilds the rendition and
+   * freezes that, so what gets recorded is what this app would have filed.
+   */
+  recordFiling: (engagementId: string, body: RecordFilingRequest) =>
+    request<RenditionFilingRecord>(`/engagements/${engagementId}/filings`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  filing: (filingId: string) => request<RenditionFilingRecord>(`/filings/${filingId}`),
+
+  voidFiling: (filingId: string, reason: string) =>
+    request<RenditionFiling>(`/filings/${filingId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ reason }),
+    }),
 
   // -------------------------------------------------------------------------
   // Prior filings

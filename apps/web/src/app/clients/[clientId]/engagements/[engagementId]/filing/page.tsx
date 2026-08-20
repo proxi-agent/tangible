@@ -25,6 +25,7 @@ import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { count, money, moneyExact, plural } from '@/lib/format';
 import { Button } from '@/components/ui/controls';
+import { FilingRecordCard } from '@/components/workspace/filing-record-card';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { Tooltip } from '@/components/ui/tooltip';
 
@@ -107,6 +108,14 @@ export default function FilingPage() {
       </Card>
 
       <Blockers rendition={data} />
+      <FilingRecordCard
+        engagementId={engagementId}
+        rendition={data}
+        locationId={locationId}
+        basis={basis}
+        filedByAgent={filedByAgent}
+        unchosen={(returns.data?.returns.length ?? 1) > 1 && locationId === null}
+      />
       {data.decisions.length > 0 ? <Decisions rendition={data} /> : null}
       <Schedules rendition={data} />
       {data.exclusions.length > 0 ? <Exclusions rendition={data} /> : null}

@@ -326,12 +326,11 @@ export function buildForm50144(input: Form50144Input): Form50144 {
     });
   }
 
-  // The rendition raises `agent-appointment` whenever it is filed by an agent,
-  // because at that layer there is no appointment to look at — it is a reminder,
-  // not a check. Here there is one, so this module answers the question either
-  // way: with the date, or with its own omission naming what is missing. Either
-  // beats the generic reminder, and printing both says the same thing twice,
-  // which is how a list of omissions becomes something people scroll past.
+  // The rendition may still raise `agent-appointment` — its caller might have
+  // had no filing profile to read. This module always does: it answers with the
+  // date, or with its own omission naming what is missing. Either beats the
+  // generic reminder, and printing both says the same thing twice, which is how
+  // a list of omissions becomes something people scroll past.
   const answered = signer.capacity === 'agent' ? new Set(['agent-appointment']) : new Set<string>();
 
   for (const blocker of rendition.blockers) {

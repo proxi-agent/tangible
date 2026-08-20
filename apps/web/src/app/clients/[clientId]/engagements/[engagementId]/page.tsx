@@ -15,6 +15,7 @@ import { count, money, moneyExact, plural } from '@/lib/format';
 import { FarFileStatusBadge } from '@/components/workspace/badges';
 import { ClassificationCard } from '@/components/workspace/classification-card';
 import { FindingsCard } from '@/components/workspace/findings-card';
+import { FiledReturnsCard } from '@/components/workspace/filing-record-card';
 import { PriorsCard } from '@/components/workspace/priors-card';
 import { SitesCard } from '@/components/workspace/sites-card';
 import { ValuationCard } from '@/components/workspace/valuation-card';
@@ -74,6 +75,9 @@ export default function EngagementPage() {
         ) : null}
       </div>
 
+      {/* The end of the pipeline, read first: whether anything was actually
+          filed is the question somebody asks about a finished engagement. */}
+      <FiledReturnsCard clientId={clientId} engagementId={engagementId} />
       {data.stats.assetCount > 0 ? <StatsRow detail={data} /> : null}
       {/* Value before inventory: the point of the register is what it is worth,
           and the asset list is the evidence underneath that. */}

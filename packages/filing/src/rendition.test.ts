@@ -182,6 +182,11 @@ describe('what blocks a signature', () => {
     expect(blocker(rendition, 'agent-appointment')?.severity).toBe('blocking');
   });
 
+  it('drops the agent reminder once an appointment is on file', () => {
+    const rendition = build([asset()], { agentAppointmentDate: '2026-01-15' });
+    expect(blocker(rendition, 'agent-appointment')).toBeUndefined();
+  });
+
   it('warns rather than blocks on things that only make it worse', () => {
     const rendition = build([asset({ acquisitionYear: null })], {
       accountId: null,

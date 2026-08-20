@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   boolean,
+  date,
   doublePrecision,
   index,
   integer,
@@ -863,6 +864,108 @@ export const priorReturnLines = pgTable(
 
 
 /**
+ * A rendition that was actually filed, frozen as it went out.
+ *
+ * Every other read in this app is derived: ask for the rendition and it is
+ * rebuilt from the register as it stands this second, which is exactly right
+ * until a document is sworn to and then exactly wrong. The register keeps
+ * moving after the return goes out — a late invoice, a corrected cost, a
+ * disposal nobody had recorded — and the form on screen quietly stops being the
+ * form that was filed. The penalty under 22.28 is assessed against what was
+ * rendered, so "what did we render" has to have an answer that does not depend
+ * on the current state of anything.
+ *
+ * What is frozen is the *input* — the rendition document, the party, the signer
+ * — and not the printed sheet. The builders that turn those into paper are pure
+ * functions, so a frozen input re-renders through whatever renderer is current;
+ * freezing the output too would put every number in the database twice and let
+ * the two copies drift. The cost is that a later form revision re-renders the
+ * same content on a different sheet, which is why the revision and checksum of
+ * the PDF that was actually filled are columns here: the record says so out
+ * loud rather than pretending the paper is identical.
+ *
+ * One row per return per attempt. A site that files an amendment gets a second
+ * row and the first becomes `superseded`; nothing is ever updated in place and
+ * nothing is deleted, because this table is the evidence.
+ */
+export const renditionFilings = pgTable(
+  'rendition_filings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /**
+     * The site whose return this is. Not cascaded away with the location: a
+     * site can be closed, renamed or merged, and none of that unfiles the
+     * return that went out under it.
+     */
+    locationId: uuid('location_id')
+      .notNull()
+      .references(() => clientLocations.id, { onDelete: 'restrict' }),
+    /** The label and account as they read at filing, not as they read today. */
+    locationLabel: text('location_label').notNull(),
+    accountId: text('account_id'),
+    taxYear: integer('tax_year').notNull(),
+    jurisdictionId: text('jurisdiction_id'),
+
+    /** 'filed' | 'superseded' | 'void'. */
+    status: text('status').notNull().default('filed'),
+    /** 'cost' | 'estimate'. */
+    basis: text('basis').notNull(),
+    filedByAgent: boolean('filed_by_agent').notNull(),
+    /** 'certified-mail' | 'mail' | 'efile' | 'email' | 'hand-delivered'. */
+    method: text('method').notNull(),
+    /**
+     * The postmark or submission date, as a plain date. Timeliness under 1.08
+     * is decided by the day it was mailed, in the district's timezone, and a
+     * timestamp here would let a late-evening filing in one zone record itself
+     * as the following day in another.
+     */
+    filedOn: date('filed_on').notNull(),
+    /** Certified article number, e-file confirmation — what proves it went. */
+    confirmation: text('confirmation'),
+    note: text('note'),
+
+    /** What the form said. Columns, so a list of filings needs no unpacking. */
+    totalHistoricalCost: doublePrecision('total_historical_cost').notNull(),
+    totalGoodFaithEstimate: doublePrecision('total_good_faith_estimate'),
+    scheduleValue: doublePrecision('schedule_value').notNull(),
+    assetCount: integer('asset_count').notNull(),
+
+    /** The Rendition document, exactly as built at the moment of filing. */
+    rendition: jsonb('rendition').notNull(),
+    /** FormParty — owner name, mailing address, situs, business description. */
+    party: jsonb('party').notNull(),
+    /** FormSigner — who signed it, in what capacity, under what appointment. */
+    signer: jsonb('signer').notNull(),
+    /**
+     * The assets that were on this return, by id.
+     *
+     * The rendition reports in aggregate, which is what the district receives
+     * and all a re-render needs. This is the part the paper does not carry: next
+     * season, "asset 4471 was rendered in 2026 and is not on the 2027 register"
+     * is a question worth asking, and nothing else records the answer.
+     */
+    assetIds: jsonb('asset_ids').notNull(),
+
+    formRevision: text('form_revision').notNull(),
+    formSha256: text('form_sha256').notNull(),
+
+    recordedBy: text('recorded_by'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    voidedBy: text('voided_by'),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidReason: text('void_reason'),
+  },
+  (table) => [
+    index('rendition_filings_engagement_idx').on(table.engagementId, table.status),
+    /** Last season's return for this site, which is next season's starting point. */
+    index('rendition_filings_site_year_idx').on(table.locationId, table.taxYear, table.status),
+  ],
+).enableRLS();
+
+/**
  * A committed finding set, and the findings in it.
  *
  * The reports themselves stay derived on read — see the header of
@@ -1047,6 +1150,8 @@ export type PriorDocumentRow = typeof priorDocuments.$inferSelect;
 export type NewPriorDocumentRow = typeof priorDocuments.$inferInsert;
 export type PriorReturnLineRow = typeof priorReturnLines.$inferSelect;
 export type NewPriorReturnLineRow = typeof priorReturnLines.$inferInsert;
+export type RenditionFilingRow = typeof renditionFilings.$inferSelect;
+export type NewRenditionFilingRow = typeof renditionFilings.$inferInsert;
 export type FindingSetRow = typeof findingSets.$inferSelect;
 export type NewFindingSetRow = typeof findingSets.$inferInsert;
 export type FindingRow = typeof findings.$inferSelect;

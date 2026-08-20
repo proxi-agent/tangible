@@ -106,10 +106,37 @@ function returnAssetsWhere(
   return and(engagementAssetsWhere(engagementId), placement);
 }
 
-export async function buildEngagementRendition(
+/**
+ * The client's filing profile, or null where nobody has filled one in yet.
+ *
+ * One row per client by primary key, so the array is the row or it is empty.
+ */
+async function filingProfile(clientId: string): Promise<ClientFilingProfileRow | null> {
+  const rows = await requireDb()
+    .select()
+    .from(schema.clientFilingProfiles)
+    .where(eq(schema.clientFilingProfiles.clientId, clientId));
+  return rows[0] ?? null;
+}
+
+/**
+ * The rendition, plus the two things about it that the document itself does not
+ * carry: which return it is, and which assets went into it.
+ *
+ * The asset ids are here rather than re-queried by callers that want them
+ * because the predicate deciding what is on a return lives in exactly one place
+ * ({@link returnAssetsWhere}) and asking it twice is how a filing record comes
+ * to disagree with the form it froze.
+ */
+async function renditionParts(
   engagementId: string,
   options: RenditionOptions,
-): Promise<Rendition> {
+): Promise<{
+  rendition: Rendition;
+  assetIds: string[];
+  target: EngagementReturn | null;
+  owed: EngagementReturns;
+}> {
   const { engagement, client } = await fetchEngagement(engagementId);
   const db = requireDb();
   // The decision log, read alongside the register. Empty until somebody has
@@ -121,7 +148,10 @@ export async function buildEngagementRendition(
   // each site's return, measured against that site — which is what accepting it
   // meant.
   const { target, owed } = await resolveReturn(engagementId, options.locationId);
-  const positions = await renditionPositions(engagementId);
+  const [positions, profile] = await Promise.all([
+    renditionPositions(engagementId),
+    filingProfile(client.id),
+  ]);
   const rows = await db
     .select({ asset: schema.assetVersions, classification: schema.assetClassifications })
     .from(schema.assetVersions)
@@ -159,6 +189,10 @@ export async function buildEngagementRendition(
     schedule: jurisdictionId ? (scheduleFor(jurisdictionId, engagement.taxYear) ?? null) : null,
     basis: options.basis,
     filedByAgent: options.filedByAgent,
+    // The draft screen and the printed form both ask whether an agent may sign
+    // this. They have to give the same answer, and the answer lives in the
+    // filing profile, so the draft reads it too rather than assuming the worst.
+    agentAppointmentDate: profile?.agentAppointmentDate ?? null,
     generatedAt: new Date().toISOString(),
   });
 
@@ -167,7 +201,14 @@ export async function buildEngagementRendition(
   // way to raise it. The draft would otherwise show a register spanning two
   // sites under a heading that says one form.
   rendition.blockers.push(...situsProblems(target, owed));
-  return rendition;
+  return { rendition, assetIds: assets.map((asset) => asset.id), target, owed };
+}
+
+export async function buildEngagementRendition(
+  engagementId: string,
+  options: RenditionOptions,
+): Promise<Rendition> {
+  return (await renditionParts(engagementId, options)).rendition;
 }
 
 /**
@@ -223,21 +264,15 @@ export interface EngagementForm {
  * is missing and why it matters, which is a far better state to ship than a
  * quietly empty box on a sworn document.
  */
-async function formInputs(engagementId: string, options: RenditionOptions) {
+export async function formInputs(engagementId: string, options: RenditionOptions) {
   const { engagement, client } = await fetchEngagement(engagementId);
-  const db = requireDb();
-  const [rendition, resolved, actor, profiles] = await Promise.all([
-    buildEngagementRendition(engagementId, options),
-    resolveReturn(engagementId, options.locationId),
+  const [parts, actor, profile] = await Promise.all([
+    renditionParts(engagementId, options),
     currentActor(),
-    db
-      .select()
-      .from(schema.clientFilingProfiles)
-      .where(eq(schema.clientFilingProfiles.clientId, client.id)),
+    filingProfile(client.id),
   ]);
 
-  const { target, owed } = resolved;
-  const profile = profiles[0] ?? null;
+  const { rendition, assetIds, target, owed } = parts;
 
   const party: FormParty = {
     // The roll name and the name we file the client under are usually the same
@@ -268,11 +303,14 @@ async function formInputs(engagementId: string, options: RenditionOptions) {
 
   return {
     rendition,
+    assetIds,
     party,
     signer,
     extra,
+    actor,
     target,
     owed,
+    clientId: client.id,
     clientName: client.name,
     taxYear: engagement.taxYear,
   };
