@@ -1,0 +1,513 @@
+import { classificationLabel, isExclusion, isValuable } from '@tangible/classification';
+import type {
+  ClassificationStatus,
+  FilingBlocker,
+  Rendition,
+  RenditionBasis,
+  RenditionExclusion,
+  RenditionLine,
+  RenditionSchedule,
+  RenditionScheduleKey,
+} from '@tangible/types';
+import { appraise, type DepreciationSchedule, type LifeClass } from '@tangible/valuation';
+import { deadlinesFor } from './deadlines.js';
+
+/**
+ * Build Form 50-144 from a classified register.
+ *
+ * Pure, like the savings engine and for the same reason: this produces a
+ * document somebody signs under penalty of perjury, so it has to be
+ * reproducible from its inputs and testable without a database.
+ */
+
+export interface RenditionAsset {
+  id: string;
+  description: string | null;
+  acquisitionYear: number | null;
+  originalCost: number | null;
+  isDisposed: boolean;
+  categoryKey: string | null;
+  lifeClassOverride: number | null;
+  status: ClassificationStatus | null;
+}
+
+export interface RenditionInput {
+  engagementId: string;
+  clientName: string;
+  taxYear: number;
+  jurisdictionId: string | null;
+  accountId: string | null;
+  sicCode: string | null;
+  assets: RenditionAsset[];
+  schedule: DepreciationSchedule | null;
+  basis: RenditionBasis;
+  filedByAgent: boolean;
+  generatedAt: string;
+}
+
+/**
+ * Below this, the form lets the whole rendition go on Schedule A as a single
+ * figure with the detail optional. Worth detecting: it turns a two-hundred-line
+ * filing into three fields, and a small client into a ten-minute job.
+ */
+const SCHEDULE_A_THRESHOLD = 20_000;
+
+/**
+ * Above this, an agent-filed rendition carrying a good faith estimate must be
+ * notarized (Tax Code 22.24(e)). Note what triggers it: the *estimate*, not the
+ * value. A rendition filed on cost and year never reaches this test, which is
+ * one of the practical reasons cost is the default basis.
+ */
+const NOTARIZATION_THRESHOLD = 150_000;
+
+/**
+ * Where each of our categories lands on the form.
+ *
+ * The form's schedules are organised by what the property *is* to the district,
+ * which is not quite how a register organises it, so this mapping is the
+ * translation. Schedule E is the one that matters most: the form wants it by
+ * type *and year acquired*, which is exactly the shape the depreciation
+ * schedules key on.
+ */
+const SCHEDULE_FOR_CATEGORY: Readonly<Record<string, RenditionScheduleKey>> = {
+  inventory: 'B',
+  vehicles: 'D',
+  'furniture-fixtures': 'E',
+  'office-equipment': 'E',
+  'machinery-equipment': 'E',
+  'computer-pc': 'E',
+  'computer-mainframe': 'E',
+  'specific-equipment': 'E',
+  'telecom-8': 'E',
+  'leasehold-improvements': 'E',
+  solar: 'E',
+  vessels: 'E',
+  // Property the client holds but does not own is still reportable — the form
+  // asks for it separately so the district can chase the actual owner.
+  'excluded-leased-in': 'F',
+};
+
+const SCHEDULE_META: Readonly<
+  Record<RenditionScheduleKey, { title: string; instruction: string; byYear: boolean }>
+> = {
+  A: {
+    title: 'Schedule A — total under $20,000',
+    instruction:
+      'Where the owner’s total taxable personal property at this location is worth less than $20,000, the form takes a general description and a total. Type, year acquired and cost are optional.',
+    byYear: false,
+  },
+  B: {
+    title: 'Schedule B — inventory, raw materials and work in process',
+    instruction:
+      'Goods held for sale or consumption, at cost as of January 1. Carried at full cost: no index, no depreciation.',
+    byYear: false,
+  },
+  C: {
+    title: 'Schedule C — supplies',
+    instruction: 'Consumables on hand January 1 that are not held for sale.',
+    byYear: false,
+  },
+  D: {
+    title: 'Schedule D — vehicles, trailers and special equipment',
+    instruction:
+      'Licensed vehicles, by year and description. The district values these from its own vehicle source where it can match them, rather than from cost.',
+    byYear: true,
+  },
+  E: {
+    title: 'Schedule E — furniture, fixtures, machinery, equipment and computers',
+    instruction:
+      'The main schedule, filed by property type and year acquired. Historical cost when new, not net book value.',
+    byYear: true,
+  },
+  F: {
+    title: 'Schedule F — property held but not owned',
+    instruction:
+      'Equipment in the client’s possession under lease, bailment or consignment. Reported so the district assesses the owner rather than the client.',
+    byYear: false,
+  },
+};
+
+const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
+
+export function buildRendition(input: RenditionInput): Rendition {
+  const { schedule, basis } = input;
+  const usingEstimate = basis === 'estimate';
+
+  // Only settled, in-service property reaches a form somebody signs. An asset
+  // still in the review queue is not "probably furniture" for filing purposes —
+  // it is unresolved, and it blocks rather than silently landing somewhere.
+  let needsReview = 0;
+  let unclassified = 0;
+  let unvaluable = 0;
+  let disposedStillListed = 0;
+  let scheduleValue = 0;
+
+  type Bucket = {
+    cost: number;
+    estimate: number;
+    count: number;
+    /**
+     * Assets in this bucket the schedules could not value. A line carrying any
+     * of them cannot state a good faith estimate: zero would be a false figure
+     * on a sworn form, and the missing value has to show as missing.
+     */
+    unvaluable: number;
+    categories: Set<string>;
+  };
+  const buckets = new Map<
+    string,
+    Bucket & { key: RenditionScheduleKey; type: string; year: number | null }
+  >();
+  const exclusions = new Map<string, RenditionExclusion>();
+
+  const bucketFor = (key: RenditionScheduleKey, type: string, year: number | null) => {
+    const id = `${key}|${type}|${year ?? ''}`;
+    let bucket = buckets.get(id);
+    if (!bucket) {
+      bucket = {
+        key,
+        type,
+        year,
+        cost: 0,
+        estimate: 0,
+        count: 0,
+        unvaluable: 0,
+        categories: new Set(),
+      };
+      buckets.set(id, bucket);
+    }
+    return bucket;
+  };
+
+  for (const asset of input.assets) {
+    if (asset.status === null) {
+      unclassified += 1;
+      continue;
+    }
+    if (!isValuable({ categoryKey: asset.categoryKey, status: asset.status })) {
+      needsReview += 1;
+      continue;
+    }
+    const categoryKey = asset.categoryKey!;
+    const cost = asset.originalCost ?? 0;
+
+    // Disposed before January 1 is not the client's property to render. It is
+    // counted so the form can say why the register and the filing differ.
+    if (asset.isDisposed) {
+      disposedStillListed += 1;
+      note(exclusions, categoryKey, 'Disposed of before January 1, so not renderable.', cost);
+      continue;
+    }
+
+    const target = SCHEDULE_FOR_CATEGORY[categoryKey];
+    if (!target) {
+      note(
+        exclusions,
+        categoryKey,
+        isExclusion(categoryKey)
+          ? 'Not the client’s taxable tangible personal property.'
+          : 'No schedule on Form 50-144 covers this category.',
+        cost,
+      );
+      continue;
+    }
+
+    const value = schedule ? appraisedValue(asset, schedule, categoryKey, input.sicCode) : null;
+    if (value === null && schedule) unvaluable += 1;
+    scheduleValue += value ?? 0;
+
+    const meta = SCHEDULE_META[target];
+    const bucket = bucketFor(
+      target,
+      classificationLabel(categoryKey),
+      meta.byYear ? asset.acquisitionYear : null,
+    );
+    bucket.cost += cost;
+    bucket.estimate += value ?? 0;
+    bucket.count += 1;
+    if (value === null) bucket.unvaluable += 1;
+    bucket.categories.add(categoryKey);
+  }
+
+  const totalHistoricalCost = [...buckets.values()].reduce((sum, b) => sum + b.cost, 0);
+  const qualifiesForScheduleA = scheduleValue > 0 && scheduleValue < SCHEDULE_A_THRESHOLD;
+
+  const schedules: RenditionSchedule[] = qualifiesForScheduleA
+    ? [
+        {
+          key: 'A',
+          ...SCHEDULE_META.A,
+          lines: [
+            {
+              type: 'All business personal property at this location',
+              yearAcquired: null,
+              historicalCost: totalHistoricalCost,
+              goodFaithEstimate: usingEstimate && unvaluable === 0 ? scheduleValue : null,
+              assetCount: [...buckets.values()].reduce((sum, b) => sum + b.count, 0),
+              categoryKeys: [...new Set([...buckets.values()].flatMap((b) => [...b.categories]))],
+            },
+          ],
+          totalCost: totalHistoricalCost,
+          totalEstimate: usingEstimate && unvaluable === 0 ? scheduleValue : null,
+        },
+      ]
+    : assemble(buckets, usingEstimate);
+
+  // Withheld entirely when any asset could not be valued: a total that
+  // silently treats an unpriced asset as zero understates a sworn figure.
+  const totalGoodFaithEstimate = usingEstimate && unvaluable === 0 ? scheduleValue : null;
+
+  // 22.24(e) turns on the estimate, not on the value. Saying so is the point:
+  // it is the reason the cost basis is the default, and a reader who does not
+  // know that will assume any large rendition needs a notary.
+  const notarization =
+    input.filedByAgent && usingEstimate && scheduleValue > NOTARIZATION_THRESHOLD
+      ? {
+          required: true,
+          reason: `Filed by an agent with a good faith estimate of ${money(scheduleValue)}, above the ${money(NOTARIZATION_THRESHOLD)} threshold in Tax Code 22.24(e).`,
+        }
+      : {
+          required: false,
+          reason: !input.filedByAgent
+            ? 'Filed by the owner rather than an agent, so 22.24(e) does not apply.'
+            : usingEstimate
+              ? `Filed by an agent with a good faith estimate below the ${money(NOTARIZATION_THRESHOLD)} threshold in Tax Code 22.24(e).`
+              : 'Filed on historical cost and year acquired rather than a good faith estimate, so the 22.24(e) notarization requirement is not triggered at any value.',
+        };
+
+  return {
+    engagementId: input.engagementId,
+    clientName: input.clientName,
+    taxYear: input.taxYear,
+    jurisdictionId: input.jurisdictionId,
+    jurisdictionName: schedule?.jurisdictionName ?? null,
+    accountId: input.accountId,
+    sicCode: input.sicCode,
+    generatedAt: input.generatedAt,
+    basis,
+    filedByAgent: input.filedByAgent,
+    schedules,
+    exclusions: [...exclusions.values()].sort((a, b) => b.originalCost - a.originalCost),
+    totalHistoricalCost,
+    totalGoodFaithEstimate,
+    scheduleValue,
+    qualifiesForScheduleA,
+    notarization,
+    blockers: blockersFor({
+      input,
+      needsReview,
+      unclassified,
+      unvaluable,
+      disposedStillListed,
+      hasSchedule: schedule !== null,
+      anythingToFile: buckets.size > 0,
+    }),
+    deadlines: deadlinesFor(input.taxYear),
+  };
+}
+
+function appraisedValue(
+  asset: RenditionAsset,
+  schedule: DepreciationSchedule,
+  categoryKey: string,
+  sicCode: string | null,
+): number | null {
+  const result = appraise(
+    {
+      originalCost: asset.originalCost ?? Number.NaN,
+      acquisitionYear: asset.acquisitionYear ?? Number.NaN,
+      categoryKey,
+      lifeClassOverride: (asset.lifeClassOverride ?? undefined) as LifeClass | undefined,
+      businessSic: sicCode,
+    },
+    schedule,
+  );
+  return result.ok ? result.value.marketValue : null;
+}
+
+function note(
+  into: Map<string, RenditionExclusion>,
+  categoryKey: string,
+  reason: string,
+  cost: number,
+): void {
+  const id = `${categoryKey}|${reason}`;
+  const existing = into.get(id);
+  if (existing) {
+    existing.assetCount += 1;
+    existing.originalCost += cost;
+    return;
+  }
+  into.set(id, {
+    categoryKey,
+    label: classificationLabel(categoryKey),
+    reason,
+    assetCount: 1,
+    originalCost: cost,
+  });
+}
+
+function assemble(
+  buckets: Map<
+    string,
+    {
+      key: RenditionScheduleKey;
+      type: string;
+      year: number | null;
+      cost: number;
+      estimate: number;
+      count: number;
+      unvaluable: number;
+      categories: Set<string>;
+    }
+  >,
+  usingEstimate: boolean,
+): RenditionSchedule[] {
+  const byKey = new Map<RenditionScheduleKey, RenditionLine[]>();
+  for (const bucket of buckets.values()) {
+    const lines = byKey.get(bucket.key) ?? [];
+    lines.push({
+      type: bucket.type,
+      yearAcquired: bucket.year,
+      historicalCost: bucket.cost,
+      goodFaithEstimate: usingEstimate && bucket.unvaluable === 0 ? bucket.estimate : null,
+      assetCount: bucket.count,
+      categoryKeys: [...bucket.categories],
+    });
+    byKey.set(bucket.key, lines);
+  }
+
+  return [...byKey.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, lines]) => ({
+      key,
+      ...SCHEDULE_META[key],
+      // Newest year first within a type, which is how the form reads and how a
+      // reviewer scans for the years that carry the most value.
+      lines: lines.sort(
+        (a, b) => a.type.localeCompare(b.type) || (b.yearAcquired ?? 0) - (a.yearAcquired ?? 0),
+      ),
+      totalCost: lines.reduce((sum, line) => sum + line.historicalCost, 0),
+      totalEstimate:
+        usingEstimate && lines.every((line) => line.goodFaithEstimate !== null)
+          ? lines.reduce((sum, line) => sum + (line.goodFaithEstimate ?? 0), 0)
+          : null,
+    }));
+}
+
+/**
+ * What stands between this and a signature.
+ *
+ * `blocking` means the form would be wrong or incomplete if sent today.
+ * `warning` means it would be defensible but worse than it needs to be. The
+ * distinction matters because the deadline is real: someone will file this on
+ * April 14 with two warnings outstanding, and they should be able to tell at a
+ * glance which two they can live with.
+ */
+function blockersFor(context: {
+  input: RenditionInput;
+  needsReview: number;
+  unclassified: number;
+  unvaluable: number;
+  disposedStillListed: number;
+  hasSchedule: boolean;
+  anythingToFile: boolean;
+}): FilingBlocker[] {
+  const blockers: FilingBlocker[] = [];
+  const { input } = context;
+
+  if (!input.jurisdictionId) {
+    blockers.push({
+      key: 'no-jurisdiction',
+      severity: 'blocking',
+      message: 'No jurisdiction is set, so there is no district to file with.',
+      resolution: 'Set the situs jurisdiction on the engagement.',
+    });
+  }
+  if (!context.hasSchedule && input.jurisdictionId) {
+    blockers.push({
+      key: 'no-schedule',
+      severity: 'warning',
+      message: `No published depreciation schedule is loaded for ${input.jurisdictionId}, so no values can be shown alongside cost.`,
+      resolution:
+        'Load the district’s schedule, or file on the cost basis, which does not need one.',
+    });
+  }
+  if (!context.anythingToFile) {
+    blockers.push({
+      key: 'nothing-to-file',
+      severity: 'blocking',
+      message: 'No settled, in-service property reached any schedule.',
+      resolution: 'Classify the register and clear the review queue.',
+    });
+  }
+  if (context.unclassified > 0) {
+    blockers.push({
+      key: 'unclassified',
+      severity: 'blocking',
+      message: `${context.unclassified} asset${context.unclassified === 1 ? '' : 's'} on the register ${context.unclassified === 1 ? 'has' : 'have'} no classification, so ${context.unclassified === 1 ? 'it is' : 'they are'} on no schedule.`,
+      resolution: 'Run the classification engine over the engagement.',
+    });
+  }
+  if (context.needsReview > 0) {
+    blockers.push({
+      key: 'needs-review',
+      severity: 'blocking',
+      message: `${context.needsReview} asset${context.needsReview === 1 ? '' : 's'} still in the review queue ${context.needsReview === 1 ? 'is' : 'are'} omitted from this form. A rendition is sworn to; an unresolved asset cannot be quietly assigned a schedule.`,
+      resolution: 'Settle the review queue.',
+    });
+  }
+  if (context.unvaluable > 0) {
+    // On the cost basis a missing value costs nothing — the form asks for cost
+    // and year, and the district does its own arithmetic. On the estimate basis
+    // it is disqualifying: there is no honest number to swear to, and leaving
+    // it at zero would understate the rendition on a signed document.
+    const onEstimate = input.basis === 'estimate';
+    blockers.push({
+      key: 'unvaluable',
+      severity: onEstimate ? 'blocking' : 'warning',
+      message: onEstimate
+        ? `${context.unvaluable} asset${context.unvaluable === 1 ? '' : 's'} could not be valued — usually a missing acquisition year — so no good faith estimate can be stated for the ${context.unvaluable === 1 ? 'line it sits on' : 'lines they sit on'}. Those estimates are withheld rather than filed as zero.`
+        : `${context.unvaluable} asset${context.unvaluable === 1 ? '' : 's'} could not be valued — usually a missing acquisition year. ${context.unvaluable === 1 ? 'It is' : 'They are'} filed at cost with no value shown, which is what this basis asks for.`,
+      resolution: onEstimate
+        ? 'Supply the acquisition year, or file on the cost basis, which does not require a value.'
+        : 'Supply the acquisition year if you want a value shown alongside.',
+    });
+  }
+  if (!input.accountId) {
+    blockers.push({
+      key: 'no-account',
+      severity: 'warning',
+      message: 'No roll account number is recorded, so the filing cannot cite one.',
+      resolution: 'Add the account number from the district’s notice.',
+    });
+  }
+  if (!input.sicCode) {
+    blockers.push({
+      key: 'no-sic',
+      severity: 'warning',
+      message:
+        'No SIC code is set, so machinery sits on the ten-year placeholder rather than the life the district publishes for this line of business.',
+      resolution: 'Set the SIC code on the engagement.',
+    });
+  }
+  if (context.disposedStillListed > 0) {
+    blockers.push({
+      key: 'disposed-present',
+      severity: 'warning',
+      message: `${context.disposedStillListed} disposed asset${context.disposedStillListed === 1 ? '' : 's'} ${context.disposedStillListed === 1 ? 'was' : 'were'} left off this rendition. Confirm the disposal dates fall before January 1.`,
+      resolution: 'Check the register’s disposal dates against the assessment date.',
+    });
+  }
+  if (input.filedByAgent) {
+    blockers.push({
+      key: 'agent-appointment',
+      severity: 'blocking',
+      message:
+        'Filing as the client’s agent requires an appointment on file. Tax Code 22.27 also limits who may receive rendition contents to the owner and their appointed agent.',
+      resolution: 'Have the client sign Form 50-162 and record it with the district.',
+    });
+  }
+
+  return blockers;
+}
