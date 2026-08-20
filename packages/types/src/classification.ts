@@ -227,11 +227,19 @@ export const EngagementValuationSchema = z.object({
   jurisdictionId: z.string().nullable(),
   taxYear: z.number().int(),
   /**
-   * Null means no SIC was set and machinery fell back to the ten-year
-   * placeholder — a real difference in the numbers, so this says which applied
-   * rather than letting a placeholder pass for a published life.
+   * Null means no SIC was set and machinery fell back to the placeholder — a
+   * real difference in the numbers, so this says which applied rather than
+   * letting a placeholder pass for a published life.
    */
   sic: MachinerySicSchema.nullable(),
+  /**
+   * The category's stand-in machinery life, always reported so the card can name
+   * it in the no-SIC case. Sent from the server rather than read from
+   * @tangible/valuation in the browser: that import pulls a 1,100-row SIC table
+   * into the client bundle, and it hit the same module-graph initialization
+   * fault this app's build is already pinned around.
+   */
+  machineryDefaultLife: z.number().int(),
   /** Null when no schedule is published for this jurisdiction; nothing is guessed. */
   schedule: z
     .object({

@@ -22,6 +22,9 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+/** The stand-in life page 1 of the guide uses until the SIC is known. */
+const MACHINERY_DEFAULT_LIFE = CATEGORY_BY_KEY['machinery-equipment']?.schedule as number;
+
 /**
  * The engagement run through the appraisal district's own arithmetic.
  *
@@ -74,9 +77,10 @@ export function GET(
             code: found.sic,
             description: found.profile.description,
             machineryLife: found.profile.machineryLife,
-            defaultLife: CATEGORY_BY_KEY['machinery-equipment']?.schedule as number,
+            defaultLife: MACHINERY_DEFAULT_LIFE,
           }
         : null,
+      machineryDefaultLife: MACHINERY_DEFAULT_LIFE,
       schedule: schedule
         ? {
             taxYear: schedule.taxYear,
