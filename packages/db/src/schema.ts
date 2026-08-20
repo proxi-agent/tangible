@@ -18,6 +18,32 @@ import {
  * is where the analytical scans belong. Nothing here duplicates the warehouse.
  */
 
+/**
+ * Every table here calls `.enableRLS()`, and none of them defines a policy.
+ * That combination denies every PostgREST client outright — anon and signed-in
+ * alike — which is the intent.
+ *
+ * The anon key ships to every browser by design; it is an identifier, not a
+ * secret. What makes that safe is that it grants nothing. Supabase's default
+ * is the opposite: a table without RLS is world-readable through the REST API
+ * to anyone holding that key, and this schema holds client registers, filed
+ * renditions and the engagements around them — confidential under Tax Code
+ * 22.27, the same constraint that keeps them out of the public export bucket
+ * and out of git.
+ *
+ * Nothing in the app loses a read path. `supabase-browser.ts` is used only for
+ * auth (sign in, get user, sign out), and every data path goes through this
+ * app's own API routes on a direct Postgres connection as the table owner,
+ * which is not subject to RLS. A policy would only be worth writing if the
+ * browser ever queried a table directly, and it does not.
+ *
+ * The rule is uniform on purpose, including for tables holding nothing
+ * confidential. A per-table judgement has to be made again every time someone
+ * adds a table, and the failure mode of forgetting is silent. Declaring it
+ * here also stops `drizzle-kit push` proposing to turn RLS off: push diffs the
+ * database against this file, and RLS it does not know about reads as drift.
+ */
+
 export const jurisdictions = pgTable('jurisdictions', {
   id: text('id').primaryKey(),
   name: text('name').notNull(),
@@ -33,7 +59,7 @@ export const jurisdictions = pgTable('jurisdictions', {
   isActive: boolean('is_active').notNull().default(true),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 export const ingestRuns = pgTable(
   'ingest_runs',
@@ -56,7 +82,7 @@ export const ingestRuns = pgTable(
     index('ingest_runs_jurisdiction_idx').on(table.jurisdictionId, table.startedAt),
     index('ingest_runs_status_idx').on(table.status),
   ],
-);
+).enableRLS();
 
 /**
  * One row per downloaded archive. The checksum is what makes a re-run cheap:
@@ -81,7 +107,7 @@ export const sourceFiles = pgTable(
   (table) => [
     uniqueIndex('source_files_unique').on(table.jurisdictionId, table.taxYear, table.kind),
   ],
-);
+).enableRLS();
 
 /**
  * A named filter — the analytical equivalent of a saved search. Stores the same
@@ -102,7 +128,7 @@ export const savedViews = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('saved_views_jurisdiction_idx').on(table.jurisdictionId)],
-);
+).enableRLS();
 
 /** A materialized outreach list, frozen at the moment it was built. */
 export const leadLists = pgTable('lead_lists', {
@@ -115,7 +141,7 @@ export const leadLists = pgTable('lead_lists', {
   accountCount: integer('account_count').notNull().default(0),
   createdBy: uuid('created_by'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 export const leadListItems = pgTable(
   'lead_list_items',
@@ -137,7 +163,7 @@ export const leadListItems = pgTable(
     index('lead_list_items_list_idx').on(table.leadListId),
     uniqueIndex('lead_list_items_unique').on(table.leadListId, table.accountId),
   ],
-);
+).enableRLS();
 
 /** Free-form research notes pinned to a single account. */
 export const accountNotes = pgTable(
@@ -153,7 +179,7 @@ export const accountNotes = pgTable(
       .default(sql`now()`),
   },
   (table) => [index('account_notes_account_idx').on(table.jurisdictionId, table.accountId)],
-);
+).enableRLS();
 
 // ---------------------------------------------------------------------------
 // Workspace: clients, engagements, FAR intake
@@ -171,7 +197,7 @@ export const clients = pgTable('clients', {
   notes: text('notes'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}).enableRLS();
 
 /**
  * A physical situs. BPP is assessed where property sits on January 1, so a
@@ -197,7 +223,7 @@ export const clientLocations = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('client_locations_client_idx').on(table.clientId)],
-);
+).enableRLS();
 
 /** One tax season's work for one client; FAR files and assets hang off this. */
 export const engagements = pgTable(
@@ -229,7 +255,7 @@ export const engagements = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('engagements_client_idx').on(table.clientId, table.taxYear)],
-);
+).enableRLS();
 
 /**
  * An uploaded fixed asset register and everything decided about it: the parse
@@ -265,7 +291,7 @@ export const farFiles = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index('far_files_engagement_idx').on(table.engagementId)],
-);
+).enableRLS();
 
 /**
  * One application of one confirmed mapping to one file.
@@ -304,7 +330,7 @@ export const importBatches = pgTable(
     index('import_batches_engagement_idx').on(table.engagementId, table.createdAt),
     index('import_batches_file_idx').on(table.farFileId, table.status),
   ],
-);
+).enableRLS();
 
 /**
  * An asset as a thing the client owns — the durable half of the graph.
@@ -377,7 +403,7 @@ export const assets = pgTable(
     index('assets_client_idx').on(table.clientId),
     index('assets_location_idx').on(table.locationId),
   ],
-);
+).enableRLS();
 
 /**
  * The asset as one import saw it: every field, plus where in the workbook it
@@ -463,7 +489,7 @@ export const assetVersions = pgTable(
     // confirm cannot double-write a version.
     uniqueIndex('asset_versions_batch_asset_unique').on(table.batchId, table.assetId),
   ],
-);
+).enableRLS();
 
 /**
  * What changed about an asset, and when.
@@ -506,7 +532,7 @@ export const assetEvents = pgTable(
     index('asset_events_asset_idx').on(table.assetId, table.occurredAt),
     index('asset_events_batch_idx').on(table.batchId, table.kind),
   ],
-);
+).enableRLS();
 
 /**
  * What one asset was worth, to one jurisdiction, in one tax year.
@@ -553,7 +579,7 @@ export const assetPositions = pgTable(
     ),
     index('asset_positions_year_idx').on(table.taxYear, table.jurisdictionId),
   ],
-);
+).enableRLS();
 
 /**
  * One decision per asset about which jurisdiction schedule values it.
@@ -602,7 +628,7 @@ export const assetClassifications = pgTable(
     index('asset_classifications_queue_idx').on(table.engagementId, table.status),
     index('asset_classifications_fingerprint_idx').on(table.engagementId, table.fingerprint),
   ],
-);
+).enableRLS();
 
 /**
  * The compounding part: every description a human has ever settled.
@@ -642,7 +668,7 @@ export const classificationMemory = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [uniqueIndex('classification_memory_fingerprint_unique').on(table.fingerprint)],
-);
+).enableRLS();
 
 /**
  * A document the client filed or received: last year's rendition, an assessment
@@ -705,7 +731,7 @@ export const priorDocuments = pgTable(
     index('prior_documents_engagement_idx').on(table.engagementId, table.kind),
     index('prior_documents_year_idx').on(table.documentTaxYear),
   ],
-);
+).enableRLS();
 
 /**
  * One reported line of a filed rendition.
@@ -773,7 +799,7 @@ export const priorReturnLines = pgTable(
     /** The review queue: lines on this document still waiting on a person. */
     index('prior_return_lines_mapping_idx').on(table.documentId, table.mappingStatus),
   ],
-);
+).enableRLS();
 
 export type Jurisdiction = typeof jurisdictions.$inferSelect;
 export type NewJurisdiction = typeof jurisdictions.$inferInsert;
