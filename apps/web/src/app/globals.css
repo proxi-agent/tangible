@@ -134,3 +134,21 @@
 .recharts-surface:focus {
   outline: none;
 }
+
+/*
+ * Printing. The filing screens produce a document somebody signs, so a print
+ * from this app has to come out as the document and not as a screenshot of the
+ * application around it.
+ */
+@media print {
+  header {
+    display: none !important;
+  }
+  main {
+    max-width: none !important;
+    padding: 0 !important;
+  }
+  body {
+    background: #fff;
+  }
+}

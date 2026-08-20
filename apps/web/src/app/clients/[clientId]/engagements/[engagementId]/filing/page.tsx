@@ -1,7 +1,15 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, CalendarDays, CircleCheck, Gavel, Stamp } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  CalendarDays,
+  CircleCheck,
+  FileText,
+  Gavel,
+  Stamp,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
@@ -38,13 +46,22 @@ export default function FilingPage() {
 
   return (
     <div className="space-y-5">
-      <Link
-        href={`/clients/${clientId}/engagements/${engagementId}`}
-        className="inline-flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-      >
-        <ArrowLeft size={13} strokeWidth={2} />
-        Back to the engagement
-      </Link>
+      <div className="flex items-center gap-4">
+        <Link
+          href={`/clients/${clientId}/engagements/${engagementId}`}
+          className="inline-flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
+        >
+          <ArrowLeft size={13} strokeWidth={2} />
+          Back to the engagement
+        </Link>
+        <Link
+          href={`/clients/${clientId}/engagements/${engagementId}/filing/form?basis=${basis}&agent=${filedByAgent}`}
+          className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-[var(--color-ink)] hover:underline"
+        >
+          <FileText size={13} strokeWidth={2} />
+          View the form
+        </Link>
+      </div>
 
       <Card>
         <CardHeader

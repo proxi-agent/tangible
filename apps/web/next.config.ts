@@ -53,6 +53,13 @@ const config: NextConfig = {
    */
   outputFileTracingIncludes: {
     '/api/**': ['../../node_modules/.pnpm/@duckdb+node-bindings-*/node_modules/@duckdb/**/*'],
+    /**
+     * The Comptroller's blank Form 50-144, read at runtime by `@tangible/filing`
+     * through `new URL('../assets/…', import.meta.url)`. The tracer follows
+     * imports, and that is a filesystem read rather than an import, so nothing
+     * would point it at the one file the PDF route exists to fill.
+     */
+    '/api/engagements/[engagementId]/rendition/pdf': ['../../packages/filing/assets/*.pdf'],
   },
 };
 

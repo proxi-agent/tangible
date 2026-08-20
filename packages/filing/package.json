@@ -22,6 +22,7 @@
     "@tangible/classification": "workspace:*",
     "@tangible/types": "workspace:*",
     "@tangible/valuation": "workspace:*",
+    "pdf-lib": "^1.17.1",
     "zod": "catalog:"
   },
   "devDependencies": {

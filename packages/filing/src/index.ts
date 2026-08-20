@@ -1,6 +1,35 @@
 export { buildRendition, type RenditionAsset, type RenditionInput } from './rendition.js';
 export { deadlinesFor } from './deadlines.js';
 export {
+  buildForm50144,
+  FORM_AUDIENCES,
+  FORM_CAPACITIES,
+  type Form50144,
+  type Form50144Input,
+  type FormAudience,
+  type FormCapacity,
+  type FormCheckbox,
+  type FormFieldValue,
+  type FormRow,
+  type FormSignatureBlock,
+  type FormOmission,
+  type FormParty,
+  type FormScheduleTable,
+  type FormSigner,
+} from './form-50-144.js';
+export {
+  FORM_50144_REVISION,
+  FORM_50144_SHA256,
+  FORM_50144_TAX_YEAR,
+  planFormFill,
+  renderForm50144,
+  type FormFillChoice,
+  type FormFillInput,
+  type FormFillPlan,
+  type FormFillText,
+  type FormOverflow,
+} from './fill-50-144.js';
+export {
   describePositions,
   planPositions,
   type PositionPlan,

@@ -1,12 +1,6 @@
-import { eq } from 'drizzle-orm';
-import { buildRendition, type RenditionAsset } from '@tangible/filing';
-import { RenditionRequestSchema, type ClassificationStatus, type Rendition } from '@tangible/types';
-import { scheduleFor } from '@tangible/valuation';
-import { engagementAssetsWhere } from '@/lib/asset-graph';
-import { renditionPositions } from '@/lib/findings';
+import { RenditionRequestSchema, type Rendition } from '@tangible/types';
+import { buildEngagementRendition } from '@/lib/rendition';
 import { handle, params as queryParams } from '@/lib/route';
-import { fetchEngagement } from '@/lib/workspace';
-import { requireDb, schema } from '@/lib/workspace-db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -27,54 +21,12 @@ export function GET(
 ): Promise<Response> {
   return handle(async (): Promise<Rendition> => {
     const { engagementId } = await params;
-    const { engagement, client } = await fetchEngagement(engagementId);
-
     const raw = queryParams(request);
     const { basis, filedByAgent } = RenditionRequestSchema.parse({
       basis: raw.basis ?? 'cost',
       // `z.coerce.boolean()` treats any non-empty string as true, so map it.
       filedByAgent: raw.filedByAgent === undefined ? true : raw.filedByAgent === 'true',
     });
-
-    const db = requireDb();
-    // The decision log, read alongside the register. Empty until somebody has
-    // committed a set, which is the normal state of a new engagement.
-    const positions = await renditionPositions(engagementId);
-    const rows = await db
-      .select({ asset: schema.assetVersions, classification: schema.assetClassifications })
-      .from(schema.assetVersions)
-      .leftJoin(
-        schema.assetClassifications,
-        eq(schema.assetClassifications.assetId, schema.assetVersions.assetId),
-      )
-      .where(engagementAssetsWhere(engagementId));
-
-    const assets: RenditionAsset[] = rows.map(({ asset, classification }) => ({
-      id: asset.assetId,
-      description: asset.description,
-      acquisitionYear: asset.acquisitionYear,
-      originalCost: asset.originalCost,
-      isDisposed: asset.isDisposed,
-      categoryKey: classification?.categoryKey ?? null,
-      lifeClassOverride: classification?.lifeClassOverride ?? null,
-      status: (classification?.status as ClassificationStatus | undefined) ?? null,
-    }));
-
-    return buildRendition({
-      engagementId,
-      clientName: client.name,
-      taxYear: engagement.taxYear,
-      jurisdictionId: engagement.jurisdictionId,
-      accountId: engagement.accountId,
-      sicCode: engagement.sicCode,
-      assets,
-      positions,
-      schedule: engagement.jurisdictionId
-        ? (scheduleFor(engagement.jurisdictionId, engagement.taxYear) ?? null)
-        : null,
-      basis,
-      filedByAgent,
-      generatedAt: new Date().toISOString(),
-    });
+    return buildEngagementRendition(engagementId, { basis, filedByAgent });
   });
 }
