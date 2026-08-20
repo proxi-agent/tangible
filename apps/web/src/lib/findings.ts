@@ -1,6 +1,7 @@
 import 'server-only';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { FindingRow, FindingSetRow } from '@tangible/db';
+import type { RenditionPosition } from '@tangible/filing';
 import {
   byKey,
   fromRegisterComparison,
@@ -21,11 +22,7 @@ import type {
   StoredFinding,
   UpdateFindingDispositionRequest,
 } from '@tangible/types';
-import {
-  analysisFingerprint,
-  buildComparisonAnalysis,
-  buildSavingsAnalysis,
-} from '@/lib/analysis';
+import { analysisFingerprint, buildComparisonAnalysis, buildSavingsAnalysis } from '@/lib/analysis';
 import { HttpError, notFound } from '@/lib/route';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -298,10 +295,7 @@ export async function decideFinding(
 }
 
 /** Attach each finding's decision, replayed from the engagement-level record. */
-async function withDispositions(
-  set: FindingSetRow,
-  rows: FindingRow[],
-): Promise<StoredFinding[]> {
+async function withDispositions(set: FindingSetRow, rows: FindingRow[]): Promise<StoredFinding[]> {
   if (rows.length === 0) return [];
   const db = requireDb();
   const records = await db
@@ -394,6 +388,60 @@ function summaryDto(
  * look, and the cost of one wrongly cleared is a stale number in front of a
  * client.
  */
+/**
+ * The decisions this engagement has on record, in the shape the rendition acts
+ * on.
+ *
+ * Two joins doing two different jobs. The finding rows say what was *claimed* —
+ * the title the client saw and the figures it carried — and the newest
+ * committed set wins, because an older one is what was said in March and the
+ * form is being built now. The disposition rows say what was *decided*, and
+ * they live at the engagement level precisely so that they outlive the sets
+ * they were made on.
+ *
+ * Undecided findings travel too, and deliberately. A claim that went to a
+ * client and came back unanswered is not the same as one that was never made,
+ * and the filing screen is where that difference stops being academic.
+ */
+export async function renditionPositions(engagementId: string): Promise<RenditionPosition[]> {
+  const db = requireDb();
+  const rows = await db
+    .select({
+      finding: schema.findings,
+      taxYear: schema.findingSets.taxYear,
+    })
+    .from(schema.findings)
+    .innerJoin(schema.findingSets, eq(schema.findingSets.id, schema.findings.setId))
+    .where(eq(schema.findings.engagementId, engagementId))
+    .orderBy(desc(schema.findingSets.committedAt));
+  if (rows.length === 0) return [];
+
+  const records = await db
+    .select()
+    .from(schema.findingDispositions)
+    .where(eq(schema.findingDispositions.engagementId, engagementId));
+  const decided = new Map(records.map((record) => [`${record.source}:${record.key}`, record]));
+
+  const latest = new Map<string, RenditionPosition>();
+  for (const { finding, taxYear } of rows) {
+    const id = `${finding.source}:${finding.key}`;
+    if (latest.has(id)) continue;
+    const decision = decided.get(id);
+    latest.set(id, {
+      source: finding.source as FindingSource,
+      key: finding.key,
+      title: finding.title,
+      taxYear,
+      status: (decision?.status as FindingDispositionStatus | undefined) ?? null,
+      decidedBy: decision?.decidedBy ?? null,
+      decidedAt: decision?.decidedAt?.toISOString() ?? null,
+      cost: finding.cost,
+      assetCount: finding.assetCount,
+    });
+  }
+  return [...latest.values()];
+}
+
 async function isStale(set: FindingSetRow, pending?: Promise<string | null>): Promise<boolean> {
   if (set.source === 'register-comparison' && !set.priorDocumentId) return true;
   const current = await (pending ??

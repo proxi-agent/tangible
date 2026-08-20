@@ -3,6 +3,7 @@ import { buildRendition, type RenditionAsset } from '@tangible/filing';
 import { RenditionRequestSchema, type ClassificationStatus, type Rendition } from '@tangible/types';
 import { scheduleFor } from '@tangible/valuation';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
+import { renditionPositions } from '@/lib/findings';
 import { handle, params as queryParams } from '@/lib/route';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
@@ -36,6 +37,9 @@ export function GET(
     });
 
     const db = requireDb();
+    // The decision log, read alongside the register. Empty until somebody has
+    // committed a set, which is the normal state of a new engagement.
+    const positions = await renditionPositions(engagementId);
     const rows = await db
       .select({ asset: schema.assetVersions, classification: schema.assetClassifications })
       .from(schema.assetVersions)
@@ -64,6 +68,7 @@ export function GET(
       accountId: engagement.accountId,
       sicCode: engagement.sicCode,
       assets,
+      positions,
       schedule: engagement.jurisdictionId
         ? (scheduleFor(engagement.jurisdictionId, engagement.taxYear) ?? null)
         : null,

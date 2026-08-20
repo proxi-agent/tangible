@@ -1,11 +1,11 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowLeft, CalendarDays, CircleCheck, Stamp } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, CalendarDays, CircleCheck, Gavel, Stamp } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
-import type { Rendition, RenditionBasis } from '@tangible/types';
+import type { Rendition, RenditionDecision, RenditionBasis } from '@tangible/types';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { count, money, moneyExact, plural } from '@/lib/format';
@@ -69,6 +69,7 @@ export default function FilingPage() {
       </Card>
 
       <Blockers rendition={data} />
+      {data.decisions.length > 0 ? <Decisions rendition={data} /> : null}
       <Schedules rendition={data} />
       {data.exclusions.length > 0 ? <Exclusions rendition={data} /> : null}
       <Deadlines rendition={data} />
@@ -232,6 +233,80 @@ function Blockers({ rendition }: { rendition: Rendition }) {
         </ul>
       )}
     </Card>
+  );
+}
+
+const STATUS: Record<string, { label: string; tone: 'good' | 'critical' | 'warning' | 'neutral' }> =
+  {
+    accepted: { label: 'accepted', tone: 'good' },
+    rejected: { label: 'rejected', tone: 'critical' },
+    'pending-client': { label: 'with the client', tone: 'warning' },
+  };
+
+/**
+ * The decision log, as it reads on the form.
+ *
+ * Everything else here is derived from the register; this is the only place a
+ * human judgement changed the paper, so it says so out loud — including where
+ * the answer is that it changed nothing. Most accepted findings describe
+ * property the register or the classification already keeps off the form, and a
+ * reader who assumed otherwise would be looking for a reduction that was never
+ * supposed to appear.
+ */
+function Decisions({ rendition }: { rendition: Rendition }) {
+  const undecided = rendition.decisions.filter((d) => d.status === null).length;
+  return (
+    <Card>
+      <CardHeader
+        title="Decisions carried onto this form"
+        description={
+          undecided > 0
+            ? `Committed findings and what each one did here. ${count(undecided)} ${plural(undecided, 'has', 'have')} not been decided — a claim that went out and came back unanswered is not the same as one nobody made.`
+            : 'Committed findings and what each one did here. A schedule lighter than the register has to be able to say who decided that, and on what day.'
+        }
+      />
+      <ul className="divide-y divide-[var(--color-hairline)]">
+        {rendition.decisions.map((decision) => (
+          <Decision key={`${decision.source}-${decision.key}`} decision={decision} />
+        ))}
+      </ul>
+    </Card>
+  );
+}
+
+function Decision({ decision }: { decision: RenditionDecision }) {
+  const status = decision.status ? STATUS[decision.status] : null;
+  return (
+    <li className="flex items-start gap-3 px-5 py-3">
+      <Gavel size={14} strokeWidth={2} className="mt-0.5 shrink-0 text-[var(--color-ink-muted)]" />
+      <div className="min-w-0 flex-1">
+        <p className="flex flex-wrap items-baseline gap-x-2 text-sm">
+          <span className="font-medium">{decision.title}</span>
+          <span className="text-xs text-[var(--color-ink-muted)]">
+            {decision.source === 'savings'
+              ? 'savings report'
+              : `comparison against the ${decision.taxYear} return`}
+            {' · '}
+            {money(decision.cost)} claimed
+          </span>
+        </p>
+        <p className="mt-0.5 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+          {decision.effectOnForm}
+        </p>
+        {decision.decidedAt ? (
+          <p className="mt-0.5 text-[11px] text-[var(--color-ink-muted)]">
+            {decision.decidedBy ?? 'Nobody recorded'} ·{' '}
+            {new Date(decision.decidedAt).toLocaleDateString()}
+          </p>
+        ) : null}
+      </div>
+      {decision.removedAssetCount > 0 ? (
+        <span className="tabular shrink-0 text-xs text-[var(--color-ink-secondary)]">
+          −{moneyExact(decision.removedCost)}
+        </span>
+      ) : null}
+      <Badge tone={status?.tone ?? 'neutral'}>{status?.label ?? 'undecided'}</Badge>
+    </li>
   );
 }
 

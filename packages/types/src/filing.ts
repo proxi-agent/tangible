@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FindingDispositionStatusSchema, FindingSourceSchema } from './findings.js';
 
 /**
  * Rendition filing: turning a classified register into Form 50-144.
@@ -120,6 +121,41 @@ export const FilingDeadlineSchema = z.object({
 
 export type FilingDeadline = z.infer<typeof FilingDeadlineSchema>;
 
+/**
+ * A committed finding, the decision standing against it, and what that decision
+ * did to this form.
+ *
+ * Everything else on a rendition is derived — register in, schedules out. This
+ * is the one place a human judgement reaches the paper, so it travels *on* the
+ * document rather than being folded silently into the totals. A Schedule E that
+ * is $54,300 lighter than the register has to be able to say who decided that,
+ * on what day, and under which section.
+ *
+ * `effectOnForm` is populated even when the answer is "nothing", because that is
+ * the common case and the surprising one: most accepted findings describe
+ * property the register or the classification already keeps off the form, and a
+ * blank there would read as an oversight rather than as an answer.
+ */
+export const RenditionDecisionSchema = z.object({
+  source: FindingSourceSchema,
+  key: z.string(),
+  title: z.string(),
+  /** The year the set was committed for. A prior year, for a comparison. */
+  taxYear: z.number().int(),
+  /** Null where the finding was committed and nobody has decided it yet. */
+  status: FindingDispositionStatusSchema.nullable(),
+  decidedBy: z.string().nullable(),
+  decidedAt: z.string().datetime().nullable(),
+  /** What the finding claimed when it was committed. */
+  cost: z.number(),
+  /** What this actually took off the schedules, on the register as it stands. */
+  removedCost: z.number(),
+  removedAssetCount: z.number().int().nonnegative(),
+  effectOnForm: z.string(),
+});
+
+export type RenditionDecision = z.infer<typeof RenditionDecisionSchema>;
+
 export const RenditionSchema = z.object({
   engagementId: z.string(),
   clientName: z.string(),
@@ -136,6 +172,8 @@ export const RenditionSchema = z.object({
 
   schedules: z.array(RenditionScheduleSchema),
   exclusions: z.array(RenditionExclusionSchema),
+  /** Committed findings and what they did here. Empty until a set is committed. */
+  decisions: z.array(RenditionDecisionSchema),
 
   totalHistoricalCost: z.number(),
   /** Total good faith estimate, when filing on that basis. */

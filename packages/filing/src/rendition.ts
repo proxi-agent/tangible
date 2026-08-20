@@ -11,6 +11,13 @@ import type {
 } from '@tangible/types';
 import { appraise, type DepreciationSchedule, type LifeClass } from '@tangible/valuation';
 import { deadlinesFor } from './deadlines.js';
+import {
+  describePositions,
+  planPositions,
+  type PositionPlan,
+  type Removal,
+  type RenditionPosition,
+} from './positions.js';
 
 /**
  * Build Form 50-144 from a classified register.
@@ -43,6 +50,12 @@ export interface RenditionInput {
   basis: RenditionBasis;
   filedByAgent: boolean;
   generatedAt: string;
+  /**
+   * Committed findings and the decisions standing against them. Optional, and
+   * empty until somebody commits a set — a rendition built before any analysis
+   * was put to a client is the same form it always was.
+   */
+  positions?: readonly RenditionPosition[];
 }
 
 /**
@@ -132,6 +145,8 @@ const money = (n: number) => `$${Math.round(n).toLocaleString('en-US')}`;
 export function buildRendition(input: RenditionInput): Rendition {
   const { schedule, basis } = input;
   const usingEstimate = basis === 'estimate';
+  const positions = input.positions ?? [];
+  const plan = planPositions(positions);
 
   // Only settled, in-service property reaches a form somebody signs. An asset
   // still in the review queue is not "probably furniture" for filing purposes —
@@ -159,6 +174,9 @@ export function buildRendition(input: RenditionInput): Rendition {
     Bucket & { key: RenditionScheduleKey; type: string; year: number | null }
   >();
   const exclusions = new Map<string, RenditionExclusion>();
+  // Measured off the register rather than taken from what the finding claimed,
+  // so the document reports what actually came off this form today.
+  const removed = new Map<string, Removal>();
 
   const bucketFor = (key: RenditionScheduleKey, type: string, year: number | null) => {
     const id = `${key}|${type}|${year ?? ''}`;
@@ -196,6 +214,17 @@ export function buildRendition(input: RenditionInput): Rendition {
     if (asset.isDisposed) {
       disposedStillListed += 1;
       note(exclusions, categoryKey, 'Disposed of before January 1, so not renderable.', cost);
+      continue;
+    }
+
+    // An accepted position, applied by category. The property is in the
+    // register and taxable on its face; it comes off because somebody decided
+    // it should, which is why it lands in the exclusions with that reason.
+    const removalReason = plan.removals.get(categoryKey);
+    if (removalReason) {
+      const tally = removed.get(categoryKey) ?? { cost: 0, count: 0 };
+      removed.set(categoryKey, { cost: tally.cost + cost, count: tally.count + 1 });
+      note(exclusions, categoryKey, removalReason, cost);
       continue;
     }
 
@@ -288,6 +317,7 @@ export function buildRendition(input: RenditionInput): Rendition {
     filedByAgent: input.filedByAgent,
     schedules,
     exclusions: [...exclusions.values()].sort((a, b) => b.originalCost - a.originalCost),
+    decisions: describePositions(positions, removed),
     totalHistoricalCost,
     totalGoodFaithEstimate,
     scheduleValue,
@@ -301,6 +331,7 @@ export function buildRendition(input: RenditionInput): Rendition {
       disposedStillListed,
       hasSchedule: schedule !== null,
       anythingToFile: buckets.size > 0,
+      plan,
     }),
     deadlines: deadlinesFor(input.taxYear),
   };
@@ -412,6 +443,7 @@ function blockersFor(context: {
   disposedStillListed: number;
   hasSchedule: boolean;
   anythingToFile: boolean;
+  plan: PositionPlan;
 }): FilingBlocker[] {
   const blockers: FilingBlocker[] = [];
   const { input } = context;
@@ -509,5 +541,11 @@ function blockersFor(context: {
     });
   }
 
-  return blockers;
+  // A built-in warning that asks a question the decision log has already
+  // answered is dropped rather than repeated: an accepted finding carries a
+  // name and a date, which is more than the warning was asking for.
+  return [
+    ...blockers.filter((blocker) => !context.plan.answered.has(blocker.key)),
+    ...context.plan.blockers,
+  ];
 }
