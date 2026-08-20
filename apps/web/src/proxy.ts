@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { SESSION_COOKIE_OPTIONS } from '@/lib/auth-session';
 
 /**
  * The auth gate. The moment the first client FAR lands, this app holds
@@ -26,7 +27,10 @@ export async function proxy(request: NextRequest) {
         for (const { name, value } of cookies) request.cookies.set(name, value);
         response = NextResponse.next({ request });
         for (const { name, value, options } of cookies) {
-          response.cookies.set(name, value, options);
+          // The long lifetime is applied here as well as in the browser client:
+          // a refresh that rewrote the cookie with Supabase's default would
+          // silently shorten a session that started out as a year.
+          response.cookies.set(name, value, { ...options, ...SESSION_COOKIE_OPTIONS });
         }
       },
     },
