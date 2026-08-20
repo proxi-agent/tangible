@@ -25,6 +25,7 @@ export interface AssetDraft {
   netBookValue: number | null;
   quantity: number | null;
   serialNumber: string | null;
+  entity: string | null;
   location: string | null;
   department: string | null;
   vendor: string | null;
@@ -229,6 +230,7 @@ export function applyMapping(workbook: ParsedWorkbook, mapping: FarMapping): Nor
         netBookValue,
         quantity: numberValue(cell('quantity')),
         serialNumber: textValue(cell('serialNumber')),
+        entity: textValue(cell('entity')),
         location: textValue(cell('location')),
         department: textValue(cell('department')),
         vendor: textValue(cell('vendor')),

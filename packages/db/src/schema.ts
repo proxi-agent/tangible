@@ -268,16 +268,145 @@ export const farFiles = pgTable(
 );
 
 /**
- * Canonical asset rows, one per data row that survived normalization. Wide and
- * nullable on purpose: registers differ in what they carry, and a missing value
- * must stay visibly missing rather than defaulting to something plausible.
- * `sourceSheet`/`sourceRow` keep every asset traceable to the exact cells it
- * came from, and `raw` keeps the cells themselves.
+ * One application of one confirmed mapping to one file.
+ *
+ * A file gets confirmed more than once in practice — a mis-set header row, a
+ * cost column corrected — and each confirmation is its own batch rather than an
+ * overwrite. That is what makes re-confirming both safe and auditable: the
+ * earlier batch is marked superseded and its versions stay readable, so "why
+ * did this asset's cost change" answers with a mapping instead of a shrug.
+ */
+export const importBatches = pgTable(
+  'import_batches',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    farFileId: uuid('far_file_id')
+      .notNull()
+      .references(() => farFiles.id, { onDelete: 'cascade' }),
+    /** 'pending' | 'applied' | 'superseded' | 'failed'. */
+    status: text('status').notNull().default('pending'),
+    /** The mapping exactly as applied, so a batch can be replayed or explained. */
+    mapping: jsonb('mapping').notNull(),
+    assetCount: integer('asset_count').notNull().default(0),
+    newCount: integer('new_count').notNull().default(0),
+    matchedCount: integer('matched_count').notNull().default(0),
+    absentCount: integer('absent_count').notNull().default(0),
+    changedCount: integer('changed_count').notNull().default(0),
+    skippedCount: integer('skipped_count').notNull().default(0),
+    createdBy: text('created_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    appliedAt: timestamp('applied_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('import_batches_engagement_idx').on(table.engagementId, table.createdAt),
+    index('import_batches_file_idx').on(table.farFileId, table.status),
+  ],
+);
+
+/**
+ * An asset as a thing the client owns — the durable half of the graph.
+ *
+ * Deliberately thin, and deliberately scoped to the **client** rather than to an
+ * engagement or a file. A forklift does not stop existing because a new tax year
+ * started or because somebody re-uploaded the register with a corrected header
+ * row, and everything the product wants to do next — compare this year to last,
+ * track a move between counties, show an asset's history — needs a row that
+ * survives both of those.
+ *
+ * Identity is `(clientId, naturalKey, ordinal)`. The natural key is the
+ * register's own asset tag where there is one and a fingerprint of description,
+ * cost and acquisition where there is not; the ordinal separates rows that are
+ * genuinely identical, like ten desks on one purchase order, which have to stay
+ * ten assets. `matchMethod` records which of those applied, because a reviewer
+ * looking at a disposal should know the difference between "this asset left" and
+ * "one of these ten left".
+ *
+ * `currentVersionId` and the batch pointers are plain uuids, not foreign keys:
+ * assets and versions reference each other, and one side has to give way for the
+ * DDL to be creatable in any order.
  */
 export const assets = pgTable(
   'assets',
   {
     id: uuid('id').primaryKey().defaultRandom(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    /** Asset tag where the register carries one, else a description fingerprint. */
+    naturalKey: text('natural_key').notNull(),
+    /** Position among rows sharing this key. 0 unless the key is ambiguous. */
+    ordinal: integer('ordinal').notNull().default(0),
+    /** 'asset-tag' | 'fingerprint' | 'fingerprint-ordinal' | 'new'. */
+    matchMethod: text('match_method').notNull(),
+    firstSeenBatchId: uuid('first_seen_batch_id').notNull(),
+    lastSeenBatchId: uuid('last_seen_batch_id').notNull(),
+    currentVersionId: uuid('current_version_id'),
+    /**
+     * The tax year of the most recent register this asset appeared in, which is
+     * what makes "current" mean the newest thing we know rather than the most
+     * recent thing anyone happened to upload. Re-confirming a 2027 file after a
+     * 2028 file has landed must not walk the asset's current values backwards,
+     * and must not mark 2028-only assets absent for failing to appear in a 2027
+     * register they were never going to be in.
+     */
+    currentTaxYear: integer('current_tax_year').notNull(),
+    /**
+     * Present in an earlier import and missing from the latest one, with no
+     * disposal recorded. Not a disposal — a filtered export, a divested site
+     * whose rows were dropped, and a genuine untracked retirement all look the
+     * same from here, and only the client can say which.
+     */
+    isAbsent: boolean('is_absent').notNull().default(false),
+    /**
+     * Where the property sits, once resolved. The register's own location text
+     * lives on the version (it is what the file said); this is our reading of
+     * it, and it is what decides whose schedules value the asset.
+     */
+    locationId: uuid('location_id').references(() => clientLocations.id, {
+      onDelete: 'set null',
+    }),
+    jurisdictionId: text('jurisdiction_id'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('assets_identity_unique').on(table.clientId, table.naturalKey, table.ordinal),
+    index('assets_client_idx').on(table.clientId),
+    index('assets_location_idx').on(table.locationId),
+  ],
+);
+
+/**
+ * The asset as one import saw it: every field, plus where in the workbook it
+ * came from.
+ *
+ * This is the table that used to be `assets`, and it keeps that shape — wide and
+ * nullable on purpose, because registers differ in what they carry and a missing
+ * value must stay visibly missing rather than defaulting to something plausible.
+ * `sourceSheet`/`sourceRow` keep every row traceable to the exact cells it came
+ * from, and `raw` keeps the cells themselves.
+ *
+ * What is new is that a version is a *snapshot*, not the asset. Re-confirming a
+ * mapping writes a new batch of versions and supersedes the old ones instead of
+ * deleting them, so the history of what the client's own books said is
+ * recoverable rather than overwritten.
+ *
+ * `engagementId` is denormalized from the batch because every read in the app is
+ * engagement-scoped and the alternative is a three-table join on the hot path.
+ */
+export const assetVersions = pgTable(
+  'asset_versions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    assetId: uuid('asset_id')
+      .notNull()
+      .references(() => assets.id, { onDelete: 'cascade' }),
+    batchId: uuid('batch_id')
+      .notNull()
+      .references(() => importBatches.id, { onDelete: 'cascade' }),
     engagementId: uuid('engagement_id')
       .notNull()
       .references(() => engagements.id, { onDelete: 'cascade' }),
@@ -298,6 +427,12 @@ export const assets = pgTable(
     netBookValue: doublePrecision('net_book_value'),
     quantity: doublePrecision('quantity'),
     serialNumber: text('serial_number'),
+    /**
+     * The legal entity that owns it. Renditions are filed per owner per
+     * jurisdiction, so a group filing under three entities is three sets of
+     * returns even at one address — and every ERP export carries this column.
+     */
+    entity: text('entity'),
     location: text('location'),
     department: text('department'),
     vendor: text('vendor'),
@@ -310,23 +445,129 @@ export const assets = pgTable(
     warnings: jsonb('warnings').notNull().default([]),
     /** The source row's cells as parsed, for the lineage view. */
     raw: jsonb('raw'),
+    /**
+     * False once a later batch for the same file supersedes it. Denormalized
+     * from the batch's status because every engagement read filters on it and
+     * the alternative is joining batches on the hot path.
+     */
+    isCurrent: boolean('is_current').notNull().default(true),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
-    index('assets_engagement_idx').on(table.engagementId),
-    index('assets_far_file_idx').on(table.farFileId),
+    // The engagement read: current rows for one engagement, which is what every
+    // page, stat and report starts from.
+    index('asset_versions_engagement_idx').on(table.engagementId, table.isCurrent),
+    index('asset_versions_asset_idx').on(table.assetId, table.createdAt),
+    index('asset_versions_batch_idx').on(table.batchId),
+    // One row per asset per batch — the diff upserts on this, so a retried
+    // confirm cannot double-write a version.
+    uniqueIndex('asset_versions_batch_asset_unique').on(table.batchId, table.assetId),
+  ],
+);
+
+/**
+ * What changed about an asset, and when.
+ *
+ * The reason the graph is worth building. A fixed asset register is a book
+ * record that gets rewritten every year, and the questions that find money are
+ * all about the rewriting: what appeared, what stopped appearing, what got
+ * cheaper, what moved counties. None of them are answerable from a table that is
+ * deleted and rebuilt on every upload.
+ *
+ * Two rules keep it honest. An asset vanishing from a register is recorded as
+ * `absent`, never as a disposal — a filtered export and a genuine retirement are
+ * indistinguishable from here. And book depreciation, which moves on every asset
+ * every year, is stored like everything else but marked `routine`, so the
+ * material changes stay legible instead of drowning.
+ */
+export const assetEvents = pgTable(
+  'asset_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    assetId: uuid('asset_id')
+      .notNull()
+      .references(() => assets.id, { onDelete: 'cascade' }),
+    /** The import that produced it. Null for classification events. */
+    batchId: uuid('batch_id').references(() => importBatches.id, { onDelete: 'set null' }),
+    /** An AssetEventKind. */
+    kind: text('kind').notNull(),
+    /** A TrackedAssetField on 'field-changed'; null on every other kind. */
+    field: text('field'),
+    previousValue: text('previous_value'),
+    value: text('value'),
+    /** 'material' | 'routine'. */
+    significance: text('significance').notNull().default('material'),
+    /** One sentence a person can read without decoding the columns above. */
+    summary: text('summary').notNull(),
+    actor: text('actor'),
+    occurredAt: timestamp('occurred_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('asset_events_asset_idx').on(table.assetId, table.occurredAt),
+    index('asset_events_batch_idx').on(table.batchId, table.kind),
+  ],
+);
+
+/**
+ * What one asset was worth, to one jurisdiction, in one tax year.
+ *
+ * Three value columns rather than one, because the three differ in kind and
+ * collapsing them is how a report starts quoting our own arithmetic as the
+ * district's opinion. `renderedValue` is a fact read off a filed document.
+ * `scheduleValue` is our calculation. `allocatedAssessedValue` is an
+ * apportionment of an account-level figure — districts assess accounts, not
+ * assets — and it carries the basis it was apportioned on so it can never be
+ * mistaken for something anyone observed.
+ */
+export const assetPositions = pgTable(
+  'asset_positions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    assetId: uuid('asset_id')
+      .notNull()
+      .references(() => assets.id, { onDelete: 'cascade' }),
+    taxYear: integer('tax_year').notNull(),
+    jurisdictionId: text('jurisdiction_id').notNull(),
+    /** The roll account this position belongs to, once identified. */
+    accountId: text('account_id'),
+    /** From a prior return, where we hold one. Observed, not computed. */
+    renderedValue: doublePrecision('rendered_value'),
+    /** From the district's schedules and our classification. */
+    scheduleValue: doublePrecision('schedule_value'),
+    /** Apportioned down from the account's assessed value. Never observed. */
+    allocatedAssessedValue: doublePrecision('allocated_assessed_value'),
+    allocationBasis: text('allocation_basis'),
+    estimatedTax: doublePrecision('estimated_tax'),
+    taxRate: doublePrecision('tax_rate'),
+    /** 'rendered' | 'computed' | 'allocated'. */
+    source: text('source').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('asset_positions_unique').on(
+      table.assetId,
+      table.taxYear,
+      table.jurisdictionId,
+      table.source,
+    ),
+    index('asset_positions_year_idx').on(table.taxYear, table.jurisdictionId),
   ],
 );
 
 /**
  * One decision per asset about which jurisdiction schedule values it.
  *
- * Kept beside the asset rather than on it because the two have different
- * lifetimes: re-confirming a mapping replaces every asset row for a file, and a
- * classification is a judgement about the *thing*, not about the spreadsheet
- * cell it arrived in. The cascade is deliberate all the same — an asset that no
- * longer exists has nothing left to classify — and re-running the engine after
- * a re-import costs one memory lookup per row, not a human.
+ * A classification is a judgement about the *thing*, not about the spreadsheet
+ * cell it arrived in, and now that assets are durable this points at the thing
+ * literally rather than aspirationally. A re-import no longer discards
+ * classifications — the asset it was made about is still the same row — so a
+ * corrected mapping costs nothing in review time.
+ *
+ * `engagementId` stays, as provenance: which engagement the decision was made
+ * on. It is not the query key for the review queue, because an asset carried
+ * across two tax years has one classification and would otherwise disappear from
+ * the second year's queue. The queue joins through the versions instead.
  */
 export const assetClassifications = pgTable(
   'asset_classifications',
@@ -417,8 +658,16 @@ export type NewClientRow = typeof clients.$inferInsert;
 export type ClientLocationRow = typeof clientLocations.$inferSelect;
 export type EngagementRow = typeof engagements.$inferSelect;
 export type FarFileRow = typeof farFiles.$inferSelect;
+export type ImportBatchRow = typeof importBatches.$inferSelect;
+export type NewImportBatchRow = typeof importBatches.$inferInsert;
 export type AssetRow = typeof assets.$inferSelect;
 export type NewAssetRow = typeof assets.$inferInsert;
+export type AssetVersionRow = typeof assetVersions.$inferSelect;
+export type NewAssetVersionRow = typeof assetVersions.$inferInsert;
+export type AssetEventRow = typeof assetEvents.$inferSelect;
+export type NewAssetEventRow = typeof assetEvents.$inferInsert;
+export type AssetPositionRow = typeof assetPositions.$inferSelect;
+export type NewAssetPositionRow = typeof assetPositions.$inferInsert;
 export type AssetClassificationRow = typeof assetClassifications.$inferSelect;
 export type NewAssetClassificationRow = typeof assetClassifications.$inferInsert;
 export type ClassificationMemoryRow = typeof classificationMemory.$inferSelect;

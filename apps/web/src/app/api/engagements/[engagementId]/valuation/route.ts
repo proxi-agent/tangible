@@ -7,6 +7,7 @@ import type {
   ValuationGap,
 } from '@tangible/types';
 import { appraise, scheduleFor, type LifeClass } from '@tangible/valuation';
+import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { handle } from '@/lib/route';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
@@ -41,13 +42,13 @@ export function GET(
 
     const db = requireDb();
     const rows = await db
-      .select({ asset: schema.assets, classification: schema.assetClassifications })
-      .from(schema.assets)
+      .select({ asset: schema.assetVersions, classification: schema.assetClassifications })
+      .from(schema.assetVersions)
       .leftJoin(
         schema.assetClassifications,
-        eq(schema.assetClassifications.assetId, schema.assets.id),
+        eq(schema.assetClassifications.assetId, schema.assetVersions.assetId),
       )
-      .where(eq(schema.assets.engagementId, engagementId));
+      .where(engagementAssetsWhere(engagementId));
 
     const schedule = engagement.jurisdictionId
       ? scheduleFor(engagement.jurisdictionId, engagement.taxYear)

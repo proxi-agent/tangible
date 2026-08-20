@@ -19,7 +19,7 @@ import {
   type ClassificationInput,
   type Decision,
 } from '@tangible/classification';
-import type { AssetClassificationRow, AssetRow } from '@tangible/db';
+import type { AssetClassificationRow, AssetVersionRow } from '@tangible/db';
 import type {
   AssetClassification,
   ClassificationDecisionResult,
@@ -28,6 +28,7 @@ import type {
 } from '@tangible/types';
 import { LIFE_CLASSES } from '@tangible/valuation';
 import { HttpError } from '@/lib/route';
+import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**
@@ -75,7 +76,7 @@ export function classificationDto(row: AssetClassificationRow): AssetClassificat
   };
 }
 
-function inputFor(asset: AssetRow): ClassificationInput {
+function inputFor(asset: AssetVersionRow): ClassificationInput {
   return {
     description: asset.description,
     registerCategory: asset.category,
@@ -114,20 +115,20 @@ export async function runClassification(
   const db = requireDb();
 
   const rows = await db
-    .select({ asset: schema.assets, classification: schema.assetClassifications })
-    .from(schema.assets)
+    .select({ asset: schema.assetVersions, classification: schema.assetClassifications })
+    .from(schema.assetVersions)
     .leftJoin(
       schema.assetClassifications,
-      eq(schema.assetClassifications.assetId, schema.assets.id),
+      eq(schema.assetClassifications.assetId, schema.assetVersions.assetId),
     )
     .where(
       options.reclassify
         ? and(
-            eq(schema.assets.engagementId, engagementId),
+            engagementAssetsWhere(engagementId),
             // A confirmed row is a person's decision; leave it alone.
             sql`(${schema.assetClassifications.status} is null or ${schema.assetClassifications.status} <> 'confirmed')`,
           )
-        : and(eq(schema.assets.engagementId, engagementId), isNull(schema.assetClassifications.id)),
+        : and(engagementAssetsWhere(engagementId), isNull(schema.assetClassifications.id)),
     );
 
   const result: ClassificationRunResult = {
@@ -152,7 +153,7 @@ export async function runClassification(
   const assets = rows.map((row) => row.asset);
   const fingerprints = new Map<string, string | null>();
   for (const asset of assets) {
-    fingerprints.set(asset.id, fingerprint(asset.description));
+    fingerprints.set(asset.assetId, fingerprint(asset.description));
   }
 
   const wanted = [...new Set([...fingerprints.values()].filter((f): f is string => f !== null))];
@@ -165,12 +166,12 @@ export async function runClassification(
       : [];
   const memoryByFingerprint = new Map(memoryRows.map((row) => [row.fingerprint, row]));
 
-  const needModel: AssetRow[] = [];
+  const needModel: AssetVersionRow[] = [];
   for (const asset of assets) {
     const input = inputFor(asset);
     if (!hasSomethingToClassify(input)) {
       decisions.set(
-        asset.id,
+        asset.assetId,
         decideUnclassifiable(
           'This row carries no description, no register category, and no GL account — there is nothing to classify it on.',
         ),
@@ -179,11 +180,11 @@ export async function runClassification(
       continue;
     }
 
-    const key = fingerprints.get(asset.id);
+    const key = fingerprints.get(asset.assetId);
     const remembered = key ? memoryByFingerprint.get(key) : undefined;
     if (remembered) {
       decisions.set(
-        asset.id,
+        asset.assetId,
         decideFromMemory({
           fingerprint: remembered.fingerprint,
           categoryKey: remembered.categoryKey,
@@ -208,15 +209,15 @@ export async function runClassification(
     // to the queue with the reason attached rather than the run aborting.
     result.aiUnavailable = true;
     for (const asset of needModel) {
-      decisions.set(asset.id, {
+      decisions.set(asset.assetId, {
         ...decideUnclassifiable(
           `AI classification is off in this deployment. ${aiUnavailableReason()} Classify this row in the queue, and the decision will be remembered.`,
         ),
-        fingerprint: fingerprints.get(asset.id) ?? null,
+        fingerprint: fingerprints.get(asset.assetId) ?? null,
       });
     }
   } else if (needModel.length > 0) {
-    const groups = new Map<string, AssetRow[]>();
+    const groups = new Map<string, AssetVersionRow[]>();
     for (const asset of needModel) {
       const key = dedupeKey(inputFor(asset));
       const group = groups.get(key);
@@ -279,7 +280,10 @@ export async function runClassification(
         answered.add(answer.ref);
         const decision = decideFromAi(answer, null);
         for (const asset of group) {
-          decisions.set(asset.id, { ...decision, fingerprint: fingerprints.get(asset.id) ?? null });
+          decisions.set(asset.assetId, {
+            ...decision,
+            fingerprint: fingerprints.get(asset.assetId) ?? null,
+          });
           result.fromAi += 1;
         }
       }
@@ -290,11 +294,11 @@ export async function runClassification(
     sending.forEach((group, ref) => {
       if (answered.has(ref) || lost.has(ref)) return;
       for (const asset of group) {
-        decisions.set(asset.id, {
+        decisions.set(asset.assetId, {
           ...decideUnclassifiable(
             'The model returned no answer for this description. It is queued rather than guessed at.',
           ),
-          fingerprint: fingerprints.get(asset.id) ?? null,
+          fingerprint: fingerprints.get(asset.assetId) ?? null,
         });
         result.unclassifiable += 1;
       }
@@ -450,9 +454,15 @@ export async function recordDecision(
         .for('update');
 
       const [asset] = await tx
-        .select({ description: schema.assets.description })
-        .from(schema.assets)
-        .where(eq(schema.assets.id, existing.assetId));
+        .select({ description: schema.assetVersions.description })
+        .from(schema.assetVersions)
+        .where(
+          and(
+            eq(schema.assetVersions.assetId, existing.assetId),
+            eq(schema.assetVersions.isCurrent, true),
+          ),
+        )
+        .limit(1);
       // A readable sample, so the memory row is something a person can audit
       // rather than a fold of a description nobody kept.
       const sample = asset?.description ?? existing.fingerprint;

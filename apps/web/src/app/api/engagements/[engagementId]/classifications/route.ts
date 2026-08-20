@@ -4,14 +4,18 @@ import {
   type ClassificationQueueItem,
   type Paginated,
 } from '@tangible/types';
+import { assetDto, assetGraphColumns, engagementAssetsWhere } from '@/lib/asset-graph';
 import { handle, params as queryParams } from '@/lib/route';
 import { classificationDto } from '@/lib/classification';
-import { assetDto, fetchEngagement } from '@/lib/workspace';
+import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
+
+const v = schema.assetVersions;
+const c = schema.assetClassifications;
 
 /**
  * The review queue.
@@ -20,6 +24,12 @@ export const maxDuration = 60;
  * first. A reviewer who only has ten minutes should spend them on the $180,000
  * line the model was unsure about, not on the $40 chair that happened to sort
  * first alphabetically.
+ *
+ * Scoped by the engagement's own register rather than by the classification's
+ * `engagement_id`. A decision made last season belongs to the asset, not to the
+ * season — an asset carried into this year's register with a decision from last
+ * year's would otherwise be missing from this queue entirely, which is the
+ * failure mode where a reviewer signs a form they never actually reviewed.
  */
 export function GET(
   request: Request,
@@ -30,17 +40,13 @@ export function GET(
     await fetchEngagement(engagementId);
     const query = ClassificationQuerySchema.parse(queryParams(request));
 
-    const conditions: SQL[] = [eq(schema.assetClassifications.engagementId, engagementId)];
-    if (query.status) conditions.push(eq(schema.assetClassifications.status, query.status));
-    if (query.source) conditions.push(eq(schema.assetClassifications.source, query.source));
+    const conditions: SQL[] = [engagementAssetsWhere(engagementId)!];
+    if (query.status) conditions.push(eq(c.status, query.status));
+    if (query.source) conditions.push(eq(c.source, query.source));
     if (query.search) {
       const term = `%${query.search}%`;
       conditions.push(
-        or(
-          ilike(schema.assets.description, term),
-          ilike(schema.assets.category, term),
-          ilike(schema.assets.assetTag, term),
-        )!,
+        or(ilike(v.description, term), ilike(v.category, term), ilike(v.assetTag, term))!,
       );
     }
     const where = and(...conditions);
@@ -49,31 +55,36 @@ export function GET(
     const [[count], rows] = await Promise.all([
       db
         .select({ total: sql<number>`count(*)::int` })
-        .from(schema.assetClassifications)
-        .innerJoin(schema.assets, eq(schema.assets.id, schema.assetClassifications.assetId))
+        .from(v)
+        .innerJoin(c, eq(c.assetId, v.assetId))
         .where(where),
       db
         .select({
-          classification: schema.assetClassifications,
-          asset: schema.assets,
-          // How many other rows in this engagement carry the same description.
+          classification: c,
+          asset: assetGraphColumns(),
+          // How many other rows on this register carry the same description.
           // Settling one settles all of them, and a reviewer deserves to know
           // that before deciding how hard to think about it.
           siblingCount: sql<number>`(
-            select count(*)::int - 1 from asset_classifications sib
-            where sib.engagement_id = ${engagementId}
-              and sib.fingerprint is not null
-              and sib.fingerprint = ${schema.assetClassifications.fingerprint}
+            select count(*)::int - 1
+              from asset_classifications sib
+              join asset_versions sv
+                on sv.asset_id = sib.asset_id
+               and sv.engagement_id = ${engagementId}
+               and sv.is_current
+             where sib.fingerprint is not null
+               and sib.fingerprint = ${c.fingerprint}
           )`,
         })
-        .from(schema.assetClassifications)
-        .innerJoin(schema.assets, eq(schema.assets.id, schema.assetClassifications.assetId))
+        .from(v)
+        .innerJoin(schema.assets, eq(schema.assets.id, v.assetId))
+        .innerJoin(c, eq(c.assetId, v.assetId))
         .where(where)
         .orderBy(
-          desc(sql`coalesce(${schema.assets.originalCost}, 0)`),
-          asc(schema.assets.sourceSheet),
-          asc(schema.assets.sourceRow),
-          asc(schema.assetClassifications.id),
+          desc(sql`coalesce(${v.originalCost}, 0)`),
+          asc(v.sourceSheet),
+          asc(v.sourceRow),
+          asc(c.id),
         )
         .limit(query.limit)
         .offset(query.offset),

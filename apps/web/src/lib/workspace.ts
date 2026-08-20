@@ -1,14 +1,7 @@
 import 'server-only';
-import { eq, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
+import type { ClientLocationRow, ClientRow, EngagementRow, FarFileRow } from '@tangible/db';
 import type {
-  AssetRow,
-  ClientLocationRow,
-  ClientRow,
-  EngagementRow,
-  FarFileRow,
-} from '@tangible/db';
-import type {
-  Asset,
   ClassificationStats,
   Client,
   ClientLocation,
@@ -88,37 +81,6 @@ export function farFileDto(row: FarFileRow): FarFile {
   };
 }
 
-export function assetDto(row: AssetRow): Asset {
-  return {
-    id: row.id,
-    engagementId: row.engagementId,
-    farFileId: row.farFileId,
-    sourceSheet: row.sourceSheet,
-    sourceRow: row.sourceRow,
-    assetTag: row.assetTag,
-    description: row.description,
-    category: row.category,
-    glAccount: row.glAccount,
-    acquisitionDate: row.acquisitionDate,
-    acquisitionYear: row.acquisitionYear,
-    inServiceDate: row.inServiceDate,
-    originalCost: row.originalCost,
-    accumulatedDepreciation: row.accumulatedDepreciation,
-    netBookValue: row.netBookValue,
-    quantity: row.quantity,
-    serialNumber: row.serialNumber,
-    location: row.location,
-    department: row.department,
-    vendor: row.vendor,
-    usefulLife: row.usefulLife,
-    depreciationMethod: row.depreciationMethod,
-    disposalDate: row.disposalDate,
-    disposalIndicator: row.disposalIndicator,
-    isDisposed: row.isDisposed,
-    warnings: (row.warnings as string[] | null) ?? [],
-  };
-}
-
 export async function fetchClient(clientId: string): Promise<ClientRow> {
   const db = requireDb();
   const [row] = await db.select().from(schema.clients).where(eq(schema.clients.id, clientId));
@@ -143,19 +105,28 @@ export async function fetchFarFile(fileId: string): Promise<FarFileRow> {
   return row ?? notFound(`Unknown FAR file: ${fileId}`);
 }
 
+/**
+ * Stats read the *current versions* for the engagement, not the durable assets:
+ * an asset the client owns is not necessarily on this year's register, and the
+ * counts on an engagement page are about the register in front of you.
+ */
+const v = schema.assetVersions;
+const currentVersions = (engagementId: string) =>
+  and(eq(v.engagementId, engagementId), eq(v.isCurrent, true));
+
 export async function engagementAssetStats(engagementId: string): Promise<EngagementAssetStats> {
   const db = requireDb();
   const [stats] = await db
     .select({
       assetCount: sql<number>`count(*)::int`,
-      totalCost: sql<number>`coalesce(sum(${schema.assets.originalCost}), 0)::double precision`,
-      disposedCount: sql<number>`(count(*) filter (where ${schema.assets.isDisposed}))::int`,
-      warningCount: sql<number>`(count(*) filter (where jsonb_array_length(${schema.assets.warnings}) > 0))::int`,
-      missingCostCount: sql<number>`(count(*) filter (where ${schema.assets.originalCost} is null))::int`,
-      missingYearCount: sql<number>`(count(*) filter (where ${schema.assets.acquisitionYear} is null))::int`,
+      totalCost: sql<number>`coalesce(sum(${v.originalCost}), 0)::double precision`,
+      disposedCount: sql<number>`(count(*) filter (where ${v.isDisposed}))::int`,
+      warningCount: sql<number>`(count(*) filter (where jsonb_array_length(${v.warnings}) > 0))::int`,
+      missingCostCount: sql<number>`(count(*) filter (where ${v.originalCost} is null))::int`,
+      missingYearCount: sql<number>`(count(*) filter (where ${v.acquisitionYear} is null))::int`,
     })
-    .from(schema.assets)
-    .where(eq(schema.assets.engagementId, engagementId));
+    .from(v)
+    .where(currentVersions(engagementId));
 
   return (
     stats ?? {
@@ -191,9 +162,9 @@ export async function engagementClassificationStats(
       confirmedCount: sql<number>`(count(*) filter (where ${c.status} = 'confirmed'))::int`,
       fromMemoryCount: sql<number>`(count(*) filter (where ${c.source} = 'memory'))::int`,
     })
-    .from(schema.assets)
-    .leftJoin(c, eq(c.assetId, schema.assets.id))
-    .where(eq(schema.assets.engagementId, engagementId));
+    .from(v)
+    .leftJoin(c, eq(c.assetId, v.assetId))
+    .where(currentVersions(engagementId));
 
   return (
     stats ?? {

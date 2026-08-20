@@ -10,3 +10,4 @@ export * from './classification.js';
 export * from './savings.js';
 export * from './filing.js';
 export * from './client.js';
+export * from './graph.js';

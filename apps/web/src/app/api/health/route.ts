@@ -10,9 +10,9 @@ export const maxDuration = 60;
 export function GET(): Promise<Response> {
   return handle(async () => {
     const info = await getWarehouseInfo();
-    const row = await (await getWarehouse()).queryOne<{ n: unknown }>(
-      'SELECT count(*) AS n FROM account_year;',
-    );
+    const row = await (
+      await getWarehouse()
+    ).queryOne<{ n: unknown }>('SELECT count(*) AS n FROM account_year;');
     return {
       status: 'ok',
       warehouse: info.source,

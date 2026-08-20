@@ -46,6 +46,7 @@ export const CANONICAL_ASSET_FIELDS = [
   'netBookValue',
   'quantity',
   'serialNumber',
+  'entity',
   'location',
   'department',
   'vendor',
@@ -115,6 +116,11 @@ export const CANONICAL_FIELD_INFO: Readonly<Record<CanonicalAssetField, Canonica
   },
   quantity: { label: 'Quantity', description: 'Unit count, when the register tracks one.' },
   serialNumber: { label: 'Serial number', description: 'Serial or VIN, when present.' },
+  entity: {
+    label: 'Entity',
+    description:
+      'The legal entity that owns the asset — a subsidiary, LLC, or company code. Renditions are filed per owner, so a group filing under three entities is three sets of returns even at one address.',
+  },
   location: {
     label: 'Location / situs',
     description:
@@ -219,11 +225,23 @@ export const FarFileSchema = z.object({
 
 export type FarFile = z.infer<typeof FarFileSchema>;
 
-/** A canonical asset row, as normalization wrote it. */
+/**
+ * A canonical asset row, as normalization wrote it.
+ *
+ * Since assets became durable this is a join of two tables rather than one: `id`
+ * is the asset that outlives the upload, `versionId` is the snapshot this row's
+ * values came from, and the lineage fields describe the cells that version was
+ * read out of. Consumers that only want "the assets on this engagement" are
+ * unaffected — the shape is the same one they already read.
+ */
 export const AssetSchema = z.object({
+  /** The durable asset. Stable across re-imports and across tax years. */
   id: z.string(),
+  /** The snapshot these values came from. */
+  versionId: z.string(),
   engagementId: z.string(),
   farFileId: z.string(),
+  batchId: z.string(),
   /** Lineage back to the exact cell range: sheet name and 0-based row. */
   sourceSheet: z.string(),
   sourceRow: z.number().int().nonnegative(),
@@ -239,6 +257,7 @@ export const AssetSchema = z.object({
   netBookValue: z.number().nullable(),
   quantity: z.number().nullable(),
   serialNumber: z.string().nullable(),
+  entity: z.string().nullable(),
   location: z.string().nullable(),
   department: z.string().nullable(),
   vendor: z.string().nullable(),
@@ -250,11 +269,24 @@ export const AssetSchema = z.object({
   isDisposed: z.boolean(),
   /** Everything soft about this row — missing cost, unparseable date, and so on. */
   warnings: z.array(z.string()),
+  /** How this row was matched to its durable asset. An AssetMatchMethod. */
+  matchMethod: z.string(),
+  /** Present in an earlier import, missing from the latest. Not a disposal. */
+  isAbsent: z.boolean(),
+  /** Where it sits, once resolved from the register's own location text. */
+  jurisdictionId: z.string().nullable(),
 });
 
 export type Asset = z.infer<typeof AssetSchema>;
 
-/** What confirm returns: enough to say what happened without re-querying. */
+/**
+ * What confirm returns: enough to say what happened without re-querying.
+ *
+ * The four graph counts are what make a re-import legible. "482 assets" after a
+ * second upload is ambiguous — it could be the same register read again or a
+ * whole new company — where "3 new, 479 carried forward, 12 changed, 5 no longer
+ * listed" is a sentence about the client's year.
+ */
 export const NormalizationResultSchema = z.object({
   inserted: z.number().int().nonnegative(),
   /** Rows that produced no asset, each with the reason. Capped; the count is exact. */
@@ -262,6 +294,15 @@ export const NormalizationResultSchema = z.object({
   skippedCount: z.number().int().nonnegative(),
   warningCount: z.number().int().nonnegative(),
   totalCost: z.number(),
+  batchId: z.string(),
+  /** Rows the graph had never seen before. */
+  newCount: z.number().int().nonnegative(),
+  /** Rows resolved to an asset already on file. */
+  matchedCount: z.number().int().nonnegative(),
+  /** Matched assets where at least one material field moved. */
+  changedCount: z.number().int().nonnegative(),
+  /** Assets the graph holds that this register did not mention. Not disposals. */
+  absentCount: z.number().int().nonnegative(),
 });
 
 export type NormalizationResult = z.infer<typeof NormalizationResultSchema>;

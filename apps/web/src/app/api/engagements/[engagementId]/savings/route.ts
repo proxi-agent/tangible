@@ -4,6 +4,7 @@ import { listAvailableYears } from '@tangible/ingest/catalog';
 import { analyzeSavings, exemptionFor, type SavingsAsset } from '@tangible/savings';
 import type { AssessedPosition, ClassificationStatus, SavingsReport } from '@tangible/types';
 import { scheduleFor } from '@tangible/valuation';
+import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { handle } from '@/lib/route';
 import { getWarehouse } from '@/lib/warehouse';
 import { fetchEngagement } from '@/lib/workspace';
@@ -40,16 +41,16 @@ export function GET(
     const db = requireDb();
 
     const rows = await db
-      .select({ asset: schema.assets, classification: schema.assetClassifications })
-      .from(schema.assets)
+      .select({ asset: schema.assetVersions, classification: schema.assetClassifications })
+      .from(schema.assetVersions)
       .leftJoin(
         schema.assetClassifications,
-        eq(schema.assetClassifications.assetId, schema.assets.id),
+        eq(schema.assetClassifications.assetId, schema.assetVersions.assetId),
       )
-      .where(eq(schema.assets.engagementId, engagementId));
+      .where(engagementAssetsWhere(engagementId));
 
     const assets: SavingsAsset[] = rows.map(({ asset, classification }) => ({
-      id: asset.id,
+      id: asset.assetId,
       description: asset.description,
       acquisitionYear: asset.acquisitionYear,
       originalCost: asset.originalCost,

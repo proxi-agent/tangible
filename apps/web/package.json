@@ -20,6 +20,7 @@
     "@tangible/db": "workspace:*",
     "@tangible/far": "workspace:*",
     "@tangible/filing": "workspace:*",
+    "@tangible/graph": "workspace:*",
     "@tangible/ingest": "workspace:*",
     "@tangible/savings": "workspace:*",
     "@tangible/types": "workspace:*",

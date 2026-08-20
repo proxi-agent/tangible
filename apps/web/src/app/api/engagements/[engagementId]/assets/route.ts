@@ -1,20 +1,23 @@
 import { and, eq, ilike, or, sql, type SQL } from 'drizzle-orm';
 import { AssetQuerySchema, type Asset, type Paginated } from '@tangible/types';
+import { assetDto, assetGraphColumns, engagementAssetsWhere } from '@/lib/asset-graph';
 import { handle, params as queryParams } from '@/lib/route';
-import { assetDto, fetchEngagement } from '@/lib/workspace';
+import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
+const v = schema.assetVersions;
+
 /** Closed sets from the schema, so nothing user-supplied ever reaches ORDER BY raw. */
 const SORT_COLUMNS = {
-  sourceRow: schema.assets.sourceRow,
-  description: schema.assets.description,
-  category: schema.assets.category,
-  acquisitionYear: schema.assets.acquisitionYear,
-  originalCost: schema.assets.originalCost,
+  sourceRow: v.sourceRow,
+  description: v.description,
+  category: v.category,
+  acquisitionYear: v.acquisitionYear,
+  originalCost: v.originalCost,
 } as const;
 
 export function GET(
@@ -33,21 +36,21 @@ export function GET(
       disposedOnly: raw.disposedOnly === 'true',
     });
 
-    const conditions: SQL[] = [eq(schema.assets.engagementId, engagementId)];
-    if (query.sheet) conditions.push(eq(schema.assets.sourceSheet, query.sheet));
+    const conditions: SQL[] = [engagementAssetsWhere(engagementId)!];
+    if (query.sheet) conditions.push(eq(v.sourceSheet, query.sheet));
     if (query.warningsOnly) {
-      conditions.push(sql`jsonb_array_length(${schema.assets.warnings}) > 0`);
+      conditions.push(sql`jsonb_array_length(${v.warnings}) > 0`);
     }
-    if (query.disposedOnly) conditions.push(eq(schema.assets.isDisposed, true));
+    if (query.disposedOnly) conditions.push(eq(v.isDisposed, true));
     if (query.search) {
       const term = `%${query.search}%`;
       conditions.push(
         or(
-          ilike(schema.assets.description, term),
-          ilike(schema.assets.assetTag, term),
-          ilike(schema.assets.category, term),
-          ilike(schema.assets.location, term),
-          ilike(schema.assets.serialNumber, term),
+          ilike(v.description, term),
+          ilike(v.assetTag, term),
+          ilike(v.category, term),
+          ilike(v.location, term),
+          ilike(v.serialNumber, term),
         )!,
       );
     }
@@ -60,21 +63,17 @@ export function GET(
     const [[count], rows] = await Promise.all([
       db
         .select({ total: sql<number>`count(*)::int` })
-        .from(schema.assets)
+        .from(v)
         .where(where),
       db
-        .select()
-        .from(schema.assets)
+        .select(assetGraphColumns())
+        .from(v)
+        .innerJoin(schema.assets, eq(schema.assets.id, v.assetId))
         .where(where)
         // The id breaks every remaining tie: without a total order, two rows
         // that compare equal can swap between requests and a paged read then
         // shows one twice and skips another.
-        .orderBy(
-          sql`${column} ${direction} nulls last`,
-          schema.assets.sourceSheet,
-          schema.assets.sourceRow,
-          schema.assets.id,
-        )
+        .orderBy(sql`${column} ${direction} nulls last`, v.sourceSheet, v.sourceRow, v.id)
         .limit(query.limit)
         .offset(query.offset),
     ]);
