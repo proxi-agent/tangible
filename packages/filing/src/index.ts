@@ -71,3 +71,4 @@ export {
 export * from './verify-rendition.js';
 export * from './mapped-basis.js';
 export * from './compare-register.js';
+export * from './carry-forward.js';

@@ -13,6 +13,7 @@ import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { count, money, moneyExact, plural } from '@/lib/format';
 import { FarFileStatusBadge } from '@/components/workspace/badges';
+import { CarryForwardCard } from '@/components/workspace/carry-forward-card';
 import { ClassificationCard } from '@/components/workspace/classification-card';
 import { FindingsCard } from '@/components/workspace/findings-card';
 import { PriorsCard } from '@/components/workspace/priors-card';
@@ -78,6 +79,12 @@ export default function EngagementPage() {
       {/* The end of the pipeline, read first: what still has to go out, and
           by when, is the question somebody holds about a live engagement. */}
       <ReturnsBoard clientId={clientId} engagementId={engagementId} />
+      {/* Directly under the board, because it changes what goes on those
+          returns. A second season opens with a question the first did not have
+          — what moved since we last filed — and it is cheapest to answer before
+          anybody starts reviewing the register line by line. Renders nothing at
+          all where there is no prior return to compare against. */}
+      {data.stats.assetCount > 0 ? <CarryForwardCard engagementId={engagementId} /> : null}
       {data.stats.assetCount > 0 ? <StatsRow detail={data} /> : null}
       {/* Value before inventory: the point of the register is what it is worth,
           and the asset list is the evidence underneath that. */}

@@ -74,9 +74,16 @@ import type {
   YearTrendPoint,
 } from '@tangible/types';
 // Type-only, so nothing from the filing package reaches the client bundle.
-import type { MappedBasis, RegisterComparison } from '@tangible/filing';
+import type {
+  CarryFinding,
+  CarryForward,
+  CarryGroup,
+  CarryVerdict,
+  MappedBasis,
+  RegisterComparison,
+} from '@tangible/filing';
 
-export type { RegisterComparison };
+export type { CarryFinding, CarryForward, CarryGroup, CarryVerdict, RegisterComparison };
 
 /**
  * A prior return with its wording read into our vocabulary, and the rollup that
@@ -413,6 +420,15 @@ export const api = {
    */
   practiceSeason: (taxYear?: number) =>
     request<PracticeSeason>(`/season${taxYear ? `?taxYear=${taxYear}` : ''}`),
+
+  /**
+   * Last season's returns against this season's register, asset by asset.
+   *
+   * The comparison the paper cannot do: two renditions side by side show two
+   * totals, and this shows which pieces of property moved between them.
+   */
+  carryForward: (engagementId: string) =>
+    request<CarryForward>(`/engagements/${engagementId}/carry-forward`),
 
   /** Every return recorded as filed on this engagement, newest first. */
   filings: (engagementId: string) =>
