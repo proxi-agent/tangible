@@ -1,11 +1,13 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { FileText, MapPinOff } from 'lucide-react';
+import { CalendarClock, FileText, MapPinOff } from 'lucide-react';
 import Link from 'next/link';
-import type { FilingSeason, SeasonReturn } from '@tangible/types';
+import { useState } from 'react';
+import type { FilingSeason, RenditionExtension, SeasonReturn } from '@tangible/types';
 import { api } from '@/lib/api';
-import { count, money, moneyExact, plural } from '@/lib/format';
+import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
+import { ExtensionPanel } from '@/components/workspace/extension-panel';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { Tooltip } from '@/components/ui/tooltip';
 
@@ -19,10 +21,14 @@ import { Tooltip } from '@/components/ui/tooltip';
  * and the wrong half of the fact.
  *
  * So the rows here are every return, filed or not, in the order somebody would
- * work them: what is stuck, then what can go out, then what has gone. The
- * deadline sits in the header rather than against each row, because it is the
- * same date for all of them and Tax Code 22.28 measures its penalty per return
- * against it.
+ * work them: what is stuck, then what can go out, then what has gone.
+ *
+ * Each row carries its own deadline. The header's April date is the statutory
+ * one and every row starts there, but an extension under Tax Code 22.23(b) is
+ * granted per account — one site's request buys that site until May and says
+ * nothing about the one next door. Printing the April date against an extended
+ * row would be wrong in the direction that makes people file early for nothing;
+ * printing May against an unextended one is how a 22.28 penalty happens.
  */
 export function ReturnsBoard({
   clientId,
@@ -35,6 +41,14 @@ export function ReturnsBoard({
     queryKey: ['engagement-season', engagementId],
     queryFn: () => api.season(engagementId),
   });
+  // Its own query rather than a field on the season, because the season carries
+  // the extension that *stands* and this needs the ones that do not: a refused
+  // request and an outstanding one both move nothing, and both are exactly what
+  // somebody opening this panel is looking for.
+  const extensions = useQuery({
+    queryKey: ['engagement-extensions', engagementId],
+    queryFn: () => api.extensions(engagementId),
+  });
 
   if (season.error) return <ErrorState error={season.error} />;
   if (!season.data) return <Skeleton className="h-40 w-full" />;
@@ -44,14 +58,25 @@ export function ReturnsBoard({
   if (season.data.returns.length === 0) return null;
 
   const draft = `/clients/${clientId}/engagements/${engagementId}/filing`;
-  const { returns, unplacedCount, unplacedCost } = season.data;
+  const { returns, taxYear, unplacedCount, unplacedCost } = season.data;
   const outstanding = returns.filter((entry) => entry.status !== 'filed');
+
+  // Grouped by site, this year only. An extension recorded against last year's
+  // return is history the moment the engagement rolls over, and showing it
+  // beside a live deadline would read as one that still stands.
+  const bySite = new Map<string, RenditionExtension[]>();
+  for (const extension of extensions.data ?? []) {
+    if (extension.taxYear !== taxYear) continue;
+    const bucket = bySite.get(extension.locationId);
+    if (bucket) bucket.push(extension);
+    else bySite.set(extension.locationId, [extension]);
+  }
 
   return (
     <Card>
       <CardHeader
         title={heading(returns)}
-        description={<Calendar season={season.data} outstanding={outstanding.length} />}
+        description={<Calendar season={season.data} outstanding={outstanding} />}
         action={
           <Link href={draft} className="text-xs font-medium hover:underline">
             The draft
@@ -60,7 +85,14 @@ export function ReturnsBoard({
       />
       <ul className="divide-y divide-[var(--color-hairline)]">
         {returns.map((entry) => (
-          <ReturnRow key={entry.locationId} entry={entry} draft={draft} />
+          <ReturnRow
+            key={entry.locationId}
+            entry={entry}
+            draft={draft}
+            engagementId={engagementId}
+            season={season.data}
+            extensions={bySite.get(entry.locationId) ?? []}
+          />
         ))}
         {unplacedCount > 0 ? <Unplaced n={unplacedCount} cost={unplacedCost} /> : null}
       </ul>
@@ -78,21 +110,17 @@ function heading(returns: SeasonReturn[]): string {
 }
 
 /**
- * The deadline, and what it means today.
+ * The statutory calendar, and what it means today.
  *
  * Phrased against the returns still out rather than against the calendar. Once
  * everything has gone the date is history and saying "12 days left" over a
  * finished season would be noise dressed as urgency.
+ *
+ * What this does *not* say any more is that a request moves "every return
+ * here". It moves one, and the rows below say which.
  */
-function Calendar({ season, outstanding }: { season: FilingSeason; outstanding: number }) {
-  const due = new Date(`${season.dueOn}T00:00:00Z`).toLocaleDateString('en-US', {
-    month: 'long',
-    day: 'numeric',
-    year: 'numeric',
-    timeZone: 'UTC',
-  });
-
-  if (outstanding === 0) {
+function Calendar({ season, outstanding }: { season: FilingSeason; outstanding: SeasonReturn[] }) {
+  if (outstanding.length === 0) {
     return (
       <>
         Frozen as they went out. These figures do not move when the register does — which is the
@@ -101,12 +129,22 @@ function Calendar({ season, outstanding }: { season: FilingSeason; outstanding: 
     );
   }
 
+  const extended = outstanding.filter((entry) => entry.extension !== null).length;
+
   return (
     <>
-      Due {due} under Tax Code 22.23(a){season.daysToDue >= 0 ? `, ${count(season.daysToDue)} ${plural(season.daysToDue, 'day')} away` : ''}. A written request on or before that date moves the deadline
-      to {new Date(`${season.extendedDueOn}T00:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' })} for
-      every return here. A late one draws 10% of the taxes due on the property it covers (22.28), per
-      return rather than per engagement.
+      Due {day(season.dueOn)} under Tax Code 22.23(a)
+      {season.daysToDue >= 0
+        ? `, ${count(season.daysToDue)} ${plural(season.daysToDue, 'day')} away`
+        : ''}
+      . A written request on or before that date moves one return to{' '}
+      {dayShort(season.extendedDueOn)} under 22.23(b) — per account rather than per engagement, so
+      each row works to its own date.
+      {extended > 0
+        ? ` ${count(extended)} of the ones still out ${plural(extended, 'is', 'are')} on an extension.`
+        : ''}{' '}
+      A late return draws 10% of the taxes due on the property it covers (22.28), per return rather
+      than per engagement.
     </>
   );
 }
@@ -123,8 +161,21 @@ const STATUS_LABEL = {
   filed: 'filed',
 } as const;
 
-function ReturnRow({ entry, draft }: { entry: SeasonReturn; draft: string }) {
+function ReturnRow({
+  entry,
+  draft,
+  engagementId,
+  season,
+  extensions,
+}: {
+  entry: SeasonReturn;
+  draft: string;
+  engagementId: string;
+  season: FilingSeason;
+  extensions: RenditionExtension[];
+}) {
   const site = `${draft}?site=${encodeURIComponent(entry.locationId)}`;
+  const [open, setOpen] = useState(false);
 
   return (
     <li className="px-5 py-3">
@@ -138,6 +189,7 @@ function ReturnRow({ entry, draft }: { entry: SeasonReturn; draft: string }) {
             <span className="text-[var(--color-warning)]">no account number</span>
           )}
         </span>
+        {entry.status === 'filed' ? null : <Due entry={entry} statutory={season.dueOn} />}
         {/* `ml-auto` belongs on the tooltip rather than the span inside it: the
             wrapper is the flex item, and a margin on the child pushes nothing. */}
         <Tooltip
@@ -170,8 +222,75 @@ function ReturnRow({ entry, draft }: { entry: SeasonReturn; draft: string }) {
         )}
       </div>
       <Detail entry={entry} />
+      {/* Offered on a filed row only where something is already on file. The
+          request that carried a return past April is part of its story; a form
+          for asking is not, once the thing has gone out. */}
+      {entry.status !== 'filed' || extensions.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => setOpen((was) => !was)}
+          className="mt-1.5 cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline"
+        >
+          {open
+            ? 'Hide the extension record'
+            : extensions.length > 0
+              ? `The extension record · ${count(extensions.length)} on file`
+              : 'Ask for an extension'}
+        </button>
+      ) : null}
+      {open ? (
+        <ExtensionPanel
+          engagementId={engagementId}
+          locationId={entry.locationId}
+          label={entry.label}
+          statutoryDueOn={season.dueOn}
+          extendedDueOn={season.extendedDueOn}
+          extensions={extensions}
+        />
+      ) : null}
     </li>
   );
+}
+
+/**
+ * The date this one return is working to.
+ *
+ * Coloured off how long is left rather than off the status, because a blocked
+ * return three weeks out and a blocked return two days out are the same row
+ * with completely different amounts of trouble in them. An extended row says so
+ * on its face: the date alone would look like an app that had lost track of
+ * April.
+ */
+function Due({ entry, statutory }: { entry: SeasonReturn; statutory: string }) {
+  const extended = entry.extension !== null;
+  const colour =
+    entry.daysToDue < 0
+      ? 'text-[var(--color-critical)]'
+      : entry.daysToDue <= 14
+        ? 'text-[var(--color-warning)]'
+        : 'text-[var(--color-ink-secondary)]';
+
+  return (
+    <Tooltip
+      title={extended ? 'Extended under 22.23(b)' : 'The statutory deadline'}
+      content={
+        extended
+          ? entry.extension!.standing
+          : `${day(statutory)} under Tax Code 22.23(a), with nothing on file that moves it. A written request reaching the chief appraiser on or before that day would — he has no discretion to refuse one.`
+      }
+    >
+      <span className={`tabular inline-flex items-center gap-1 text-xs ${colour}`}>
+        {extended ? <CalendarClock size={11} strokeWidth={2} /> : null}
+        due {dayShort(entry.dueOn)} · {countdown(entry.daysToDue)}
+      </span>
+    </Tooltip>
+  );
+}
+
+function countdown(days: number): string {
+  if (days === 0) return 'today';
+  if (days > 0) return `${count(days)} ${plural(days, 'day')} left`;
+  return `${count(-days)} ${plural(-days, 'day')} overdue`;
 }
 
 /**
@@ -205,10 +324,32 @@ function Detail({ entry }: { entry: SeasonReturn }) {
 
   const filing = entry.filing!;
   const drift = entry.driftedBy ?? 0;
+  // Against the deadline this return was actually working to, extension and
+  // all. Both halves are worth saying: a return that beat an extension it had
+  // to ask for is the reason somebody asked, and one that missed its date is a
+  // 22.28 exposure nobody should have to work out from two dates on a screen.
+  const late = filing.filedOn > entry.dueOn;
+
   return (
-    <p className="mt-1 text-xs text-[var(--color-ink-secondary)]">
+    <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
       Sent {filing.filedOn}
       {filing.confirmation ? ` · ${filing.confirmation}` : ''}
+      {late ? (
+        <>
+          {' · '}
+          <span className="text-[var(--color-critical)]">
+            after the {dayShort(entry.dueOn)} deadline — 22.28 puts 10% of the taxes on this
+            property at risk
+          </span>
+        </>
+      ) : entry.extension !== null ? (
+        <>
+          {' · '}
+          <span className="text-[var(--color-ink-muted)]">
+            inside the extension to {dayShort(entry.dueOn)}
+          </span>
+        </>
+      ) : null}
       {drift !== 0 ? (
         <>
           {' · '}

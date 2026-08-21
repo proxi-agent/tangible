@@ -966,6 +966,91 @@ export const renditionFilings = pgTable(
 ).enableRLS();
 
 /**
+ * A rendition extension, as requested and as answered.
+ *
+ * Tax Code 22.23(b) has two sentences and they are not the same promise. The
+ * first says the chief appraiser *shall* extend to May 15 on written request
+ * made before the deadline — that extension is the owner's by right, so the
+ * date it buys is real the moment a timely request goes out, whether or not
+ * the district has written back. The second says he *may* add up to fifteen
+ * more days for good cause. That one is discretion, and a deadline moved on
+ * the strength of a discretionary request nobody has granted is a deadline
+ * somebody will miss.
+ *
+ * So `kind` is stored, and it is what decides whether a row with no answer yet
+ * moves anything. Everything else follows the rule the filings table sets: no
+ * row is ever edited, a mistake is a void, and the date the extension bought
+ * is written down rather than recomputed — a record whose date moves when our
+ * calendar code changes is not a record.
+ */
+export const renditionExtensions = pgTable(
+  'rendition_extensions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** Restricted for the same reason the filing's is: closing a site un-files nothing. */
+    locationId: uuid('location_id')
+      .notNull()
+      .references(() => clientLocations.id, { onDelete: 'restrict' }),
+    locationLabel: text('location_label').notNull(),
+    accountId: text('account_id'),
+    taxYear: integer('tax_year').notNull(),
+
+    /** 'standard' (22.23(b), to May 15) | 'additional' (up to 15 more days). */
+    kind: text('kind').notNull(),
+    /** 'requested' | 'granted' | 'denied' | 'superseded' | 'void'. */
+    status: text('status').notNull().default('requested'),
+
+    /**
+     * The day the written request went out, as a plain date.
+     *
+     * Timeliness is the whole question — a standard request is only good if it
+     * was made on or before the original due date — and under 1.08 that is
+     * decided by the day it was mailed. A timestamp would let an evening
+     * request in one zone record itself as the next day in another, which on
+     * April 15 is the difference between an extension and a penalty.
+     */
+    requestedOn: date('requested_on').notNull(),
+    /** 'certified-mail' | 'mail' | 'efile' | 'email' | 'hand-delivered'. */
+    method: text('method').notNull(),
+    confirmation: text('confirmation'),
+    /**
+     * The good cause stated. Required for an additional request, which the
+     * statute grants only for cause — a request that never stated one has no
+     * argument to make if the district says no.
+     */
+    reason: text('reason'),
+    note: text('note'),
+
+    /**
+     * The deadline this extension buys, as a plain date.
+     *
+     * Written down rather than derived. A standard extension runs to May 15
+     * observed; an additional one runs to whatever day the district named,
+     * which is the district's answer and not ours to recompute.
+     */
+    extendedTo: date('extended_to').notNull(),
+
+    /** When the district answered, and how we know. Null while outstanding. */
+    answeredOn: date('answered_on'),
+    answerNote: text('answer_note'),
+
+    recordedBy: text('recorded_by'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    voidedBy: text('voided_by'),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidReason: text('void_reason'),
+  },
+  (table) => [
+    index('rendition_extensions_engagement_idx').on(table.engagementId, table.status),
+    /** Which deadline this site is actually working to, this year. */
+    index('rendition_extensions_site_year_idx').on(table.locationId, table.taxYear, table.status),
+  ],
+).enableRLS();
+
+/**
  * A committed finding set, and the findings in it.
  *
  * The reports themselves stay derived on read — see the header of
@@ -1152,6 +1237,8 @@ export type PriorReturnLineRow = typeof priorReturnLines.$inferSelect;
 export type NewPriorReturnLineRow = typeof priorReturnLines.$inferInsert;
 export type RenditionFilingRow = typeof renditionFilings.$inferSelect;
 export type NewRenditionFilingRow = typeof renditionFilings.$inferInsert;
+export type RenditionExtensionRow = typeof renditionExtensions.$inferSelect;
+export type NewRenditionExtensionRow = typeof renditionExtensions.$inferInsert;
 export type FindingSetRow = typeof findingSets.$inferSelect;
 export type NewFindingSetRow = typeof findingSets.$inferInsert;
 export type FindingRow = typeof findings.$inferSelect;

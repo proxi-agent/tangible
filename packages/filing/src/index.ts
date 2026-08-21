@@ -1,6 +1,14 @@
 export { buildRendition, type RenditionAsset, type RenditionInput } from './rendition.js';
 export { deadlinesFor } from './deadlines.js';
 export {
+  addDays,
+  extensionStanding,
+  operativeDeadline,
+  stamp,
+  statutoryDates,
+  type StatutoryDates,
+} from './extensions.js';
+export {
   buildForm50144,
   FORM_AUDIENCES,
   FORM_CAPACITIES,

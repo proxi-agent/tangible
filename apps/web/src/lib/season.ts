@@ -1,6 +1,12 @@
 import 'server-only';
-import { deadlinesFor } from '@tangible/filing';
-import type { FilingSeason, RenditionFiling, SeasonReturn } from '@tangible/types';
+import { operativeDeadline, statutoryDates } from '@tangible/filing';
+import type {
+  FilingSeason,
+  RenditionExtension,
+  RenditionFiling,
+  SeasonReturn,
+} from '@tangible/types';
+import { engagementExtensions } from '@/lib/extensions';
 import { blockingProblems, engagementFilings } from '@/lib/filings';
 import { formInputs } from '@/lib/rendition';
 import { engagementReturns } from '@/lib/sites';
@@ -37,10 +43,25 @@ const POSTURE = { basis: 'cost', filedByAgent: true } as const;
 
 export async function filingSeason(engagementId: string): Promise<FilingSeason> {
   const { engagement } = await fetchEngagement(engagementId);
-  const [filings, owed] = await Promise.all([
+  const [filings, owed, extensions] = await Promise.all([
     engagementFilings(engagementId),
     engagementReturns(engagementId),
+    engagementExtensions(engagementId),
   ]);
+  const statutory = statutoryDates(engagement.taxYear);
+
+  // Every request on file for a site, in force or not: the operative date is
+  // decided per site below, and a row that bought nothing still has to be
+  // findable from the return it was sent for.
+  const requested = new Map<string, RenditionExtension[]>();
+  for (const extension of extensions) {
+    if (extension.taxYear !== engagement.taxYear) continue;
+    const bucket = requested.get(extension.locationId);
+    if (bucket) bucket.push(extension);
+    else requested.set(extension.locationId, [extension]);
+  }
+  const deadlineFor = (locationId: string) =>
+    operativeDeadline(requested.get(locationId) ?? [], statutory.dueOn);
 
   // The standing return per site. One per site and year by construction —
   // recording a second supersedes the first — so the map cannot lose one.
@@ -63,6 +84,7 @@ export async function filingSeason(engagementId: string): Promise<FilingSeason> 
       });
       const blockers = blockingProblems(rendition, extra);
       const filing = standing.get(entry.locationId) ?? null;
+      const deadline = deadlineFor(entry.locationId);
       return {
         locationId: entry.locationId,
         label: entry.label,
@@ -71,6 +93,9 @@ export async function filingSeason(engagementId: string): Promise<FilingSeason> 
         assetCount: entry.assetCount,
         registerCost: entry.totalCost,
         renderedCost: rendition.totalHistoricalCost,
+        dueOn: deadline.dueOn,
+        daysToDue: daysUntil(deadline.dueOn),
+        extension: deadline.extension,
         blockers,
         warnings: rendition.blockers.filter((blocker) => blocker.severity === 'warning').length,
         filing,
@@ -79,17 +104,12 @@ export async function filingSeason(engagementId: string): Promise<FilingSeason> 
     }),
   );
 
-  const deadlines = deadlinesFor(engagement.taxYear);
-  const dateFor = (key: string, fallback: string) =>
-    deadlines.find((deadline) => deadline.key === key)?.date ?? fallback;
-  const dueOn = dateFor('rendition-due', `${engagement.taxYear}-04-15`);
-
   return {
     taxYear: engagement.taxYear,
-    dueOn,
-    extendedDueOn: dateFor('rendition-extended', `${engagement.taxYear}-05-15`),
-    daysToDue: daysUntil(dueOn),
-    returns: [...rows, ...filedButNoLongerOwed(rows, standing)].sort(byWhatNeedsDoing),
+    dueOn: statutory.dueOn,
+    extendedDueOn: statutory.extendedDueOn,
+    daysToDue: daysUntil(statutory.dueOn),
+    returns: [...rows, ...filedButNoLongerOwed(rows, standing, deadlineFor)].sort(byWhatNeedsDoing),
     unplacedCount: owed.unplacedCount,
     unplacedCost: owed.unplacedCost,
   };
@@ -108,23 +128,30 @@ export async function filingSeason(engagementId: string): Promise<FilingSeason> 
 function filedButNoLongerOwed(
   rows: SeasonReturn[],
   standing: Map<string, RenditionFiling>,
+  deadlineFor: (locationId: string) => { dueOn: string; extension: RenditionExtension | null },
 ): SeasonReturn[] {
   const covered = new Set(rows.map((row) => row.locationId));
   return [...standing.values()]
     .filter((filing) => !covered.has(filing.locationId))
-    .map((filing) => ({
-      locationId: filing.locationId,
-      label: filing.locationLabel,
-      accountId: filing.accountId,
-      status: 'filed' as const,
-      assetCount: 0,
-      registerCost: 0,
-      renderedCost: 0,
-      blockers: [],
-      warnings: 0,
-      filing,
-      driftedBy: -filing.totalHistoricalCost,
-    }));
+    .map((filing) => {
+      const deadline = deadlineFor(filing.locationId);
+      return {
+        locationId: filing.locationId,
+        label: filing.locationLabel,
+        accountId: filing.accountId,
+        status: 'filed' as const,
+        assetCount: 0,
+        registerCost: 0,
+        renderedCost: 0,
+        dueOn: deadline.dueOn,
+        daysToDue: daysUntil(deadline.dueOn),
+        extension: deadline.extension,
+        blockers: [],
+        warnings: 0,
+        filing,
+        driftedBy: -filing.totalHistoricalCost,
+      };
+    });
 }
 
 /**

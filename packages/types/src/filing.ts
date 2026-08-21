@@ -361,6 +361,163 @@ export const VoidFilingRequestSchema = z.object({
 export type VoidFilingRequest = z.infer<typeof VoidFilingRequestSchema>;
 
 /**
+ * The two extensions Tax Code 22.23(b) describes, which are not the same thing.
+ *
+ * The first sentence: on written request made before the deadline, the chief
+ * appraiser **shall** extend to May 15. That is the owner's by right — the date
+ * it buys is real the moment a timely request goes out, and the district
+ * writing back is confirmation, not permission.
+ *
+ * The second: he **may** extend a further fifteen days for good cause shown in
+ * writing. That is discretion. A deadline moved on the strength of a request
+ * nobody has answered is a deadline somebody will miss, so an additional
+ * request moves nothing until it is granted.
+ */
+export const EXTENSION_KINDS = ['standard', 'additional'] as const;
+
+export const ExtensionKindSchema = z.enum(EXTENSION_KINDS);
+export type ExtensionKind = (typeof EXTENSION_KINDS)[number];
+
+export const EXTENSION_STATUSES = [
+  /** Sent, no answer yet. Whether it moves the deadline depends on the kind. */
+  'requested',
+  /** The district said yes. */
+  'granted',
+  /** The district said no — for an additional request, the likely answer. */
+  'denied',
+  /** Replaced by a later request of the same kind for the same site and year. */
+  'superseded',
+  /** Recorded in error. Kept, for the same reason a void filing is kept. */
+  'void',
+] as const;
+
+export const ExtensionStatusSchema = z.enum(EXTENSION_STATUSES);
+export type ExtensionStatus = (typeof EXTENSION_STATUSES)[number];
+
+/**
+ * An extension request, as sent and as answered.
+ *
+ * Recorded for the same reason the filing is: come a 22.28 penalty argument,
+ * "we asked for an extension" is worth nothing next to "certified article
+ * 7020 1290 0001 2345 6789, postmarked April 13, for account 2349508". The
+ * district's own answer may never arrive in writing, and under the first
+ * sentence of 22.23(b) it does not have to — which makes our copy of the
+ * request the whole of the evidence.
+ */
+export const RenditionExtensionSchema = z.object({
+  id: z.string(),
+  engagementId: z.string(),
+  locationId: z.string(),
+  locationLabel: z.string(),
+  accountId: z.string().nullable(),
+  taxYear: z.number().int(),
+
+  kind: ExtensionKindSchema,
+  status: ExtensionStatusSchema,
+
+  /** ISO date the written request went out — the postmark, under 1.08. */
+  requestedOn: z.string(),
+  method: FilingMethodSchema,
+  confirmation: z.string().nullable(),
+  /** The good cause stated. Required for an additional request. */
+  reason: z.string().nullable(),
+  note: z.string().nullable(),
+
+  /** ISO date this extension buys. May 15 observed, or the day the district named. */
+  extendedTo: z.string(),
+
+  /** When the district answered, and what it said. Null while outstanding. */
+  answeredOn: z.string().nullable(),
+  answerNote: z.string().nullable(),
+
+  /**
+   * Whether this request actually moves the deadline right now.
+   *
+   * Derived on read rather than stored, because it is a statement about three
+   * things that move independently: the kind, the answer, and whether the
+   * request beat the original due date. A standard request sent on April 16
+   * is recorded — it is evidence either way — and buys nothing, because
+   * 22.23(b) only obliges the chief appraiser where the request came first.
+   */
+  inForce: z.boolean(),
+  /** Why it does or does not stand, in one sentence a person can act on. */
+  standing: z.string(),
+});
+
+export type RenditionExtension = z.infer<typeof RenditionExtensionSchema>;
+
+/**
+ * Record that an extension request went out.
+ *
+ * `extendedTo` is not sent for a standard request — the date is May 15 observed
+ * and the server takes it from the same statutory calendar every other deadline
+ * comes from. An additional request must name it, because the day is whatever
+ * the district granted and that is not ours to compute.
+ */
+export const RecordExtensionRequestSchema = z
+  .object({
+    locationId: z.string(),
+    kind: ExtensionKindSchema.default('standard'),
+    method: FilingMethodSchema,
+    /** ISO date (YYYY-MM-DD). Defaults to today on the client, never here. */
+    requestedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a YYYY-MM-DD date.'),
+    /** ISO date. Required for an additional request, ignored for a standard one. */
+    extendedTo: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a YYYY-MM-DD date.')
+      .nullish()
+      .transform((v) => v ?? null),
+    confirmation: z
+      .string()
+      .trim()
+      .max(120)
+      .nullish()
+      .transform((v) => (v ? v : null)),
+    reason: z
+      .string()
+      .trim()
+      .max(1000)
+      .nullish()
+      .transform((v) => (v ? v : null)),
+    note: z
+      .string()
+      .trim()
+      .max(1000)
+      .nullish()
+      .transform((v) => (v ? v : null)),
+  })
+  .refine((body) => body.kind !== 'additional' || body.reason !== null, {
+    path: ['reason'],
+    message:
+      'An additional extension is granted only for good cause shown in writing (22.23(b)), so say what it was.',
+  })
+  .refine((body) => body.kind !== 'additional' || body.extendedTo !== null, {
+    path: ['extendedTo'],
+    message: 'Say which day the district granted — an additional extension runs to a date it names.',
+  });
+
+export type RecordExtensionRequest = z.infer<typeof RecordExtensionRequestSchema>;
+
+/** The district's answer to a request already on file. */
+export const AnswerExtensionRequestSchema = z.object({
+  outcome: z.enum(['granted', 'denied', 'void']),
+  /** ISO date the district answered. Not required to void — that is our own act. */
+  answeredOn: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a YYYY-MM-DD date.')
+    .nullish()
+    .transform((v) => v ?? null),
+  note: z
+    .string()
+    .trim()
+    .max(500)
+    .nullish()
+    .transform((v) => (v ? v : null)),
+});
+
+export type AnswerExtensionRequest = z.infer<typeof AnswerExtensionRequestSchema>;
+
+/**
  * Where one of an engagement's returns stands.
  *
  * Three states, and they are the three answers to "can this go out today":
@@ -395,6 +552,20 @@ export const SeasonReturnSchema = z.object({
   /** Things worth reading before signing, but which do not stop a filing. */
   warnings: z.number().int().nonnegative(),
 
+  /**
+   * The deadline this return is actually working to, and how long is left.
+   *
+   * Per return rather than per engagement, because an extension is per account:
+   * one site's request under 22.23(b) buys that site until May 15 and says
+   * nothing about the one next door. A board that printed the statutory April
+   * date against every row would be wrong about every extended one, and wrong
+   * in the direction that makes people file early for no reason.
+   */
+  dueOn: z.string(),
+  daysToDue: z.number().int(),
+  /** The extension moving that date, where one stands. */
+  extension: RenditionExtensionSchema.nullable(),
+
   /** The return that stands for this site and year, where one went out. */
   filing: RenditionFilingSchema.nullable(),
   /**
@@ -425,10 +596,17 @@ export type SeasonReturn = z.infer<typeof SeasonReturnSchema>;
  */
 export const FilingSeasonSchema = z.object({
   taxYear: z.number().int(),
-  /** ISO dates from the statutory calendar for this tax year. */
+  /**
+   * The statutory calendar for this tax year, before anybody asks for anything.
+   *
+   * Kept alongside the per-return dates rather than replaced by them: the
+   * engagement-wide fact is what an extension is measured against, and a row
+   * that says May 15 means nothing to a reader who cannot see it started as
+   * April 15.
+   */
   dueOn: z.string(),
   extendedDueOn: z.string(),
-  /** Days from today to the rendition deadline. Negative once it has passed. */
+  /** Days from today to the statutory deadline. Negative once it has passed. */
   daysToDue: z.number().int(),
 
   returns: z.array(SeasonReturnSchema),

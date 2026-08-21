@@ -1,6 +1,7 @@
 import type {
   AccountQuery,
   AccountSeries,
+  AnswerExtensionRequest,
   Asset,
   AssetQuery,
   ClassificationDecisionResult,
@@ -43,9 +44,11 @@ import type {
   PlaceSiteRequest,
   PriorDocument,
   PriorDocumentKind,
+  RecordExtensionRequest,
   RecordFilingRequest,
   Rendition,
   RenditionBasis,
+  RenditionExtension,
   RenditionFiling,
   RenditionFilingRecord,
   SavingsReport,
@@ -380,6 +383,29 @@ export const api = {
     request<RenditionFiling>(`/filings/${filingId}`, {
       method: 'PATCH',
       body: JSON.stringify({ reason }),
+    }),
+
+  /** Every extension requested on this engagement, in force or not. */
+  extensions: (engagementId: string) =>
+    request<RenditionExtension[]>(`/engagements/${engagementId}/extensions`),
+
+  /**
+   * Record an extension request.
+   *
+   * Sends no date for a standard request. May 15 is the statute's answer, and
+   * the server takes it from the same calendar the rest of the season uses.
+   */
+  requestExtension: (engagementId: string, body: RecordExtensionRequest) =>
+    request<RenditionExtension>(`/engagements/${engagementId}/extensions`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** What the district said back, or a row recorded in error. */
+  answerExtension: (extensionId: string, body: AnswerExtensionRequest) =>
+    request<RenditionExtension>(`/extensions/${extensionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
     }),
 
   // -------------------------------------------------------------------------

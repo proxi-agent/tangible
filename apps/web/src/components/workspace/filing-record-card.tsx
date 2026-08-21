@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useState } from 'react';
 import type { FilingMethod, Rendition, RenditionFiling } from '@tangible/types';
 import { api } from '@/lib/api';
+import { METHOD_LABEL } from '@/lib/filing-methods';
 import { count, money, plural } from '@/lib/format';
 import { Button, Field, Select, TextArea, TextInput } from '@/components/ui/controls';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
@@ -21,30 +22,22 @@ import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/p
  * from the record rather than from the register.
  */
 
-const METHODS: { value: FilingMethod; label: string; help: string }[] = [
+const METHODS: { value: FilingMethod; help: string }[] = [
   {
     value: 'certified-mail',
-    label: 'Certified mail',
     help: 'The article number is the proof. Under Tax Code 1.08 a properly addressed, postmarked return is timely on the postmark date — so the receipt, not the delivery, is what settles a late-filing penalty argument.',
   },
   {
     value: 'mail',
-    label: 'Regular mail',
     help: 'Timely on the postmark under 1.08, but with nothing in hand to prove the postmark. Fine for a return going out in February; thin for one going out on April 15.',
   },
-  { value: 'efile', label: 'E-filed', help: 'Through the district’s portal. Keep the confirmation.' },
-  { value: 'email', label: 'Email', help: 'Where the district accepts it. The sent message is the record.' },
+  { value: 'efile', help: 'Through the district’s portal. Keep the confirmation.' },
+  { value: 'email', help: 'Where the district accepts it. The sent message is the record.' },
   {
     value: 'hand-delivered',
-    label: 'Hand delivered',
     help: 'A date-stamped copy is the only evidence this leaves. Ask for one at the counter.',
   },
 ];
-
-const METHOD_LABEL = Object.fromEntries(METHODS.map((m) => [m.value, m.label])) as Record<
-  FilingMethod,
-  string
->;
 
 export function FilingRecordCard({
   engagementId,
@@ -344,7 +337,7 @@ function RecordForm({
           <Select value={method} onChange={(e) => setMethod(e.target.value as FilingMethod)}>
             {METHODS.map((entry) => (
               <option key={entry.value} value={entry.value}>
-                {entry.label}
+                {METHOD_LABEL[entry.value]}
               </option>
             ))}
           </Select>

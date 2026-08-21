@@ -43,3 +43,29 @@ export function percent(value: number | null | undefined, digits = 1): string {
 export function plural(n: number, singular: string, pluralForm = `${singular}s`): string {
   return n === 1 ? singular : pluralForm;
 }
+
+/**
+ * A statutory date as a person reads it: "April 15, 2027".
+ *
+ * UTC on both sides on purpose. A deadline is a date, not an instant, and
+ * rendering `2027-04-15` through the browser's own zone shows April 14 to
+ * everybody west of Greenwich — a day early, on the one kind of number where
+ * being a day out is the whole problem.
+ */
+export function day(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', {
+    timeZone: 'UTC',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+}
+
+/** The same date without its year, for a second mention in one sentence. */
+export function dayShort(iso: string): string {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', {
+    timeZone: 'UTC',
+    month: 'short',
+    day: 'numeric',
+  });
+}
