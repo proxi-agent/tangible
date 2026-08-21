@@ -4,6 +4,7 @@ import {
   type CarriedAsset,
   type CarryForwardInput,
   type CarryVerdict,
+  type PriorEvidence,
   type PriorReturn,
 } from './carry-forward.js';
 
@@ -16,6 +17,9 @@ const asset = (over: Partial<CarriedAsset> = {}): CarriedAsset => ({
   originalCost: 100_000,
   isDisposed: false,
   disposalDate: null,
+  // The site the default return covers. Placement decides what is sayable
+  // about an asset, so the default has to sit where the default evidence is.
+  locationId: 'site-1',
   ...over,
 });
 
@@ -29,6 +33,15 @@ const filed = (over: Partial<PriorReturn> = {}): PriorReturn => ({
   assetIds: [],
   assetCount: 0,
   totalHistoricalCost: 0,
+  ...over,
+});
+
+const uploaded = (over: Partial<PriorEvidence> = {}): PriorEvidence => ({
+  locationId: 'site-1',
+  locationLabel: 'Houston Office',
+  documentId: 'doc-1',
+  taxYear: 2026,
+  statedTotal: 500_000,
   ...over,
 });
 
@@ -50,6 +63,7 @@ describe('carryForward', () => {
       expect(result.priorYear).toBeNull();
       expect(result.groups).toEqual([]);
       expect(result.findings).toEqual([]);
+      expect(result.coverage).toEqual([]);
       // The register is still described — the card can say "nothing to compare
       // against" and still show what this season holds.
       expect(result.registerCount).toBe(2);
@@ -98,11 +112,20 @@ describe('carryForward', () => {
       });
       expect(result.consideredCount).toBe(1);
     });
+
+    it('opens a prior season off an uploaded rendition alone', () => {
+      // A client whose first season with us is their second season of filing.
+      // Reading the year off our own returns would report a first season to a
+      // firm holding last year's rendition in their hand.
+      const result = run({ priors: [uploaded()], register: [asset({ acquisitionYear: 2019 })] });
+      expect(result.priorYear).toBe(2026);
+      expect(result.returns).toEqual([]);
+    });
   });
 
   describe('membership is client-wide', () => {
     it('does not report an asset that moved between sites', () => {
-      const moved = asset({ id: 'moved', acquisitionYear: 2019 });
+      const moved = asset({ id: 'moved', acquisitionYear: 2019, locationId: 'site-2' });
       const result = run({
         returns: [
           filed({ locationId: 'site-1', locationLabel: 'Houston', assetIds: ['moved'] }),
@@ -217,6 +240,92 @@ describe('carryForward', () => {
     });
   });
 
+  describe('coverage decides what is sayable', () => {
+    const nothing = [filed({ taxYear: 2026, assetIds: [] })];
+
+    it('does not call property omitted at a site with no return on file', () => {
+      // The false positive live data surfaced: a client with two locations
+      // where only one return was ever recorded had its whole second location
+      // read as never rendered, on the strength of our own missing paperwork.
+      const result = run({
+        returns: nothing,
+        sites: [{ id: 'site-2', label: 'Houston Plant' }],
+        register: [asset({ acquisitionYear: 2019, locationId: 'site-2' })],
+      });
+      expect(verdicts(result)).toEqual({ uncompared: 1 });
+      expect(keys(result)).toEqual(['no-prior-return-on-file']);
+      expect(result.findings[0].severity).toBe('warning');
+      expect(result.findings[0].detail).toContain('Houston Plant');
+      expect(result.findings[0].detail).toContain('22.28');
+    });
+
+    it('treats property placed nowhere as uncompared, and names it that way', () => {
+      const result = run({
+        returns: nothing,
+        register: [asset({ acquisitionYear: 2019, locationId: null })],
+      });
+      expect(verdicts(result)).toEqual({ uncompared: 1 });
+      expect(result.coverage).toEqual([
+        {
+          locationId: null,
+          label: 'Not placed at a site',
+          evidence: 'none',
+          documentId: null,
+          assetCount: 1,
+          cost: 100_000,
+        },
+      ]);
+    });
+
+    it('still calls a recent purchase new where nothing was compared', () => {
+      // Acquisition settles the asset outright: it was not renderable on the
+      // prior lien date whatever we hold about the site. Withholding that would
+      // sweep every new purchase into the blind spot.
+      const result = run({
+        returns: nothing,
+        register: [asset({ acquisitionYear: 2026, locationId: 'site-9' })],
+      });
+      expect(verdicts(result)).toEqual({ acquired: 1 });
+      expect(keys(result)).toEqual([]);
+    });
+
+    it('sets property apart where the only evidence is the client’s own rendition', () => {
+      const result = run({
+        priors: [uploaded()],
+        register: [asset({ acquisitionYear: 2019 })],
+      });
+      expect(verdicts(result)).toEqual({ aggregate: 1 });
+      expect(keys(result)).toEqual(['prior-return-not-itemized']);
+      expect(result.findings[0].severity).toBe('note');
+      expect(result.coverage[0]).toMatchObject({ evidence: 'aggregate', documentId: 'doc-1' });
+    });
+
+    it('prefers our own filing over the client’s copy of the same site', () => {
+      const result = run({
+        returns: [filed({ assetIds: ['on-it'] })],
+        priors: [uploaded()],
+        register: [asset({ id: 'on-it' }), asset({ acquisitionYear: 2019 })],
+      });
+      expect(result.coverage[0]).toMatchObject({ evidence: 'itemized', documentId: null });
+      expect(verdicts(result)).toEqual({ carried: 1, omitted: 1 });
+    });
+
+    it('reports each site once, largest first', () => {
+      const result = run({
+        returns: [filed({ assetIds: [] }), filed({ locationId: 'site-2', locationLabel: 'Waco' })],
+        register: [
+          asset({ locationId: 'site-1', originalCost: 10 }),
+          asset({ locationId: 'site-2', originalCost: 900 }),
+          asset({ locationId: 'site-2', originalCost: 5 }),
+        ],
+      });
+      expect(result.coverage.map((one) => [one.label, one.assetCount, one.cost])).toEqual([
+        ['Waco', 2, 905],
+        ['Houston Office', 1, 10],
+      ]);
+    });
+  });
+
   describe('totals', () => {
     it('sums cost over the whole group, not the sample', () => {
       const register = Array.from({ length: 30 }, (_, n) =>
@@ -255,17 +364,20 @@ describe('carryForward', () => {
   });
 
   describe('findings', () => {
-    it('ranks the omission first', () => {
+    it('ranks the omission first and the blind spot behind it', () => {
       const result = run({
         returns: [filed({ assetIds: ['gone', 'kept'] })],
+        sites: [{ id: 'site-2', label: 'Houston Plant' }],
         register: [
           asset({ id: 'kept', isDisposed: true, disposalDate: '2027-03-01' }),
           asset({ acquisitionYear: 2019 }),
+          asset({ acquisitionYear: 2019, locationId: 'site-2' }),
           asset({ acquisitionYear: null }),
         ],
       });
       expect(keys(result)).toEqual([
         'omitted-from-prior-return',
+        'no-prior-return-on-file',
         'dropped-from-register',
         'undated-and-unrendered',
         'carried-now-disposed',
@@ -275,16 +387,17 @@ describe('carryForward', () => {
     });
 
     it('names the two-year reach of 25.21 on the omission', () => {
-      const result = run({ returns: [filed({ assetIds: [] })], register: [asset({ acquisitionYear: 2019 })] });
+      const result = run({
+        returns: [filed({ assetIds: [] })],
+        register: [asset({ acquisitionYear: 2019 })],
+      });
       expect(result.findings[0].detail).toContain('25.21');
       expect(result.findings[0].detail).toContain('two preceding years');
       expect(result.findings[0].detail).toContain('22.28');
-      // Two ways this finding is wrong without anybody omitting anything, and
-      // the copy names both. The second is the one live data surfaced: a client
-      // with two sites where only one return was ever recorded reads its whole
-      // second site as never rendered.
+      // The reading that is wrong without anybody omitting anything, named in
+      // the copy, plus the promise that the other one has been designed out.
       expect(result.findings[0].detail).toContain('wrong acquisition year');
-      expect(result.findings[0].detail).toContain('without ever being recorded here');
+      expect(result.findings[0].detail).toContain('a location with no return on file');
     });
 
     it('flags carried property the register now marks disposed', () => {
@@ -315,8 +428,14 @@ describe('carryForward', () => {
       expect(one.findings[0].detail).toContain('The 2026 return for Houston Office was');
 
       const many = run({
-        returns: [filed({ assetIds: [] }), filed({ locationId: 'b', locationLabel: 'Waco', assetIds: [] })],
-        register: [asset({ acquisitionYear: 2019 }), asset({ acquisitionYear: 2018 })],
+        returns: [
+          filed({ assetIds: [] }),
+          filed({ locationId: 'site-2', locationLabel: 'Waco', assetIds: [] }),
+        ],
+        register: [
+          asset({ acquisitionYear: 2019 }),
+          asset({ acquisitionYear: 2018, locationId: 'site-2' }),
+        ],
       });
       expect(many.findings[0].headline).toContain('2 assets');
       expect(many.findings[0].headline).toContain("year's returns");

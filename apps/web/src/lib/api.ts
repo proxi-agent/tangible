@@ -81,9 +81,17 @@ import type {
   CarryVerdict,
   MappedBasis,
   RegisterComparison,
+  SiteCoverage,
 } from '@tangible/filing';
 
-export type { CarryFinding, CarryForward, CarryGroup, CarryVerdict, RegisterComparison };
+export type {
+  CarryFinding,
+  CarryForward,
+  CarryGroup,
+  CarryVerdict,
+  RegisterComparison,
+  SiteCoverage,
+};
 
 /**
  * A prior return with its wording read into our vocabulary, and the rollup that

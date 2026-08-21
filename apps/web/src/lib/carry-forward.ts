@@ -1,7 +1,13 @@
 import 'server-only';
-import { desc, eq, inArray } from 'drizzle-orm';
-import { carryForward, type CarriedAsset, type CarryForward, type PriorReturn } from '@tangible/filing';
-import { assetGraphColumns, assetGraphFrom, engagementAssetsWhere } from '@/lib/asset-graph';
+import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
+import {
+  carryForward,
+  type CarriedAsset,
+  type CarryForward,
+  type PriorEvidence,
+  type PriorReturn,
+} from '@tangible/filing';
+import { assetGraphColumns, engagementAssetsWhere } from '@/lib/asset-graph';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -16,12 +22,18 @@ import { requireDb, schema } from '@/lib/workspace-db';
  * engagement is one tax year, so a client's 2026 returns hang off a different
  * engagement row than the 2027 work in front of you — reading by engagement id
  * would find nothing every time and quietly report a first season forever.
+ *
+ * Three reads, because the comparison is only honest with all three: what we
+ * filed, what the client filed themselves before they came to us, and every
+ * site they have. The last is the one that is easy to leave out and the one
+ * that decides whether "never rendered" is a finding or an accusation built out
+ * of our own missing paperwork.
  */
 export async function engagementCarryForward(engagementId: string): Promise<CarryForward> {
   const db = requireDb();
   const { engagement } = await fetchEngagement(engagementId);
 
-  const [filings, register] = await Promise.all([
+  const [filings, documents, sites, register] = await Promise.all([
     db
       .select({
         locationId: schema.renditionFilings.locationId,
@@ -38,7 +50,16 @@ export async function engagementCarryForward(engagementId: string): Promise<Carr
       .innerJoin(schema.engagements, eq(schema.engagements.id, schema.renditionFilings.engagementId))
       .where(eq(schema.engagements.clientId, engagement.clientId))
       .orderBy(desc(schema.renditionFilings.taxYear)),
-    assetGraphFrom().where(engagementAssetsWhere(engagementId)),
+    priorRenditions(engagement.clientId),
+    db
+      .select({ id: schema.clientLocations.id, label: schema.clientLocations.label })
+      .from(schema.clientLocations)
+      .where(eq(schema.clientLocations.clientId, engagement.clientId)),
+    db
+      .select({ ...assetGraphColumns(), locationId: schema.assets.locationId })
+      .from(schema.assetVersions)
+      .innerJoin(schema.assets, eq(schema.assets.id, schema.assetVersions.assetId))
+      .where(engagementAssetsWhere(engagementId)),
   ]);
 
   const returns: PriorReturn[] = filings.map((row) => ({
@@ -56,14 +77,63 @@ export async function engagementCarryForward(engagementId: string): Promise<Carr
     originalCost: row.originalCost,
     isDisposed: row.isDisposed,
     disposalDate: row.disposalDate,
+    locationId: row.locationId,
   }));
 
   return carryForward({
     taxYear: engagement.taxYear,
     returns,
+    priors: documents,
+    sites,
     register: current,
     absent: await lastSeen(returns, engagement.taxYear, new Set(current.map((one) => one.id))),
   });
+}
+
+/**
+ * Renditions the client filed themselves, matched to the site they cover.
+ *
+ * Matched on the account number, which is the only thing that can do it: a
+ * rendition names an account, a site owns an account, and neither the document
+ * nor its engagement knows anything about the other's location row. That is
+ * also why `client_locations.account_id` is durable — it is the site's identity
+ * across seasons, and the join here is the payoff.
+ *
+ * Every status a read document ends in counts, including `discrepant`. A
+ * document whose lines do not foot is a document with a problem, and the priors
+ * screen says so at length — but the claim being made here is only that a
+ * return covered this site that year, and a rendition that does not add up is
+ * still a rendition that was filed.
+ */
+async function priorRenditions(clientId: string): Promise<PriorEvidence[]> {
+  const rows = await requireDb()
+    .select({
+      locationId: schema.clientLocations.id,
+      locationLabel: schema.clientLocations.label,
+      documentId: schema.priorDocuments.id,
+      taxYear: schema.priorDocuments.documentTaxYear,
+      statedTotal: schema.priorDocuments.statedTotal,
+    })
+    .from(schema.priorDocuments)
+    .innerJoin(schema.engagements, eq(schema.engagements.id, schema.priorDocuments.engagementId))
+    .innerJoin(
+      schema.clientLocations,
+      and(
+        eq(schema.clientLocations.clientId, schema.engagements.clientId),
+        eq(schema.clientLocations.accountId, schema.priorDocuments.documentAccountId),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.engagements.clientId, clientId),
+        eq(schema.priorDocuments.kind, 'rendition'),
+        inArray(schema.priorDocuments.status, ['verified', 'discrepant', 'accepted']),
+        isNotNull(schema.priorDocuments.documentTaxYear),
+      ),
+    )
+    .orderBy(desc(schema.priorDocuments.documentTaxYear), desc(schema.priorDocuments.createdAt));
+
+  return rows.map((row) => ({ ...row, taxYear: row.taxYear as number }));
 }
 
 /**
@@ -93,7 +163,7 @@ async function lastSeen(
   // rather than a DISTINCT ON: the list is bounded by what was on a return, and
   // this keeps the query one the (asset_id, created_at) index serves directly.
   const rows = await requireDb()
-    .select(assetGraphColumns())
+    .select({ ...assetGraphColumns(), locationId: schema.assets.locationId })
     .from(schema.assetVersions)
     .innerJoin(schema.assets, eq(schema.assets.id, schema.assetVersions.assetId))
     .where(inArray(schema.assetVersions.assetId, wanted))
@@ -110,6 +180,7 @@ async function lastSeen(
       originalCost: row.originalCost,
       isDisposed: row.isDisposed,
       disposalDate: row.disposalDate,
+      locationId: row.locationId,
     });
   }
   return [...seen.values()];

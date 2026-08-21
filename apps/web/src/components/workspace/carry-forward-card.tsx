@@ -3,7 +3,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
 import { useState } from 'react';
-import type { CarryForward, CarryFinding, CarryGroup, CarryVerdict } from '@/lib/api';
+import type {
+  CarryForward,
+  CarryFinding,
+  CarryGroup,
+  CarryVerdict,
+  SiteCoverage,
+} from '@/lib/api';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { count, day, money, moneyExact, plural } from '@/lib/format';
@@ -35,15 +41,20 @@ export function CarryForwardCard({ engagementId }: { engagementId: string }) {
   return (
     <Card>
       <CardHeader
-        title={`Since the ${data.priorYear} ${plural(data.returns.length, 'return')}`}
+        title={
+          data.returns.length > 0
+            ? `Since the ${data.priorYear} ${plural(data.returns.length, 'return')}`
+            : `Since ${data.priorYear}`
+        }
         description={provenance(data)}
       />
+      <Coverage sites={data.coverage} />
       <Ledger data={data} />
       {data.findings.length === 0 ? (
         <p className="px-5 pb-5 text-sm text-[var(--color-ink-secondary)]">
-          Nothing to raise. Every asset on this year&rsquo;s register was either on the{' '}
-          {data.priorYear} {plural(data.returns.length, 'return')} or acquired since, and nothing
-          that return covered has left the book.
+          Nothing to raise. Every asset on this year&rsquo;s register was either covered by the{' '}
+          {data.priorYear} filing or acquired since, and nothing that filing covered has left the
+          book.
         </p>
       ) : (
         <ul className="divide-y divide-[var(--color-hairline)] border-t border-[var(--color-hairline)]">
@@ -64,6 +75,16 @@ export function CarryForwardCard({ engagementId }: { engagementId: string }) {
  * check. The filing dates are here for the same reason.
  */
 function provenance(data: CarryForward): string {
+  if (data.returns.length === 0) {
+    // A client whose prior season we hold only as a document they handed us.
+    // Saying so up front sets the ceiling on everything below: a rendition
+    // states totals and never names an asset.
+    return (
+      `This year's register against the ${data.priorYear} renditions on file. Nothing went out ` +
+      `from here that year, so the comparison runs off what the client provided; the register ` +
+      `now carries ${count(data.registerCount)} ${plural(data.registerCount, 'asset')}.`
+    );
+  }
   const returns = data.returns
     .map((one) => `${one.locationLabel} (filed ${day(one.filedOn)})`)
     .join(', ');
@@ -71,6 +92,57 @@ function provenance(data: CarryForward): string {
     `This year's register against what actually went out for ${data.priorYear}: ${returns}. ` +
     `${data.returns.length === 1 ? 'That return was' : 'Those returns were'} built from ${count(data.consideredCount)} ` +
     `${plural(data.consideredCount, 'asset')}; the register now carries ${count(data.registerCount)}.`
+  );
+}
+
+const EVIDENCE_OF: Record<SiteCoverage['evidence'], { label: string; hint: string; dot: string }> = {
+  itemized: {
+    label: 'asset by asset',
+    hint: 'We filed this site’s prior return, so we know which pieces of property it was built from. Every verdict below is available here.',
+    dot: 'bg-[var(--color-good)]',
+  },
+  aggregate: {
+    label: 'totals only',
+    hint: 'The prior return here is the client’s own, read off the document they uploaded. A rendition reports in aggregate and never names an asset, so property at this site is set apart rather than called new or omitted.',
+    dot: 'bg-[var(--color-series-1)]',
+  },
+  none: {
+    label: 'nothing on file',
+    hint: 'No return was filed through this app for this site, and no prior rendition has been uploaded. Nothing here has been compared — which is not the same as nothing being wrong.',
+    dot: 'bg-[var(--color-warning)]',
+  },
+};
+
+/**
+ * What we hold about each site, before any verdict is read.
+ *
+ * The correction this card most needed. Property is rendered per site, so
+ * “never rendered” is only sayable about a site whose return we actually
+ * have — and the first version of this screen said it about every site of
+ * every client whose earlier filings were done somewhere else. Putting coverage
+ * above the ledger makes the limit of the comparison the first thing read
+ * rather than a caveat somebody finds later.
+ */
+function Coverage({ sites }: { sites: SiteCoverage[] }) {
+  if (sites.length === 0) return null;
+  return (
+    <div className="flex flex-wrap gap-x-6 gap-y-2 border-t border-[var(--color-hairline)] px-5 py-3">
+      {sites.map((site) => {
+        const meta = EVIDENCE_OF[site.evidence];
+        return (
+          <Tooltip key={site.locationId ?? 'unplaced'} title={site.label} content={meta.hint}>
+            <div className="flex cursor-help items-center gap-2 text-xs">
+              <span className={cn('size-1.5 shrink-0 rounded-full', meta.dot)} />
+              <span className="font-medium text-[var(--color-ink)]">{site.label}</span>
+              <span className="text-[var(--color-ink-secondary)]">{meta.label}</span>
+              <span className="tabular text-[var(--color-ink-muted)]">
+                {count(site.assetCount)} · {money(site.cost)}
+              </span>
+            </div>
+          </Tooltip>
+        );
+      })}
+    </div>
   );
 }
 
@@ -95,6 +167,16 @@ const LEDGER: Record<CarryVerdict, { label: string; hint: string; tone: string }
     hint: 'Not on the prior return, and the register does not say when they were bought — so whether they should have been is unanswerable from here.',
     tone: 'text-[var(--color-warning)]',
   },
+  aggregate: {
+    label: 'Totals only',
+    hint: 'At a site whose prior return we hold only as the client’s own document. A rendition names no assets, so these can be neither confirmed as rendered nor called omitted.',
+    tone: 'text-[var(--color-ink)]',
+  },
+  uncompared: {
+    label: 'Not compared',
+    hint: 'At a site with no prior return on file at all. Whether these were rendered is unknown from here — the document would settle it.',
+    tone: 'text-[var(--color-warning)]',
+  },
   dropped: {
     label: 'Off the register',
     hint: 'On the prior return and not on this register at all. Absence is not disposal — somebody has to say which it was.',
@@ -102,7 +184,7 @@ const LEDGER: Record<CarryVerdict, { label: string; hint: string; tone: string }
   },
 };
 
-/** The subtraction as five numbers, before any of it is argued about. */
+/** The subtraction as a row of numbers, before any of it is argued about. */
 function Ledger({ data }: { data: CarryForward }) {
   return (
     <div className="flex flex-wrap gap-x-8 gap-y-3 px-5 py-4">
@@ -148,6 +230,8 @@ const SEVERITY = {
 /** Which group a finding is talking about, so its evidence can be opened. */
 const EVIDENCE: Record<string, CarryVerdict> = {
   'omitted-from-prior-return': 'omitted',
+  'no-prior-return-on-file': 'uncompared',
+  'prior-return-not-itemized': 'aggregate',
   'dropped-from-register': 'dropped',
   'undated-and-unrendered': 'undated',
 };
