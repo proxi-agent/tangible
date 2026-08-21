@@ -52,6 +52,7 @@ import type {
   RecordExtensionRequest,
   RecordFilingRequest,
   RecordNoticeRequest,
+  RecordResolutionRequest,
   Rendition,
   RenditionBasis,
   RenditionExtension,
@@ -62,6 +63,7 @@ import type {
   SortDirection,
   StartIngestRequest,
   UpdateNoticeRequest,
+  VoidResolutionRequest,
   UpdateAppointmentRequest,
   UpdateClassificationRequest,
   UpdateClientRequest,
@@ -505,6 +507,26 @@ export const api = {
   /** That a protest went in, or that a notice was recorded in error. */
   updateNotice: (noticeId: string, body: UpdateNoticeRequest) =>
     request<AssessmentNotice>(`/notices/${noticeId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  /**
+   * How the protest ended.
+   *
+   * Returns the notice, not the resolution. What a settlement is worth is a
+   * statement about two figures — what the district proposed and what it came
+   * to — and only one of them is on the resolution.
+   */
+  recordResolution: (noticeId: string, body: RecordResolutionRequest) =>
+    request<AssessmentNotice>(`/notices/${noticeId}/resolution`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Take back a resolution recorded in error. */
+  voidResolution: (resolutionId: string, body: VoidResolutionRequest) =>
+    request<AssessmentNotice>(`/resolutions/${resolutionId}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),

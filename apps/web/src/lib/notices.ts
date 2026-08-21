@@ -1,20 +1,26 @@
 import 'server-only';
-import { and, desc, eq } from 'drizzle-orm';
-import type { AssessmentNoticeRow } from '@tangible/db';
+import { and, desc, eq, inArray } from 'drizzle-orm';
+import type { AssessmentNoticeRow, ProtestResolutionRow } from '@tangible/db';
 import {
   checkNotice,
+  checkResolution,
   operativeDeadline,
   protestStanding,
+  resolutionStanding,
   statutoryDates,
   type FiledReturnFacts,
 } from '@tangible/filing';
 import type {
   AssessmentNotice,
   AssessmentNoticeFacts,
+  ProtestResolution,
+  ProtestResolutionFacts,
   RecordNoticeRequest,
+  RecordResolutionRequest,
   RenditionExtension,
   RenditionFiling,
   UpdateNoticeRequest,
+  VoidResolutionRequest,
 } from '@tangible/types';
 import { currentActor } from '@/lib/actor';
 import { engagementExtensions } from '@/lib/extensions';
@@ -186,6 +192,193 @@ export async function updateNotice(
   return decorated;
 }
 
+
+/**
+ * Write down how a protest ended.
+ *
+ * The record that closes the season. Everything before it says what the
+ * district proposed and that somebody argued with it; this says what the year
+ * actually came to, which is the number the client is billed against and the
+ * number next season starts from.
+ *
+ * The noticed value is copied onto the row rather than joined to. A reduction
+ * is a claim about two figures, and it must not change later because somebody
+ * corrected the notice — the same reason a filing freezes its asset ids.
+ */
+export async function recordResolution(
+  noticeId: string,
+  body: RecordResolutionRequest,
+): Promise<AssessmentNotice> {
+  const db = requireDb();
+  const rows = await db
+    .select()
+    .from(schema.assessmentNotices)
+    .where(eq(schema.assessmentNotices.id, noticeId));
+  const notice = rows[0];
+  if (!notice) notFound('No notice with that id.');
+
+  if (notice.status !== 'active') {
+    throw new HttpError(
+      409,
+      notice.status === 'void'
+        ? 'That notice was recorded in error, so there is nothing it could have resolved.'
+        : 'That notice was superseded by a later one. Record the ending against the notice that stands.',
+    );
+  }
+  // The one thing that is structurally impossible rather than merely odd.
+  // Everything else suspicious about a resolution — an order with no protest
+  // behind it, a value that went up — is a check on the way out, because those
+  // do happen and a firm recording one needs the row saved, not a lecture.
+  if (body.resolvedOn < notice.noticedOn) {
+    throw new HttpError(409, 'A protest cannot have ended before the notice that started it.');
+  }
+
+  const actor = await currentActor();
+  const inserted = await db.transaction(async (tx) => {
+    // One standing answer per notice. A corrected resolution supersedes rather
+    // than edits, so the first figure a client was told stays recoverable.
+    await tx
+      .update(schema.protestResolutions)
+      .set({ status: 'superseded' })
+      .where(
+        and(
+          eq(schema.protestResolutions.noticeId, noticeId),
+          eq(schema.protestResolutions.status, 'recorded'),
+        ),
+      );
+
+    const [row] = await tx
+      .insert(schema.protestResolutions)
+      .values({
+        engagementId: notice.engagementId,
+        noticeId,
+        locationId: notice.locationId,
+        locationLabel: notice.locationLabel,
+        accountId: notice.accountId,
+        taxYear: notice.taxYear,
+        status: 'recorded',
+        stage: body.stage,
+        resolvedOn: body.resolvedOn,
+        noticedValue: notice.appraisedValue,
+        finalValue: body.finalValue,
+        penaltyOutcome: body.penaltyOutcome,
+        orderReference: body.orderReference,
+        note: body.note,
+        recordedBy: actor,
+      })
+      .returning();
+    if (!row) throw new HttpError(500, 'The resolution was not recorded.');
+    return row;
+  });
+
+  const [decorated] = await decorate(inserted.engagementId, [notice]);
+  if (!decorated) throw new HttpError(500, 'The resolution was not recorded.');
+  return decorated;
+}
+
+/**
+ * Take back a resolution recorded in error.
+ *
+ * Void rather than delete, and a reason rather than a flag, because the row was
+ * probably reported to somebody. A voided resolution leaves the notice showing
+ * a protest with no ending, which is the true state and the one that gets it
+ * recorded again properly.
+ */
+export async function voidResolution(
+  resolutionId: string,
+  body: VoidResolutionRequest,
+): Promise<AssessmentNotice> {
+  const db = requireDb();
+  const rows = await db
+    .select()
+    .from(schema.protestResolutions)
+    .where(eq(schema.protestResolutions.id, resolutionId));
+  const existing = rows[0];
+  if (!existing) notFound('No resolution with that id.');
+  if (existing.status === 'void') throw new HttpError(409, 'That resolution is already void.');
+
+  const actor = await currentActor();
+  await db
+    .update(schema.protestResolutions)
+    .set({ status: 'void', voidReason: body.reason, voidedBy: actor, voidedAt: new Date() })
+    .where(eq(schema.protestResolutions.id, resolutionId));
+
+  const notices = await db
+    .select()
+    .from(schema.assessmentNotices)
+    .where(eq(schema.assessmentNotices.id, existing.noticeId));
+  const notice = notices[0];
+  if (!notice) notFound('No notice with that id.');
+  const [decorated] = await decorate(existing.engagementId, [notice]);
+  if (!decorated) throw new HttpError(500, 'The resolution was not voided.');
+  return decorated;
+}
+
+/**
+ * The standing answer for each of these notices, where there is one.
+ *
+ * Only `recorded` rows. A superseded resolution is history and a voided one
+ * never happened, and either way the notice is back to being a protest with no
+ * ending on it — which is exactly what the panel should say.
+ */
+async function standingResolutions(
+  noticeIds: readonly string[],
+): Promise<Map<string, ProtestResolutionRow>> {
+  if (noticeIds.length === 0) return new Map();
+  const rows = await requireDb()
+    .select()
+    .from(schema.protestResolutions)
+    .where(
+      and(
+        inArray(schema.protestResolutions.noticeId, [...noticeIds]),
+        eq(schema.protestResolutions.status, 'recorded'),
+      ),
+    );
+  return new Map(rows.map((row) => [row.noticeId, row]));
+}
+
+/**
+ * The resolution, with the same two things added on read as the notice.
+ *
+ * Both move without the row moving: the sixty days 42.21(a) gives after an ARB
+ * order run out on their own, and the penalty check depends on what the notice
+ * says rather than on anything stored here.
+ */
+function resolutionOf(
+  row: ProtestResolutionRow,
+  notice: AssessmentNoticeFacts,
+  today: string,
+): ProtestResolution {
+  const facts: ProtestResolutionFacts = {
+    taxYear: row.taxYear,
+    status: row.status as ProtestResolutionFacts['status'],
+    stage: row.stage as ProtestResolutionFacts['stage'],
+    resolvedOn: row.resolvedOn,
+    noticedValue: row.noticedValue,
+    finalValue: row.finalValue,
+    penaltyOutcome: row.penaltyOutcome as ProtestResolutionFacts['penaltyOutcome'],
+    orderReference: row.orderReference,
+  };
+  const standing = resolutionStanding(facts, today);
+  return {
+    ...facts,
+    id: row.id,
+    engagementId: row.engagementId,
+    noticeId: row.noticeId,
+    locationId: row.locationId,
+    locationLabel: row.locationLabel,
+    accountId: row.accountId,
+    note: row.note,
+    recordedBy: row.recordedBy,
+    recordedAt: row.recordedAt.toISOString(),
+    voidedBy: row.voidedBy,
+    voidedAt: row.voidedAt?.toISOString() ?? null,
+    voidReason: row.voidReason,
+    standing,
+    checks: checkResolution(facts, notice, standing),
+  };
+}
+
 /**
  * The clocks and the checks, added on read.
  *
@@ -199,9 +392,10 @@ async function decorate(
   engagementId: string,
   rows: AssessmentNoticeRow[],
 ): Promise<AssessmentNotice[]> {
-  const [filings, extensions] = await Promise.all([
+  const [filings, extensions, resolutions] = await Promise.all([
     engagementFilings(engagementId),
     engagementExtensions(engagementId),
+    standingResolutions(rows.map((row) => row.id)),
   ]);
   const today = new Date().toISOString().slice(0, 10);
 
@@ -223,7 +417,8 @@ async function decorate(
       renditionPenaltyApplied: row.renditionPenaltyApplied,
       protestFiledOn: row.protestFiledOn,
     };
-    const protest = protestStanding(facts, today);
+    const resolved = resolutions.get(row.id) ?? null;
+    const protest = protestStanding(facts, today, resolved !== null);
     const filing = standing.get(`${row.locationId}:${row.taxYear}`) ?? null;
     return {
       ...facts,
@@ -249,6 +444,7 @@ async function decorate(
         filedFacts(filing, extensions, row.taxYear),
         protest,
       ),
+      resolution: resolved ? resolutionOf(resolved, facts, today) : null,
     };
   });
 }

@@ -599,6 +599,111 @@ export const NoticeCheckSchema = z.object({
 
 export type NoticeCheck = z.infer<typeof NoticeCheckSchema>;
 
+/** How a protest ended, in the four ways it can. */
+export const RESOLUTION_STAGES = ['informal', 'arb', 'withdrawn', 'dismissed'] as const;
+
+export const ResolutionStageSchema = z.enum(RESOLUTION_STAGES);
+export type ResolutionStage = (typeof RESOLUTION_STAGES)[number];
+
+/**
+ * What became of the 22.28 penalty, where one was applied.
+ *
+ * Kept apart from the value because winning one is not winning the other. The
+ * penalty is 10% of the taxes on the property, so a settlement that halves the
+ * value halves the penalty arithmetically and leaves it standing. Waiving it is
+ * a separate request under 22.30 on a separate clock, and a firm that argued
+ * only about value has not asked.
+ */
+export const PENALTY_OUTCOMES = ['waived', 'upheld'] as const;
+
+export const PenaltyOutcomeSchema = z.enum(PENALTY_OUTCOMES);
+export type PenaltyOutcome = (typeof PENALTY_OUTCOMES)[number];
+
+/** The facts a resolution turns on, apart from who typed them in. */
+export const ProtestResolutionFactsSchema = z.object({
+  taxYear: z.number().int(),
+  status: z.enum(['recorded', 'superseded', 'void']),
+  stage: ResolutionStageSchema,
+  /** The day it ended: the agreement, the order, the withdrawal, the dismissal. */
+  resolvedOn: z.string(),
+  /** What the notice said, carried onto the resolution so the two cannot drift. */
+  noticedValue: z.number().nullable(),
+  /** What it came to. Null where nothing was determined. */
+  finalValue: z.number().nullable(),
+  penaltyOutcome: PenaltyOutcomeSchema.nullable(),
+  /** The ARB order number, which is what a 42.21 petition is filed against. */
+  orderReference: z.string().nullable(),
+});
+
+export type ProtestResolutionFacts = z.infer<typeof ProtestResolutionFactsSchema>;
+
+/**
+ * What a resolution settles, and what it leaves open.
+ *
+ * The two questions a firm asks the morning after, and they have different
+ * answers depending on where the protest ended. An informal agreement with the
+ * chief appraiser is final under 1.111(e) on any matter that could have been
+ * protested, so there is nothing after it. A written ARB order under 41.47 is
+ * the opposite: it starts a sixty-day clock to district court under 42.21(a),
+ * and for an account appraised at $5,000,000 or less, binding arbitration
+ * under 41A on the same sixty days.
+ */
+export const ResolutionStandingSchema = z.object({
+  /** True where nothing follows this: settled, withdrawn, dismissed, or out of time. */
+  binding: z.boolean(),
+  /** 42.21(a)'s sixty days, where an order started them. */
+  appealDeadline: z.string().nullable(),
+  appealOpen: z.boolean(),
+  /** 41A's $5M ceiling, answered against the value that stands. Null where none is known. */
+  arbitrationEligible: z.boolean().nullable(),
+  /** Assessed value taken off, never tax dollars. Null where nothing was determined. */
+  reduction: z.number().nullable(),
+  reductionPct: z.number().nullable(),
+  /** Which of those applies and why, in prose somebody can act on. */
+  standing: z.string(),
+});
+
+export type ResolutionStanding = z.infer<typeof ResolutionStandingSchema>;
+
+/**
+ * How a protest ended.
+ *
+ * The trail used to stop at "we protested this", which is the point at which
+ * the engagement stops being able to answer either of the two questions it
+ * exists to answer: what did the year come to, and what does next year start
+ * from. A protest with no recorded ending leaves the noticed value standing in
+ * the record forever, which is both the wrong number to carry forward and the
+ * wrong number to bill against.
+ *
+ * Recorded against the notice rather than the site, because a resolution is an
+ * answer to a particular piece of mail. Append-only like everything else in
+ * this file: a correction is a second row and the first becomes `superseded`, a
+ * mistake is a void, and no row is edited.
+ */
+export const ProtestResolutionSchema = ProtestResolutionFactsSchema.extend({
+  id: z.string(),
+  engagementId: z.string(),
+  noticeId: z.string(),
+  locationId: z.string(),
+  locationLabel: z.string(),
+  accountId: z.string().nullable(),
+
+  note: z.string().nullable(),
+
+  recordedBy: z.string().nullable(),
+  recordedAt: z.string(),
+  voidedBy: z.string().nullable(),
+  voidedAt: z.string().nullable(),
+  voidReason: z.string().nullable(),
+
+  /** Derived on read: what is settled, and what clock the order started. */
+  standing: ResolutionStandingSchema,
+  /** Derived on read: what about this ending is worth a second look. */
+  checks: z.array(NoticeCheckSchema),
+});
+
+export type ProtestResolution = z.infer<typeof ProtestResolutionSchema>;
+
 /**
  * A notice of appraised value, as it arrived.
  *
@@ -642,6 +747,8 @@ export const AssessmentNoticeSchema = AssessmentNoticeFactsSchema.extend({
   protest: ProtestStandingSchema,
   /** Derived on read: what this notice says against what we filed. */
   checks: z.array(NoticeCheckSchema),
+  /** How the protest ended, where it has. Null while it is still out. */
+  resolution: ProtestResolutionSchema.nullable(),
 });
 
 export type AssessmentNotice = z.infer<typeof AssessmentNoticeSchema>;
@@ -703,6 +810,54 @@ export const UpdateNoticeRequestSchema = z
   });
 
 export type UpdateNoticeRequest = z.infer<typeof UpdateNoticeRequestSchema>;
+
+/**
+ * Write down how a protest ended.
+ *
+ * The stage is doing the work here, not the value. Where a protest went is what
+ * decides whether anything follows it, so the two branches below are the two
+ * genuinely different endings: `informal` and `arb` produce a number, and
+ * `withdrawn` and `dismissed` determine nothing at all and leave the noticed
+ * value standing. Letting a withdrawal carry a final value would quietly invent
+ * a settlement that never happened.
+ */
+export const RecordResolutionRequestSchema = z
+  .object({
+    stage: ResolutionStageSchema,
+    resolvedOn: isoDate,
+    finalValue: z.number().nonnegative().nullish().transform((v) => v ?? null),
+    penaltyOutcome: PenaltyOutcomeSchema.nullish().transform((v) => v ?? null),
+    orderReference: optionalText(120),
+    note: optionalText(1000),
+  })
+  .refine((body) => body.stage !== 'informal' || body.finalValue !== null, {
+    path: ['finalValue'],
+    message:
+      'Say what it settled at. A 1.111(e) agreement is final for the year, so the number in it ' +
+      'is the number the client pays on.',
+  })
+  .refine((body) => body.stage !== 'arb' || body.finalValue !== null, {
+    path: ['finalValue'],
+    message: 'Say what the board determined. A 41.47 order determines a value.',
+  })
+  .refine(
+    (body) => (body.stage !== 'withdrawn' && body.stage !== 'dismissed') || body.finalValue === null,
+    {
+      path: ['finalValue'],
+      message:
+        'A protest that was withdrawn or dismissed determined nothing. The value on the notice ' +
+        'is what stands.',
+    },
+  );
+
+export type RecordResolutionRequest = z.infer<typeof RecordResolutionRequestSchema>;
+
+/** Take back a resolution recorded in error. The reason is the whole of it. */
+export const VoidResolutionRequestSchema = z.object({
+  reason: z.string().trim().min(1, 'Say why this resolution is being taken back.').max(1000),
+});
+
+export type VoidResolutionRequest = z.infer<typeof VoidResolutionRequestSchema>;
 
 /**
  * Where one of an engagement's returns stands.

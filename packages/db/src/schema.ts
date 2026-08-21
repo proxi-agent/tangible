@@ -1142,6 +1142,106 @@ export const assessmentNotices = pgTable(
 ).enableRLS();
 
 /**
+ * How a protest ended.
+ *
+ * The trail used to stop at `assessment_notices.protest_filed_on`, which is the
+ * point at which an engagement stops being able to answer the two questions it
+ * exists to answer: what did the year come to, and what does next year start
+ * from. With no ending on file the noticed value is the only value in the
+ * record, so a protest that won $200,000 back reads exactly like one nobody
+ * ever worked — including to the carry-forward that opens the next season.
+ *
+ * Hung off the notice rather than the site, because a resolution is an answer
+ * to one particular piece of mail. Where a corrected notice supersedes an
+ * earlier one, the resolution stays with the notice it actually resolved.
+ *
+ * Same discipline as everything around it: a correction is a second row and the
+ * first becomes `superseded`, a mistake is a void, and no row is edited.
+ */
+export const protestResolutions = pgTable(
+  'protest_resolutions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /**
+     * Cascades, unlike the location below.
+     *
+     * A resolution has no meaning apart from the notice it resolves — it does
+     * not even carry the value it started from except as a copy — so a notice
+     * that is genuinely deleted takes it with it. Voiding a notice is the
+     * ordinary path and leaves both rows standing.
+     */
+    noticeId: uuid('notice_id')
+      .notNull()
+      .references(() => assessmentNotices.id, { onDelete: 'cascade' }),
+    /** Restricted for the same reason the notice's is: closing a site settles nothing. */
+    locationId: uuid('location_id')
+      .notNull()
+      .references(() => clientLocations.id, { onDelete: 'restrict' }),
+    locationLabel: text('location_label').notNull(),
+    accountId: text('account_id'),
+    taxYear: integer('tax_year').notNull(),
+
+    /** 'recorded' | 'superseded' | 'void'. */
+    status: text('status').notNull().default('recorded'),
+
+    /**
+     * 'informal' | 'arb' | 'withdrawn' | 'dismissed'.
+     *
+     * The column the rest of the row means nothing without. An informal
+     * agreement is final under 1.111(e) and has no appeal after it; a written
+     * ARB order under 41.47 starts sixty days to district court under 42.21(a)
+     * and to 41A arbitration; a withdrawal or a dismissal determines nothing
+     * and leaves the noticed value standing. Four endings, four different
+     * answers to "is this year closed".
+     */
+    stage: text('stage').notNull(),
+    /** The day it ended: the agreement, the order, the withdrawal, the dismissal. */
+    resolvedOn: date('resolved_on').notNull(),
+
+    /**
+     * What the notice said, copied here at the moment of recording.
+     *
+     * Denormalised deliberately. The reduction this represents is the number a
+     * firm bills on and reports to the client, and it must not silently change
+     * because somebody later corrected the notice — the same reason a filing
+     * freezes its asset ids.
+     */
+    noticedValue: doublePrecision('noticed_value'),
+    /** What it came to. Null where nothing was determined. */
+    finalValue: doublePrecision('final_value'),
+    /**
+     * 'waived' | 'upheld', or null where the resolution does not say.
+     *
+     * Separate from the value because winning one is not winning the other.
+     * 22.28's penalty is 10% of the taxes on the property, so a settlement that
+     * halves the value halves the penalty and leaves it owed. Waiving it is a
+     * separate request under 22.30 on a clock that closed thirty days after the
+     * notice — and null here is the answer that most needs surfacing, not the
+     * one that means nothing happened.
+     */
+    penaltyOutcome: text('penalty_outcome'),
+    /** The ARB order number, which is what a 42.21 petition is filed against. */
+    orderReference: text('order_reference'),
+
+    note: text('note'),
+
+    recordedBy: text('recorded_by'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    voidedBy: text('voided_by'),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidReason: text('void_reason'),
+  },
+  (table) => [
+    index('protest_resolutions_engagement_idx').on(table.engagementId, table.status),
+    /** The read that matters: how did this notice end. */
+    index('protest_resolutions_notice_idx').on(table.noticeId, table.status),
+  ],
+).enableRLS();
+
+/**
  * A committed finding set, and the findings in it.
  *
  * The reports themselves stay derived on read — see the header of
@@ -1430,6 +1530,8 @@ export type RenditionExtensionRow = typeof renditionExtensions.$inferSelect;
 export type NewRenditionExtensionRow = typeof renditionExtensions.$inferInsert;
 export type AssessmentNoticeRow = typeof assessmentNotices.$inferSelect;
 export type NewAssessmentNoticeRow = typeof assessmentNotices.$inferInsert;
+export type ProtestResolutionRow = typeof protestResolutions.$inferSelect;
+export type NewProtestResolutionRow = typeof protestResolutions.$inferInsert;
 export type FindingSetRow = typeof findingSets.$inferSelect;
 export type NewFindingSetRow = typeof findingSets.$inferInsert;
 export type FindingRow = typeof findings.$inferSelect;

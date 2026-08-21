@@ -47,7 +47,18 @@ function statutoryFloor(taxYear: number): string {
  * does: the branches that matter are the ones where two dates disagree, and a
  * date on its own cannot tell anybody which of the two it is or why.
  */
-export function protestStanding(notice: AssessmentNoticeFacts, today: string): ProtestStanding {
+export function protestStanding(
+  notice: AssessmentNoticeFacts,
+  today: string,
+  /**
+   * Whether an ending is on file for this protest.
+   *
+   * Only ever narrows the sentence below. Without it a notice protested in May
+   * still reads "the value is before the board" in November, which is the exact
+   * claim `resolution.ts` exists to stop the record making.
+   */
+  resolved = false,
+): ProtestStanding {
   const floor = statutoryFloor(notice.taxYear);
   // Delivery is what 41.44 counts from. The date printed on the notice stands
   // in for it because 1.07 presumes delivery on mailing — but where somebody
@@ -100,7 +111,9 @@ export function protestStanding(notice: AssessmentNoticeFacts, today: string): P
           'The board may refuse to hear it — 41.44 makes timeliness the condition of being ' +
           'entitled to a hearing at all.'
         : `Protested ${stamp(notice.protestFiledOn)}, inside the ${stamp(deadline)} deadline. ` +
-          'The value is before the board and is no longer settled for the year.',
+          (resolved
+            ? 'It has since been resolved.'
+            : 'The value is before the board and is no longer settled for the year.'),
     };
   }
 

@@ -61,6 +61,7 @@ export {
   type AppointmentTerms,
 } from './fill-50-162.js';
 export { checkNotice, protestStanding, type FiledReturnFacts } from './protest.js';
+export { checkResolution, resolutionStanding } from './resolution.js';
 export {
   describePositions,
   planPositions,

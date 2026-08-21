@@ -2,10 +2,16 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
-import type { AssessmentNotice, NoticeCheck } from '@tangible/types';
+import type {
+  AssessmentNotice,
+  NoticeCheck,
+  PenaltyOutcome,
+  ProtestResolution,
+  ResolutionStage,
+} from '@tangible/types';
 import { api } from '@/lib/api';
 import { day, dayShort, moneyExact } from '@/lib/format';
-import { Button, Field, TextArea, TextInput } from '@/components/ui/controls';
+import { Button, Field, Select, TextArea, TextInput } from '@/components/ui/controls';
 import { Badge } from '@/components/ui/primitives';
 
 /**
@@ -73,20 +79,26 @@ function Recorded({ notice, engagementId }: { notice: AssessmentNotice; engageme
           tone={
             notice.status !== 'active'
               ? 'neutral'
-              : notice.protestFiledOn
-                ? 'good'
-                : protest.open
+              : notice.resolution
+                ? (notice.resolution.standing.reduction ?? 0) > 0
+                  ? 'good'
+                  : 'neutral'
+                : notice.protestFiledOn
                   ? 'accent'
-                  : 'critical'
+                  : protest.open
+                    ? 'accent'
+                    : 'critical'
           }
         >
           {notice.status !== 'active'
             ? notice.status
-            : notice.protestFiledOn
-              ? 'protested'
-              : protest.open
-                ? 'open'
-                : 'closed'}
+            : notice.resolution
+              ? 'settled'
+              : notice.protestFiledOn
+                ? 'protested'
+                : protest.open
+                  ? 'open'
+                  : 'closed'}
         </Badge>
         <span className="font-medium">Noticed {dayShort(notice.noticedOn)}</span>
         {notice.deliveredOn ? (
@@ -143,8 +155,15 @@ function Recorded({ notice, engagementId }: { notice: AssessmentNotice; engageme
         <p className="text-[11px] text-[var(--color-ink-muted)]">{notice.note}</p>
       ) : null}
 
+      {notice.resolution ? (
+        <Resolved resolution={notice.resolution} engagementId={engagementId} />
+      ) : null}
+
       {notice.status === 'active' && notice.protestFiledOn === null ? (
         <Close notice={notice} engagementId={engagementId} />
+      ) : null}
+      {notice.status === 'active' && notice.resolution === null ? (
+        <Resolve notice={notice} engagementId={engagementId} />
       ) : null}
     </div>
   );
@@ -282,6 +301,322 @@ function Close({ notice, engagementId }: { notice: AssessmentNotice; engagementI
       {save.error ? (
         <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
           {save.error instanceof Error ? save.error.message : String(save.error)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+const STAGE_LABEL: Record<ResolutionStage, string> = {
+  informal: 'settled informally',
+  arb: 'ARB order',
+  withdrawn: 'withdrawn',
+  dismissed: 'dismissed',
+};
+
+/**
+ * How the protest ended.
+ *
+ * The row the season is actually measured by. Everything above it is the
+ * district's proposal and the fact that somebody argued with it; this is the
+ * number the client is billed against and the number next year opens from.
+ *
+ * The header repeats the notice's own shape one line down: what happened on the
+ * left, and on the right the only date still running. Most endings have none —
+ * an informal settlement is final under 1.111(e) and a withdrawal determined
+ * nothing — so that slot is usually empty, which is itself the answer.
+ */
+function Resolved({
+  resolution,
+  engagementId,
+}: {
+  resolution: ProtestResolution;
+  engagementId: string;
+}) {
+  const { standing } = resolution;
+  const moved = standing.reduction;
+  return (
+    <div className="space-y-2 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-2.5">
+      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-xs">
+        <Badge tone={moved !== null && moved > 0 ? 'good' : 'neutral'}>
+          {STAGE_LABEL[resolution.stage]}
+        </Badge>
+        <span className="font-medium">{dayShort(resolution.resolvedOn)}</span>
+        {resolution.orderReference ? (
+          <span className="text-[var(--color-ink-secondary)]">
+            order {resolution.orderReference}
+          </span>
+        ) : null}
+        {moved !== null && moved !== 0 ? (
+          <span
+            className={
+              moved > 0
+                ? 'tabular font-medium text-[var(--color-good)]'
+                : 'tabular font-medium text-[var(--color-critical)]'
+            }
+          >
+            {moved > 0 ? 'value down ' : 'value up '}
+            {moneyExact(Math.abs(moved))}
+          </span>
+        ) : null}
+        {/* The clock, in the slot the notice above keeps its clock in: whatever
+            is left to do sits on the right, and an ending with nothing left to
+            do shows nothing there. */}
+        {standing.appealDeadline ? (
+          <span
+            className={
+              standing.appealOpen
+                ? 'tabular ml-auto font-medium text-[var(--color-warning)]'
+                : 'tabular ml-auto text-[var(--color-ink-muted)] line-through'
+            }
+          >
+            appeal by {dayShort(standing.appealDeadline)}
+          </span>
+        ) : null}
+      </div>
+
+      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+        {standing.standing}
+      </p>
+
+      {resolution.checks.length > 0 ? (
+        <ul className="space-y-1.5">
+          {resolution.checks.map((check) => (
+            <Check key={check.key} check={check} />
+          ))}
+        </ul>
+      ) : null}
+
+      {resolution.note ? (
+        <p className="text-[11px] text-[var(--color-ink-muted)]">{resolution.note}</p>
+      ) : null}
+
+      <VoidResolution resolution={resolution} engagementId={engagementId} />
+    </div>
+  );
+}
+
+/** Taking back a resolution recorded in error. A correction is a new one instead. */
+function VoidResolution({
+  resolution,
+  engagementId,
+}: {
+  resolution: ProtestResolution;
+  engagementId: string;
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [reason, setReason] = useState('');
+
+  const save = useMutation({
+    mutationFn: () => api.voidResolution(resolution.id, { reason: reason.trim() }),
+    onSuccess: () => {
+      setOpen(false);
+      setReason('');
+      void queryClient.invalidateQueries({ queryKey: ['engagement-notices', engagementId] });
+      void queryClient.invalidateQueries({ queryKey: ['engagement-season', engagementId] });
+    },
+  });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="cursor-pointer text-[11px] text-[var(--color-ink-muted)] hover:text-[var(--color-critical)]"
+      >
+        Recorded in error
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2 border-t border-[var(--color-hairline)] pt-2">
+      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+        Voiding leaves the notice showing a protest with no ending on it, which is the true state
+        while this gets recorded again. To correct the figures instead, record the ending afresh —
+        that supersedes this row and keeps whatever the client was already told.
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        <TextInput
+          className="min-w-52 flex-1"
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          placeholder="Why — e.g. recorded against the wrong notice"
+        />
+        <Button
+          variant="secondary"
+          disabled={save.isPending || reason.trim().length === 0}
+          onClick={() => save.mutate()}
+        >
+          {save.isPending ? 'Saving…' : 'Void it'}
+        </Button>
+        <Button variant="ghost" onClick={() => setOpen(false)}>
+          Never mind
+        </Button>
+      </div>
+      {save.error ? (
+        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+          {save.error instanceof Error ? save.error.message : String(save.error)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Writing down how it ended.
+ *
+ * The stage is the first field and it changes the rest of the form, because
+ * the four endings are genuinely different facts rather than four words for the
+ * same one. A withdrawal determines nothing, so it has no value to type; an ARB
+ * order determines a value and starts sixty days, so it wants the order number
+ * a petition would be filed against.
+ */
+function Resolve({ notice, engagementId }: { notice: AssessmentNotice; engagementId: string }) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [stage, setStage] = useState<ResolutionStage>('informal');
+  const [resolvedOn, setResolvedOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [finalValue, setFinalValue] = useState('');
+  const [orderReference, setOrderReference] = useState('');
+  const [penaltyOutcome, setPenaltyOutcome] = useState<PenaltyOutcome | ''>('');
+  const [note, setNote] = useState('');
+
+  const determines = stage === 'informal' || stage === 'arb';
+
+  const send = useMutation({
+    mutationFn: () =>
+      api.recordResolution(notice.id, {
+        stage,
+        resolvedOn,
+        // Never sent for an ending that determined nothing, whatever is left in
+        // the box from a stage the user changed their mind about.
+        finalValue: determines ? amount(finalValue) : null,
+        penaltyOutcome: penaltyOutcome || null,
+        orderReference: stage === 'arb' ? orderReference.trim() || null : null,
+        note: note.trim() || null,
+      }),
+    onSuccess: () => {
+      setOpen(false);
+      setFinalValue('');
+      setOrderReference('');
+      setPenaltyOutcome('');
+      setNote('');
+      void queryClient.invalidateQueries({ queryKey: ['engagement-notices', engagementId] });
+      void queryClient.invalidateQueries({ queryKey: ['engagement-season', engagementId] });
+    },
+  });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="cursor-pointer text-[11px] font-medium text-[var(--color-ink-secondary)] hover:underline"
+      >
+        Record how it ended
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-3">
+      <div className="flex flex-wrap items-end gap-2.5">
+        <Field
+          label="How it ended"
+          help="An informal agreement with the chief appraiser is final under 1.111(e) — no hearing and nothing to appeal. A written ARB order under 41.47 starts sixty days to district court or to 41A arbitration. A withdrawal or a dismissal determines nothing and leaves the noticed value standing."
+        >
+          <Select value={stage} onChange={(event) => setStage(event.target.value as ResolutionStage)}>
+            <option value="informal">Settled with the chief appraiser</option>
+            <option value="arb">Determined by written ARB order</option>
+            <option value="withdrawn">Withdrawn</option>
+            <option value="dismissed">Dismissed by the board</option>
+          </Select>
+        </Field>
+        <Field
+          label="Date"
+          help="The day it ended: the date on the agreement, the order, the withdrawal or the dismissal — not the day of the hearing."
+        >
+          <TextInput
+            type="date"
+            value={resolvedOn}
+            onChange={(event) => setResolvedOn(event.target.value)}
+          />
+        </Field>
+        {determines ? (
+          <Field
+            label="Value it came to"
+            help={
+              notice.appraisedValue === null
+                ? 'No appraised value is recorded on the notice, so the reduction cannot be measured until one is.'
+                : `The notice appraised this at ${moneyExact(notice.appraisedValue)}. The difference is what gets reported.`
+            }
+          >
+            <TextInput
+              inputMode="decimal"
+              className="w-32"
+              value={finalValue}
+              onChange={(event) => setFinalValue(event.target.value)}
+              placeholder="0"
+            />
+          </Field>
+        ) : null}
+        {stage === 'arb' ? (
+          <Field
+            label="Order number"
+            help="41.47 requires the board to determine the protest by written order. That order is what a 42.21 petition or a 41A arbitration request is filed against."
+          >
+            <TextInput
+              className="w-44"
+              value={orderReference}
+              onChange={(event) => setOrderReference(event.target.value)}
+              placeholder="ARB-2027-0000"
+            />
+          </Field>
+        ) : null}
+      </div>
+
+      {/* Only where the notice said a penalty was applied. Asking about one
+          nobody imposed invites an answer that contradicts the notice. */}
+      {notice.renditionPenaltyApplied ? (
+        <Field
+          label="The rendition penalty"
+          help="22.28 charges 10% of the taxes on the property, so it follows any reduction down proportionally and survives it. Getting rid of it takes a separate 22.30 waiver, and 22.30(b) gave thirty days from the notice to ask."
+        >
+          <Select
+            value={penaltyOutcome}
+            onChange={(event) => setPenaltyOutcome(event.target.value as PenaltyOutcome | '')}
+          >
+            <option value="">Not stated</option>
+            <option value="waived">Waived</option>
+            <option value="upheld">Upheld</option>
+          </Select>
+        </Field>
+      ) : null}
+
+      <TextArea
+        rows={2}
+        value={note}
+        onChange={(event) => setNote(event.target.value)}
+        placeholder="What was agreed, and on what grounds"
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="primary"
+          disabled={send.isPending || (determines && amount(finalValue) === null)}
+          onClick={() => send.mutate()}
+        >
+          {send.isPending ? 'Saving…' : 'Record it'}
+        </Button>
+        <Button variant="ghost" onClick={() => setOpen(false)}>
+          Never mind
+        </Button>
+      </div>
+      {send.error ? (
+        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+          {send.error instanceof Error ? send.error.message : String(send.error)}
         </p>
       ) : null}
     </div>

@@ -423,13 +423,58 @@ function Due({ entry }: { entry: PracticeReturn }) {
  */
 function Protest({ entry }: { entry: PracticeReturn }) {
   if (entry.notice === null) return null;
-  const { protest } = entry.notice;
+  const { protest, resolution } = entry.notice;
+
+  // A protest that ended has one clock left at most, and only after an ARB
+  // order: 42.21(a)'s sixty days. Everything else is finished, and saying so is
+  // the point — a row reading "protested" nine months later is a row nobody can
+  // tell from one that is still out.
+  if (resolution !== null) {
+    const { standing } = resolution;
+    if (standing.appealOpen && standing.appealDeadline) {
+      const left = countdownDays(standing.appealDeadline);
+      return (
+        <Tooltip title="The order is appealable" content={standing.standing}>
+          <span
+            className={`tabular inline-flex items-center gap-1 text-xs ${
+              left <= 14 ? 'text-[var(--color-warning)]' : 'text-[var(--color-ink-secondary)]'
+            }`}
+          >
+            <Gavel size={11} strokeWidth={2} />
+            appeal by {dayShort(standing.appealDeadline)} · {countdown(left)}
+          </span>
+        </Tooltip>
+      );
+    }
+    const moved = standing.reduction;
+    return (
+      <Tooltip title="How it ended" content={standing.standing}>
+        <span
+          className={`inline-flex items-center gap-1 text-xs ${
+            moved !== null && moved > 0
+              ? 'text-[var(--color-good)]'
+              : 'text-[var(--color-ink-muted)]'
+          }`}
+        >
+          <Gavel size={11} strokeWidth={2} />
+          {moved !== null && moved > 0
+            ? `settled · ${money(moved)} off`
+            : resolution.stage === 'withdrawn' || resolution.stage === 'dismissed'
+              ? `${resolution.stage} · value stands`
+              : 'settled · value stands'}
+        </span>
+      </Tooltip>
+    );
+  }
+
   if (entry.notice.protestFiledOn !== null) {
     return (
-      <span className="inline-flex items-center gap-1 text-xs text-[var(--color-good)]">
-        <Gavel size={11} strokeWidth={2} />
-        protested {dayShort(entry.notice.protestFiledOn)}
-      </span>
+      <Tooltip title="Out with the district" content={protest.standing}>
+        <span className="inline-flex items-center gap-1 text-xs text-[var(--color-accent)]">
+          <Gavel size={11} strokeWidth={2} />
+          protested {dayShort(entry.notice.protestFiledOn)}
+        </span>
+      </Tooltip>
     );
   }
   // The waiver has no May 15 floor under 22.30(b), so it usually closes weeks

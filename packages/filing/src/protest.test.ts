@@ -122,6 +122,17 @@ describe('protestStanding', () => {
     expect(standing.standing).toContain('inside the May 15, 2026 deadline');
   });
 
+  it('stops claiming the value is before the board once it is not', () => {
+    const open = protestStanding(facts({ protestFiledOn: '2026-05-12' }), '2026-11-01');
+    expect(open.standing).toContain('before the board');
+    const done = protestStanding(facts({ protestFiledOn: '2026-05-12' }), '2026-11-01', true);
+    expect(done.standing).not.toContain('before the board');
+    expect(done.standing).toContain('has since been resolved');
+    // The ending narrows the sentence and nothing else — the window is shut
+    // either way, because a protest was filed.
+    expect(done.open).toBe(false);
+  });
+
   it('says so when the protest went in late', () => {
     const standing = protestStanding(facts({ protestFiledOn: '2026-05-20' }), '2026-05-21');
     expect(standing.standing).toContain('entitled to a hearing');
