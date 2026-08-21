@@ -42,8 +42,10 @@ export function SitesCard({ clientId, engagementId }: { clientId: string; engage
     // per agent flag and per site, and a placement changes every one of them.
     void queryClient.invalidateQueries({ queryKey: ['engagement-rendition', engagementId] });
     // And a placement can be the moment this engagement becomes two returns
-    // rather than one, which is the picker on the filing screen.
+    // rather than one, which is the picker on the filing screen and the board
+    // on the engagement page.
     void queryClient.invalidateQueries({ queryKey: ['engagement-returns', engagementId] });
+    void queryClient.invalidateQueries({ queryKey: ['engagement-season', engagementId] });
   };
 
   const place = useMutation({

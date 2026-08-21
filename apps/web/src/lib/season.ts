@@ -1,0 +1,159 @@
+import 'server-only';
+import { deadlinesFor } from '@tangible/filing';
+import type { FilingSeason, RenditionFiling, SeasonReturn } from '@tangible/types';
+import { blockingProblems, engagementFilings } from '@/lib/filings';
+import { formInputs } from '@/lib/rendition';
+import { engagementReturns } from '@/lib/sites';
+import { fetchEngagement } from '@/lib/workspace';
+
+/**
+ * The filing season for one engagement.
+ *
+ * Everything before this answers about a single document — this draft, this
+ * form, this filing. None of them answers the question a filer actually carries
+ * around between January and April: which returns still have to go out, what is
+ * holding each one up, and how long there is. An engagement with two sites owes
+ * two forms, and until now the only place that number appeared at all was a
+ * picker on the draft screen.
+ *
+ * The cost is real and worth stating: a season builds one rendition per return,
+ * because "is this ready" cannot be answered without classifying the property,
+ * applying the accepted findings and running the blockers — the same work the
+ * draft screen does, once per site. Engagements have a handful of sites rather
+ * than hundreds, and the board is its own query, so no page waits on it.
+ */
+
+/**
+ * The posture the board reports against: cost basis, signed by us as agent.
+ *
+ * Blockers depend on both — a good faith estimate can demand notarization under
+ * 22.24(e), and an agent with no Form 50-162 on file cannot sign at all. These
+ * are the defaults the draft screen opens with, so a return the board calls
+ * ready is one the operator finds ready when they click through. Switching the
+ * basis on the draft can raise a blocker the board did not show; that is the
+ * draft telling them something new, not the two screens disagreeing.
+ */
+const POSTURE = { basis: 'cost', filedByAgent: true } as const;
+
+export async function filingSeason(engagementId: string): Promise<FilingSeason> {
+  const { engagement } = await fetchEngagement(engagementId);
+  const [filings, owed] = await Promise.all([
+    engagementFilings(engagementId),
+    engagementReturns(engagementId),
+  ]);
+
+  // The standing return per site. One per site and year by construction —
+  // recording a second supersedes the first — so the map cannot lose one.
+  const standing = new Map<string, RenditionFiling>();
+  for (const filing of filings) {
+    if (filing.status === 'filed' && filing.taxYear === engagement.taxYear) {
+      standing.set(filing.locationId, filing);
+    }
+  }
+
+  // One rendition per return, in parallel. `formInputs` carries the problems
+  // the register cannot see alongside it — no signer, no situs, no site chosen
+  // — and those are exactly what the record gate weighs, so the board weighs
+  // the same list rather than a second one that agrees today.
+  const rows = await Promise.all(
+    owed.returns.map(async (entry): Promise<SeasonReturn> => {
+      const { rendition, extra } = await formInputs(engagementId, {
+        ...POSTURE,
+        locationId: entry.locationId,
+      });
+      const blockers = blockingProblems(rendition, extra);
+      const filing = standing.get(entry.locationId) ?? null;
+      return {
+        locationId: entry.locationId,
+        label: entry.label,
+        accountId: entry.accountId,
+        status: filing ? 'filed' : blockers.length > 0 ? 'blocked' : 'ready',
+        assetCount: entry.assetCount,
+        registerCost: entry.totalCost,
+        renderedCost: rendition.totalHistoricalCost,
+        blockers,
+        warnings: rendition.blockers.filter((blocker) => blocker.severity === 'warning').length,
+        filing,
+        driftedBy: filing ? rendition.totalHistoricalCost - filing.totalHistoricalCost : null,
+      };
+    }),
+  );
+
+  const deadlines = deadlinesFor(engagement.taxYear);
+  const dateFor = (key: string, fallback: string) =>
+    deadlines.find((deadline) => deadline.key === key)?.date ?? fallback;
+  const dueOn = dateFor('rendition-due', `${engagement.taxYear}-04-15`);
+
+  return {
+    taxYear: engagement.taxYear,
+    dueOn,
+    extendedDueOn: dateFor('rendition-extended', `${engagement.taxYear}-05-15`),
+    daysToDue: daysUntil(dueOn),
+    returns: [...rows, ...filedButNoLongerOwed(rows, standing)].sort(byWhatNeedsDoing),
+    unplacedCount: owed.unplacedCount,
+    unplacedCost: owed.unplacedCost,
+  };
+}
+
+/**
+ * Returns that went out for a site the register no longer places property at.
+ *
+ * Rare and worth carrying anyway. `engagementReturns` lists sites *holding*
+ * property, so a site whose every row has since been disposed of drops off it —
+ * and a board built only from what is owed would quietly retire a document the
+ * district is still working from. The row is assembled from the filing itself
+ * rather than from a site lookup, because the filing is the thing that froze
+ * the label and the account, and that is what the return was filed under.
+ */
+function filedButNoLongerOwed(
+  rows: SeasonReturn[],
+  standing: Map<string, RenditionFiling>,
+): SeasonReturn[] {
+  const covered = new Set(rows.map((row) => row.locationId));
+  return [...standing.values()]
+    .filter((filing) => !covered.has(filing.locationId))
+    .map((filing) => ({
+      locationId: filing.locationId,
+      label: filing.locationLabel,
+      accountId: filing.accountId,
+      status: 'filed' as const,
+      assetCount: 0,
+      registerCost: 0,
+      renderedCost: 0,
+      blockers: [],
+      warnings: 0,
+      filing,
+      driftedBy: -filing.totalHistoricalCost,
+    }));
+}
+
+/**
+ * Worklist order: what is stuck, then what can go out, then what has gone.
+ *
+ * Deliberately not the picker's order, which is by size and never moves. This
+ * is a board somebody works down, so a return changes place when its state
+ * changes — that is the movement being reported.
+ */
+const RANK: Record<SeasonReturn['status'], number> = { blocked: 0, ready: 1, filed: 2 };
+
+function byWhatNeedsDoing(a: SeasonReturn, b: SeasonReturn): number {
+  return (
+    RANK[a.status] - RANK[b.status] ||
+    b.renderedCost - a.renderedCost ||
+    a.label.localeCompare(b.label)
+  );
+}
+
+/**
+ * Whole days from today to an ISO date, in UTC.
+ *
+ * UTC on both sides on purpose. A statutory date is a date, not an instant, and
+ * subtracting a local midnight from a UTC one is how a deadline reads as one
+ * day nearer or further depending on which side of the Atlantic the server
+ * happens to be on.
+ */
+function daysUntil(iso: string): number {
+  const today = new Date();
+  const from = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
+  return Math.round((Date.parse(`${iso}T00:00:00Z`) - from) / 86_400_000);
+}

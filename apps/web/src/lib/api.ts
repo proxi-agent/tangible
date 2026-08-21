@@ -24,6 +24,7 @@ import type {
   EngagementValuation,
   FarFile,
   FarMapping,
+  FilingSeason,
   FilterFacets,
   FindingDecisionResult,
   FindingSet,
@@ -347,6 +348,15 @@ export const api = {
       `/engagements/${engagementId}/rendition?basis=${options.basis}&filedByAgent=${options.filedByAgent}` +
         (options.locationId ? `&location=${encodeURIComponent(options.locationId)}` : ''),
     ),
+
+  /**
+   * Every return this engagement owes and where each one stands.
+   *
+   * The expensive read on this screen — it builds a rendition per site to say
+   * whether each could go out today — so it is its own request rather than
+   * part of the engagement's.
+   */
+  season: (engagementId: string) => request<FilingSeason>(`/engagements/${engagementId}/season`),
 
   /** Every return recorded as filed on this engagement, newest first. */
   filings: (engagementId: string) =>

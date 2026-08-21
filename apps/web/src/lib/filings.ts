@@ -10,6 +10,7 @@ import {
   type Form50144,
   type FormAudience,
   type FormFillPlan,
+  type FormOmission,
   type FormParty,
   type FormSigner,
 } from '@tangible/filing';
@@ -67,12 +68,7 @@ export async function recordFiling(
   // `resolveReturn` throws otherwise — but the type does not know that.
   if (!target) notFound('That site owes no return on this engagement.');
 
-  // Both lists, because they block for different reasons and an operator who
-  // only saw one would clear it and be told about the other.
-  const blocking = [
-    ...rendition.blockers.filter((blocker) => blocker.severity === 'blocking').map((b) => b.message),
-    ...extra.filter((omission) => omission.severity === 'blocking').map((o) => o.missing),
-  ];
+  const blocking = blockingProblems(rendition, extra);
   if (blocking.length > 0) {
     throw new HttpError(
       409,
@@ -132,6 +128,26 @@ export async function recordFiling(
     if (!row) throw new HttpError(500, 'The filing was not recorded.');
     return toRecord(row);
   });
+}
+
+/**
+ * What stands between a rendition and a filing record.
+ *
+ * Both lists, because they block for different reasons and an operator who only
+ * saw one would clear it and be told about the other: `rendition.blockers` is
+ * what the register cannot answer, `extra` is what the database cannot — no
+ * signed-in signer, no situs, no site picked.
+ *
+ * Exported because the returns board predicts this answer while `recordFiling`
+ * enforces it. A board that called a return ready over one the gate would
+ * refuse is worse than no board, so both read the same expression rather than
+ * two that agree today.
+ */
+export function blockingProblems(rendition: Rendition, extra: FormOmission[]): string[] {
+  return [
+    ...rendition.blockers.filter((blocker) => blocker.severity === 'blocking').map((b) => b.message),
+    ...extra.filter((omission) => omission.severity === 'blocking').map((o) => o.missing),
+  ];
 }
 
 /**

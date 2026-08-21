@@ -12,8 +12,8 @@ import {
   Stamp,
 } from 'lucide-react';
 import Link from 'next/link';
-import { useParams } from 'next/navigation';
-import { useState } from 'react';
+import { usePathname, useParams, useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
 import type {
   EngagementReturn,
   EngagementReturns,
@@ -39,17 +39,49 @@ import { Tooltip } from '@/components/ui/tooltip';
  * listed with the reason it was left off.
  */
 export default function FilingPage() {
+  return (
+    <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+      <FilingDraft />
+    </Suspense>
+  );
+}
+
+function FilingDraft() {
   const { clientId, engagementId } = useParams<{ clientId: string; engagementId: string }>();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [basis, setBasis] = useState<RenditionBasis>('cost');
   const [filedByAgent, setFiledByAgent] = useState(true);
   // Null is "no return chosen". For the ordinary one-site engagement that is
   // also the answer, and the server resolves it to the only return there is.
-  const [locationId, setLocationId] = useState<string | null>(null);
+  //
+  // Seeded from the URL and written back to it, so the returns board on the
+  // engagement page can send somebody straight to the return that needs work
+  // — and so a draft anyone is looking at survives a reload as the same one.
+  const [locationId, setLocationId] = useState<string | null>(() => searchParams.get('site'));
+  const choose = (next: string | null) => {
+    setLocationId(next);
+    router.replace(next ? `${pathname}?site=${encodeURIComponent(next)}` : pathname, {
+      scroll: false,
+    });
+  };
 
   const returns = useQuery({
     queryKey: ['engagement-returns', engagementId],
     queryFn: () => api.returns(engagementId),
   });
+
+  // Cheap, and the only way the picker can say which sites are already done.
+  const filings = useQuery({
+    queryKey: ['engagement-filings', engagementId],
+    queryFn: () => api.filings(engagementId),
+  });
+  const filed = new Set(
+    (filings.data ?? [])
+      .filter((filing) => filing.status === 'filed')
+      .map((filing) => filing.locationId),
+  );
 
   const { data, error, isLoading } = useQuery({
     queryKey: ['engagement-rendition', engagementId, basis, filedByAgent, locationId],
@@ -82,7 +114,7 @@ export default function FilingPage() {
       </div>
 
       {returns.data && returns.data.returns.length > 1 ? (
-        <ReturnPicker owed={returns.data} chosen={locationId} onChoose={setLocationId} />
+        <ReturnPicker owed={returns.data} chosen={locationId} filed={filed} onChoose={choose} />
       ) : null}
 
       <Card>
@@ -141,10 +173,13 @@ export default function FilingPage() {
 function ReturnPicker({
   owed,
   chosen,
+  filed,
   onChoose,
 }: {
   owed: EngagementReturns;
   chosen: string | null;
+  /** Sites with a return already standing for this year. */
+  filed: Set<string>;
   onChoose: (locationId: string | null) => void;
 }) {
   return (
@@ -166,6 +201,7 @@ function ReturnPicker({
             key={entry.locationId}
             entry={entry}
             active={chosen === entry.locationId}
+            filed={filed.has(entry.locationId)}
             onClick={() => onChoose(chosen === entry.locationId ? null : entry.locationId)}
           />
         ))}
@@ -177,10 +213,12 @@ function ReturnPicker({
 function ReturnChip({
   entry,
   active,
+  filed,
   onClick,
 }: {
   entry: EngagementReturn;
   active: boolean;
+  filed: boolean;
   onClick: () => void;
 }) {
   return (
@@ -199,9 +237,17 @@ function ReturnChip({
       <span className="flex items-center gap-1.5 text-sm font-medium">
         <MapPin size={13} strokeWidth={2} className="text-[var(--color-ink-muted)]" />
         {entry.label}
+        {/* So it is visible from the picker that a site is done — otherwise the
+            only way to find out is to open its draft and read the card at the
+            bottom, which is how a return gets filed twice. */}
+        {filed ? <Badge tone="good">filed</Badge> : null}
       </span>
+      {/* Said out loud, because the returns board next door shows the same site
+          with a smaller number: this is what the register holds here, that is
+          what the rendition would actually file. */}
       <span className="tabular mt-0.5 block text-xs text-[var(--color-ink-secondary)]">
-        {count(entry.assetCount)} {plural(entry.assetCount, 'asset')} · {money(entry.totalCost)}
+        {count(entry.assetCount)} {plural(entry.assetCount, 'asset')} · {money(entry.totalCost)} on
+        the register
       </span>
       <span className="block text-[11px] text-[var(--color-ink-muted)]">
         {entry.accountId ? (

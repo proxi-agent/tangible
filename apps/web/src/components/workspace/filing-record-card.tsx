@@ -144,6 +144,7 @@ function Standing({
       setVoiding(false);
       setReason('');
       void queryClient.invalidateQueries({ queryKey: ['engagement-filings', engagementId] });
+      void queryClient.invalidateQueries({ queryKey: ['engagement-season', engagementId] });
     },
   });
 
@@ -284,6 +285,9 @@ function RecordForm({
     onSuccess: () => {
       onRecorded();
       void queryClient.invalidateQueries({ queryKey: ['engagement-filings', engagementId] });
+      // The engagement's board counts this return as gone out, and its deadline
+      // pressure is measured against the ones that have not.
+      void queryClient.invalidateQueries({ queryKey: ['engagement-season', engagementId] });
     },
   });
 
@@ -440,70 +444,5 @@ function Fact({ label, children }: { label: string; children: React.ReactNode })
       </p>
       <p className="tabular mt-0.5 text-sm">{children}</p>
     </div>
-  );
-}
-
-/**
- * Whether this engagement's returns actually went out.
- *
- * On the engagement page rather than only on the filing screen, because at the
- * end of a season "did we file, and when" is the question somebody asks about
- * an engagement without wanting to open the draft. Renders nothing until there
- * is something to say.
- */
-export function FiledReturnsCard({
-  clientId,
-  engagementId,
-}: {
-  clientId: string;
-  engagementId: string;
-}) {
-  const filings = useQuery({
-    queryKey: ['engagement-filings', engagementId],
-    queryFn: () => api.filings(engagementId),
-  });
-
-  const standing = filings.data?.filter((filing) => filing.status === 'filed') ?? [];
-  if (standing.length === 0) return null;
-
-  const total = standing.reduce((sum, filing) => sum + filing.totalHistoricalCost, 0);
-
-  return (
-    <Card>
-      <CardHeader
-        title={`${count(standing.length)} ${plural(standing.length, 'return')} filed`}
-        description="Frozen as they went out. These figures do not move when the register does — which is the point, and what a 22.28 penalty would be measured against."
-        action={
-          <Link
-            href={`/clients/${clientId}/engagements/${engagementId}/filing`}
-            className="text-xs font-medium hover:underline"
-          >
-            The draft
-          </Link>
-        }
-      />
-      <ul className="divide-y divide-[var(--color-hairline)]">
-        {standing.map((filing) => (
-          <li key={filing.id} className="flex flex-wrap items-baseline gap-x-3 px-5 py-2.5 text-sm">
-            <span className="font-medium">{filing.locationLabel}</span>
-            <span className="text-xs text-[var(--color-ink-secondary)]">
-              {filing.accountId ? `account ${filing.accountId}` : 'no account number'} ·{' '}
-              {METHOD_LABEL[filing.method]} {filing.filedOn}
-              {filing.confirmation ? ` · ${filing.confirmation}` : ''}
-            </span>
-            <span className="tabular ml-auto text-xs">{money(filing.totalHistoricalCost)}</span>
-            <Link href={`/filings/${filing.id}`} className="text-xs font-medium hover:underline">
-              View
-            </Link>
-          </li>
-        ))}
-        {standing.length > 1 ? (
-          <li className="flex items-baseline gap-3 px-5 py-2.5 text-sm font-semibold">
-            <span>Rendered across every site</span>
-            <span className="tabular ml-auto">{money(total)}</span>
-          </li>
-        ) : null}
-      </ul>
-    </Card>
   );
 }

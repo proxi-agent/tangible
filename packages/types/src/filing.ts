@@ -359,3 +359,83 @@ export const VoidFilingRequestSchema = z.object({
 });
 
 export type VoidFilingRequest = z.infer<typeof VoidFilingRequestSchema>;
+
+/**
+ * Where one of an engagement's returns stands.
+ *
+ * Three states, and they are the three answers to "can this go out today":
+ * filed already, ready to go, or held up by something. Nothing here is a
+ * judgement about quality — a return is `ready` when the record gate would
+ * accept it, which is the same test {@link RecordFilingRequestSchema} is put
+ * through, not a separate opinion about whether it is any good.
+ */
+export const SEASON_RETURN_STATUSES = ['filed', 'ready', 'blocked'] as const;
+
+export const SeasonReturnStatusSchema = z.enum(SEASON_RETURN_STATUSES);
+export type SeasonReturnStatus = (typeof SEASON_RETURN_STATUSES)[number];
+
+export const SeasonReturnSchema = z.object({
+  locationId: z.string(),
+  label: z.string(),
+  accountId: z.string().nullable(),
+  status: SeasonReturnStatusSchema,
+
+  /** Held property at this site, and what the register says it cost. */
+  assetCount: z.number().int().nonnegative(),
+  registerCost: z.number(),
+  /**
+   * What the draft would file today, which is not the register total: the
+   * rendition sets aside property disposed of before January 1, intangibles,
+   * and anything an accepted finding removed.
+   */
+  renderedCost: z.number(),
+
+  /** What is stopping it, in the record gate's own words. Empty when nothing is. */
+  blockers: z.array(z.string()),
+  /** Things worth reading before signing, but which do not stop a filing. */
+  warnings: z.number().int().nonnegative(),
+
+  /** The return that stands for this site and year, where one went out. */
+  filing: RenditionFilingSchema.nullable(),
+  /**
+   * What the register has done since this was filed, as a difference in cost.
+   *
+   * Null unless filed. A non-zero figure is not by itself a defect — it says
+   * the draft no longer reproduces the filed document, which is the question
+   * behind "do we owe an amendment", not the answer to it.
+   */
+  driftedBy: z.number().nullable(),
+});
+
+export type SeasonReturn = z.infer<typeof SeasonReturnSchema>;
+
+/**
+ * Every return an engagement owes and where each one stands.
+ *
+ * The thing an engagement is missing without this is a season. Each screen
+ * before it answers about one document — this draft, this filing, this site —
+ * and none of them answers "what still has to go out, and by when", which is
+ * the question a filer actually holds in their head between January and April.
+ *
+ * Rows are the union of what is owed and what was filed, deliberately. A site
+ * whose property has all been disposed of since the return went out owes
+ * nothing now and still has a filing standing against it; dropping it because
+ * the register no longer holds property there would quietly retire a document
+ * the district is still working from.
+ */
+export const FilingSeasonSchema = z.object({
+  taxYear: z.number().int(),
+  /** ISO dates from the statutory calendar for this tax year. */
+  dueOn: z.string(),
+  extendedDueOn: z.string(),
+  /** Days from today to the rendition deadline. Negative once it has passed. */
+  daysToDue: z.number().int(),
+
+  returns: z.array(SeasonReturnSchema),
+
+  /** Held property on no return at all, because its site is unresolved. */
+  unplacedCount: z.number().int().nonnegative(),
+  unplacedCost: z.number(),
+});
+
+export type FilingSeason = z.infer<typeof FilingSeasonSchema>;
