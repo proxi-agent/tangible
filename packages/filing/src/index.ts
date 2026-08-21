@@ -62,6 +62,7 @@ export {
 } from './fill-50-162.js';
 export { checkNotice, protestStanding, type FiledReturnFacts } from './protest.js';
 export { checkResolution, resolutionStanding } from './resolution.js';
+export { correctionOutlook } from './correction.js';
 export {
   describePositions,
   planPositions,

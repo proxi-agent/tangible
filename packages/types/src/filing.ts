@@ -718,6 +718,59 @@ export type ProtestResolution = z.infer<typeof ProtestResolutionSchema>;
  * addressed to an account, and an account belongs to a site. Recording a
  * corrected notice supersedes the earlier one rather than editing it.
  */
+/**
+ * The three ways an appraisal roll can still be corrected after the fact.
+ *
+ * 25.25(a) says the roll may not be changed. The rest of 25.25 is the list of
+ * times it may, and for a business personal property practice those are not a
+ * footnote — they are the answer to the first question a new client asks, which
+ * is whether anything can be done about the years already gone.
+ */
+export const CORRECTION_ROUTES = ['c', 'c-1', 'd'] as const;
+
+export const CorrectionRouteKeySchema = z.enum(CORRECTION_ROUTES);
+export type CorrectionRouteKey = (typeof CORRECTION_ROUTES)[number];
+
+export const CorrectionRouteSchema = z.object({
+  key: CorrectionRouteKeySchema,
+  /** How the subsection is cited, e.g. "25.25(c-1)". */
+  cite: z.string(),
+  /** What this route is for, in one line. */
+  label: z.string(),
+  /** Whether it can still be used for this year today. */
+  open: z.boolean(),
+  /** The last day it can be filed, where the route has a date at all. */
+  deadline: z.string().nullable(),
+  /** What has to be wrong for this route to fit. */
+  grounds: z.string(),
+  /**
+   * How far the value has to be off before the route is available.
+   *
+   * Only 25.25(d) has one — more than one-third over the correct value for
+   * property that is not a residence homestead. Expressed as a fraction of the
+   * correct value, not of the rolled value, because that is how (d) is written.
+   */
+  threshold: z.number().nullable(),
+  /** What using it costs, where it costs anything. */
+  cost: z.string().nullable(),
+  /** Why it is shut, where it is. Null when the route is open. */
+  barred: z.string().nullable(),
+});
+
+export type CorrectionRoute = z.infer<typeof CorrectionRouteSchema>;
+
+/** What is left for a tax year once the protest window has gone. */
+export const CorrectionOutlookSchema = z.object({
+  taxYear: z.number().int(),
+  /** True while any route is open. */
+  open: z.boolean(),
+  routes: z.array(CorrectionRouteSchema),
+  /** The whole answer in prose, for the year rather than the route. */
+  standing: z.string(),
+});
+
+export type CorrectionOutlook = z.infer<typeof CorrectionOutlookSchema>;
+
 export const AssessmentNoticeSchema = AssessmentNoticeFactsSchema.extend({
   id: z.string(),
   engagementId: z.string(),
@@ -749,6 +802,15 @@ export const AssessmentNoticeSchema = AssessmentNoticeFactsSchema.extend({
   checks: z.array(NoticeCheckSchema),
   /** How the protest ended, where it has. Null while it is still out. */
   resolution: ProtestResolutionSchema.nullable(),
+  /**
+   * Derived on read: what 25.25 leaves open once the protest window has gone.
+   *
+   * Null while there is still time to protest, because until then this is not
+   * the question — a protest is cheaper, has no threshold and carries no
+   * late-correction penalty, and saying otherwise would push a firm toward the
+   * expensive route while the free one is still available.
+   */
+  correction: CorrectionOutlookSchema.nullable(),
 });
 
 export type AssessmentNotice = z.infer<typeof AssessmentNoticeSchema>;

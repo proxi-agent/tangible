@@ -4,6 +4,7 @@ import type { AssessmentNoticeRow, ProtestResolutionRow } from '@tangible/db';
 import {
   checkNotice,
   checkResolution,
+  correctionOutlook,
   operativeDeadline,
   protestStanding,
   resolutionStanding,
@@ -344,12 +345,10 @@ async function standingResolutions(
  * order run out on their own, and the penalty check depends on what the notice
  * says rather than on anything stored here.
  */
-function resolutionOf(
-  row: ProtestResolutionRow,
-  notice: AssessmentNoticeFacts,
-  today: string,
-): ProtestResolution {
-  const facts: ProtestResolutionFacts = {
+/** The stored row narrowed to what the statute modules actually read. */
+function resolutionFacts(row: ProtestResolutionRow | null): ProtestResolutionFacts | null {
+  if (row === null) return null;
+  return {
     taxYear: row.taxYear,
     status: row.status as ProtestResolutionFacts['status'],
     stage: row.stage as ProtestResolutionFacts['stage'],
@@ -359,6 +358,14 @@ function resolutionOf(
     penaltyOutcome: row.penaltyOutcome as ProtestResolutionFacts['penaltyOutcome'],
     orderReference: row.orderReference,
   };
+}
+
+function resolutionOf(
+  row: ProtestResolutionRow,
+  notice: AssessmentNoticeFacts,
+  today: string,
+): ProtestResolution {
+  const facts = resolutionFacts(row) as ProtestResolutionFacts;
   const standing = resolutionStanding(facts, today);
   return {
     ...facts,
@@ -420,6 +427,17 @@ async function decorate(
     const resolved = resolutions.get(row.id) ?? null;
     const protest = protestStanding(facts, today, resolved !== null);
     const filing = standing.get(`${row.locationId}:${row.taxYear}`) ?? null;
+    /**
+     * 25.25 is only the question once Chapter 41 has stopped being one.
+     *
+     * Two moments qualify: the protest window shut with nothing filed, and a
+     * protest that has ended. A protest still out is neither — the bars in
+     * 25.25(c-1) and (d-1) turn on how it ends, so answering early would be
+     * guessing, and a pending protest is cheaper than every route here anyway.
+     */
+    const correctable =
+      row.status === 'active' &&
+      (resolved !== null || (!protest.open && facts.protestFiledOn === null));
     return {
       ...facts,
       id: row.id,
@@ -445,6 +463,9 @@ async function decorate(
         protest,
       ),
       resolution: resolved ? resolutionOf(resolved, facts, today) : null,
+      correction: correctable
+        ? correctionOutlook(facts, resolutionFacts(resolved), row.appraisedValue, today)
+        : null,
     };
   });
 }
