@@ -1,7 +1,17 @@
 import 'server-only';
 import { desc, eq } from 'drizzle-orm';
 import { statutoryDates } from '@tangible/filing';
-import type { PracticeReturn, PracticeSeason, SeasonHold } from '@tangible/types';
+import type {
+  PracticeClientResult,
+  PracticeResult,
+  PracticeReturn,
+  PracticeSeason,
+  SeasonHold,
+  SiteOutcome,
+} from '@tangible/types';
+import { OUTCOME_PHASES } from '@tangible/types';
+import { clientMotions } from '@/lib/motions';
+import { seasonOutcomes } from '@/lib/result';
 import { filingSeason } from '@/lib/season';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -84,7 +94,138 @@ export async function practiceSeason(taxYear?: number): Promise<PracticeSeason> 
     holds: holdsAcross(returns),
     unplacedCount: seasons.reduce((sum, { season }) => sum + season.unplacedCount, 0),
     unplacedCost: seasons.reduce((sum, { season }) => sum + season.unplacedCost, 0),
+    result: await resultAcross(year, seasons),
   };
+}
+
+/**
+ * What the season has come to across the book — the scoreboard half of this
+ * page, computed from the same seasons the worklist above was.
+ *
+ * From the same seasons on purpose: `filingSeason` is the expensive part of
+ * this whole view, and a scoreboard that rebuilt its own would be a second
+ * bill for the same answer, with a chance of a different one. Motions are the
+ * only extra read, once per distinct client, because a corrected roll reported
+ * at its uncorrected number is exactly the mistake 25.25 exists to fix.
+ *
+ * The duplicate-engagement trap bites here harder than on the worklist. Two
+ * engagements on one client and year draft the same sites; the worklist merely
+ * shows the duplicate ("also on"), but summing both here would count one
+ * site's reduction twice — a firm reporting doubled savings to itself. So the
+ * grain is (client, site): of the duplicate rows we keep the one that has
+ * travelled furthest through the season, and on a tie the one with a filing.
+ */
+async function resultAcross(
+  taxYear: number,
+  seasons: {
+    row: { id: string; clientId: string; clientName: string };
+    season: Awaited<ReturnType<typeof filingSeason>>;
+  }[],
+): Promise<PracticeResult> {
+  const clientIds = [...new Set(seasons.map(({ row }) => row.clientId))];
+  const motionsByClient = new Map(
+    await Promise.all(
+      clientIds.map(async (clientId) => [clientId, await clientMotions(clientId)] as const),
+    ),
+  );
+
+  // Every outcome row, still with duplicates across engagements.
+  const rows = seasons.flatMap(({ row, season }) =>
+    seasonOutcomes(taxYear, season.returns, motionsByClient.get(row.clientId) ?? []).map(
+      (outcome) => ({ row, outcome }),
+    ),
+  );
+
+  // Dedupe per (client, site), keeping the furthest-travelled row. Phase order
+  // is the sequence itself, so its index is the rank; a filing breaks ties
+  // because between two drafts of one site, the one that went out the door is
+  // the one the season's numbers hang off.
+  const kept = new Map<string, { row: { id: string; clientId: string; clientName: string }; outcome: SiteOutcome }>();
+  for (const entry of rows) {
+    const key = `${entry.row.clientId}:${entry.outcome.locationId}`;
+    const standing = kept.get(key);
+    if (!standing || further(entry.outcome, standing.outcome)) kept.set(key, entry);
+  }
+
+  const byClient = new Map<string, { name: string; engagementId: string; sites: SiteOutcome[] }>();
+  for (const { row, outcome } of kept.values()) {
+    let client = byClient.get(row.clientId);
+    if (!client) {
+      client = { name: row.clientName, engagementId: row.id, sites: [] };
+      byClient.set(row.clientId, client);
+    }
+    client.sites.push(outcome);
+  }
+
+  const clients: PracticeClientResult[] = [...byClient.entries()]
+    .map(([clientId, client]) => ({
+      clientId,
+      clientName: client.name,
+      engagementId: client.engagementId,
+      siteCount: client.sites.length,
+      settledCount: client.sites.filter((site) => site.final).length,
+      noticedTotal: total(client.sites, (site) => site.noticedValue),
+      noticedCount: client.sites.filter((site) => site.noticedValue !== null).length,
+      standingTotal: total(client.sites, (site) => site.standingValue),
+      standingCount: client.sites.filter((site) => site.standingValue !== null).length,
+      reductionTotal: total(client.sites, (site) => site.reduction),
+      reductionCount: client.sites.filter((site) => site.reduction !== null).length,
+    }))
+    // Largest reduction first — the scoreboard reads best from the wins down —
+    // then by name so clients without numbers yet still land somewhere stable.
+    .sort(
+      (a, b) =>
+        (b.reductionTotal ?? 0) - (a.reductionTotal ?? 0) ||
+        a.clientName.localeCompare(b.clientName),
+    );
+
+  const sites = [...kept.values()].map((entry) => entry.outcome);
+  const settled = sites.filter((site) => site.final).length;
+  return {
+    clients,
+    siteCount: sites.length,
+    settledCount: settled,
+    noticedTotal: total(sites, (site) => site.noticedValue),
+    standingTotal: total(sites, (site) => site.standingValue),
+    reductionTotal: total(sites, (site) => site.reduction),
+    reductionCount: sites.filter((site) => site.reduction !== null).length,
+    standing: bookHeadline(taxYear, sites, settled),
+  };
+}
+
+/** Whether `a` has travelled further through the season than `b`. */
+function further(a: SiteOutcome, b: SiteOutcome): boolean {
+  const rank = (site: SiteOutcome) => OUTCOME_PHASES.indexOf(site.phase);
+  if (rank(a) !== rank(b)) return rank(a) > rank(b);
+  return a.filedOn !== null && b.filedOn === null;
+}
+
+/** Sum over the rows where the figure exists; null when none carry it. */
+function total(sites: SiteOutcome[], pick: (site: SiteOutcome) => number | null): number | null {
+  const rows = sites.filter((site) => pick(site) !== null);
+  if (rows.length === 0) return null;
+  return rows.reduce((sum, site) => sum + (pick(site) as number), 0);
+}
+
+/**
+ * The book's season in a sentence — same rules as the engagement's headline:
+ * the reduction is appraised value off the roll, never tax dollars, and it is
+ * only claimed where both sides of the difference are known.
+ */
+function bookHeadline(taxYear: number, sites: SiteOutcome[], settled: number): string {
+  if (sites.length === 0) return `Nothing has gone out for ${taxYear} yet.`;
+  const saved = sites
+    .filter((site) => (site.reduction ?? 0) > 0)
+    .reduce((sum, site) => sum + (site.reduction as number), 0);
+  const head =
+    settled === sites.length
+      ? `${taxYear} is finished across the book.`
+      : `${settled} of ${sites.length} sites across the book ${settled === 1 ? 'has' : 'have'} finished ${taxYear}.`;
+  if (saved <= 0) return head;
+  return (
+    `${head} The season has taken $${Math.round(saved).toLocaleString('en-US')} of appraised ` +
+    `value off clients' rolls so far — assessed value, not tax dollars.`
+  );
 }
 
 /**

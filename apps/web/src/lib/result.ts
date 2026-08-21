@@ -29,7 +29,25 @@ export async function engagementResult(engagementId: string): Promise<Engagement
     clientMotions(engagement.clientId),
   ]);
 
-  const sites = season.returns.map((entry) =>
+  const sites = seasonOutcomes(engagement.taxYear, season.returns, motions);
+
+  return summed(engagement.taxYear, sites);
+}
+
+/**
+ * One season's returns, mapped to outcomes.
+ *
+ * Exported because the practice board needs exactly this mapping over the
+ * seasons it has already built — renditions are expensive, and a second
+ * definition of "what a site's outcome is" would eventually disagree with
+ * this one.
+ */
+export function seasonOutcomes(
+  taxYear: number,
+  returns: readonly SeasonReturn[],
+  motions: CorrectionMotion[],
+): SiteOutcome[] {
+  return returns.map((entry) =>
     siteOutcome({
       locationId: entry.locationId,
       label: entry.label,
@@ -55,11 +73,9 @@ export async function engagementResult(engagementId: string): Promise<Engagement
               appealDeadline: entry.notice.resolution.standing.appealDeadline,
             }
           : null,
-      motion: rollChange(motions, engagement.taxYear, entry),
+      motion: rollChange(motions, taxYear, entry),
     }),
   );
-
-  return summed(engagement.taxYear, sites);
 }
 
 /**

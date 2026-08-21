@@ -5,7 +5,7 @@ import { AlertTriangle, CalendarClock, Copy, Gavel, MapPinOff } from 'lucide-rea
 import Link from 'next/link';
 import { useState } from 'react';
 import { appraisalDistrictName } from '@tangible/filing/districts';
-import type { PracticeReturn, PracticeSeason, SeasonHold } from '@tangible/types';
+import type { PracticeResult, PracticeReturn, PracticeSeason, SeasonHold } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
 import { Badge, Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
@@ -72,7 +72,159 @@ export function PracticeBoard() {
         )}
       </Card>
       {data.holds.length > 0 ? <Holds holds={data.holds} /> : null}
+      <Scoreboard result={data.result} taxYear={data.taxYear} />
     </div>
+  );
+}
+
+/**
+ * What the season has come to across the book — the billing question.
+ *
+ * The worklist above answers "what still has to go out"; this answers "what
+ * did it all come to", per client, because that is the grain the firm bills
+ * at. One row per client rather than per site: the site detail lives on the
+ * engagement's own scoreboard, one click away through the client name.
+ *
+ * Absent until any site is past unfiled, for the same reason the engagement
+ * card is: a scoreboard for a season that has not started is a to-do list
+ * wearing the wrong clothes — and the worklist above already is the to-do
+ * list.
+ */
+function Scoreboard({ result, taxYear }: { result: PracticeResult; taxYear: number }) {
+  if (result.siteCount === 0) return null;
+  const started = result.clients.some((client) => client.settledCount > 0 || client.noticedCount > 0 || client.standingCount > 0);
+  if (!started && result.reductionCount === 0) return null;
+
+  return (
+    <Card>
+      <CardHeader title={`What ${taxYear} has come to`} description={result.standing} />
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="border-b border-[var(--color-hairline)] text-left text-[11px] text-[var(--color-ink-muted)]">
+              <th className="px-5 py-2 font-medium">Client</th>
+              <th className="px-3 py-2 text-right font-medium">
+                <Tooltip content="Sites finished for the year — settled by agreement, order, or silence — over sites on the book.">
+                  <span>Settled</span>
+                </Tooltip>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <Tooltip content="Appraised value on the notices received, summed where a notice exists.">
+                  <span>Noticed</span>
+                </Tooltip>
+              </th>
+              <th className="px-3 py-2 text-right font-medium">
+                <Tooltip content="Where the value stands now — the settled figure, or the noticed one while nothing has moved it.">
+                  <span>Standing</span>
+                </Tooltip>
+              </th>
+              <th className="px-5 py-2 text-right font-medium">
+                <Tooltip content="Noticed minus standing, summed only where both are known. Assessed value, not tax dollars.">
+                  <span>Taken off</span>
+                </Tooltip>
+              </th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--color-hairline)]">
+            {result.clients.map((client) => (
+              <ClientRow key={client.clientId} client={client} />
+            ))}
+          </tbody>
+          {result.clients.length > 1 ? <BookTotals result={result} /> : null}
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function ClientRow({ client }: { client: PracticeResult['clients'][number] }) {
+  return (
+    <tr>
+      <td className="px-5 py-2.5">
+        <Link
+          href={`/clients/${client.clientId}/engagements/${client.engagementId}`}
+          className="font-medium hover:underline"
+        >
+          {client.clientName}
+        </Link>
+      </td>
+      <td className="tabular px-3 py-2.5 text-right text-[var(--color-ink-secondary)]">
+        {client.settledCount} / {client.siteCount}
+      </td>
+      <td className="tabular px-3 py-2.5 text-right">
+        <Sum value={client.noticedTotal} counted={client.noticedCount} of={client.siteCount} />
+      </td>
+      <td className="tabular px-3 py-2.5 text-right">
+        <Sum value={client.standingTotal} counted={client.standingCount} of={client.siteCount} />
+      </td>
+      <td className="tabular px-5 py-2.5 text-right">
+        <Taken value={client.reductionTotal} />
+      </td>
+    </tr>
+  );
+}
+
+/**
+ * A partial sum says so. $500,000 noticed over two of three sites presented
+ * bare is a number a partner repeats to a client and then corrects.
+ */
+function Sum({ value, counted, of: siteCount }: { value: number | null; counted: number; of: number }) {
+  if (value === null) return <span className="text-[var(--color-ink-muted)]">—</span>;
+  const partial = counted < siteCount;
+  return (
+    <span>
+      {moneyExact(value)}
+      {partial ? (
+        <span className="ml-1 text-[10px] text-[var(--color-ink-muted)]">
+          ({counted} of {siteCount})
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
+/**
+ * The reduction, signed. A dash for none-yet and for exactly zero — the
+ * settled count beside it says which of the two it is — and an increase shows
+ * in critical rather than being clamped, because a season that raised a
+ * client's value is a fact the firm needs on its own board, not just the
+ * client's.
+ */
+function Taken({ value }: { value: number | null }) {
+  if (value === null || value === 0) return <span className="text-[var(--color-ink-muted)]">—</span>;
+  if (value > 0) return <span className="font-medium text-[var(--color-good)]">−{moneyExact(value)}</span>;
+  return <span className="font-medium text-[var(--color-critical)]">+{moneyExact(Math.abs(value))}</span>;
+}
+
+function BookTotals({ result }: { result: PracticeResult }) {
+  return (
+    <tfoot>
+      <tr className="border-t border-[var(--color-hairline)] text-[11px]">
+        <td className="px-5 py-2.5 text-[var(--color-ink-muted)]">
+          {result.clients.length} {plural(result.clients.length, 'client')}
+        </td>
+        <td className="tabular px-3 py-2.5 text-right text-[var(--color-ink-secondary)]">
+          {result.settledCount} / {result.siteCount}
+        </td>
+        <td className="tabular px-3 py-2.5 text-right">
+          <Sum
+            value={result.noticedTotal}
+            counted={result.clients.reduce((sum, client) => sum + client.noticedCount, 0)}
+            of={result.siteCount}
+          />
+        </td>
+        <td className="tabular px-3 py-2.5 text-right">
+          <Sum
+            value={result.standingTotal}
+            counted={result.clients.reduce((sum, client) => sum + client.standingCount, 0)}
+            of={result.siteCount}
+          />
+        </td>
+        <td className="tabular px-5 py-2.5 text-right">
+          <Taken value={result.reductionTotal} />
+        </td>
+      </tr>
+    </tfoot>
   );
 }
 

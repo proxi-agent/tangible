@@ -1439,6 +1439,59 @@ export type SeasonHold = z.infer<typeof SeasonHoldSchema>;
  * deadline next, and what is holding the rest up — are both questions about the
  * whole book rather than any one engagement.
  */
+
+/**
+ * One client's season result, rolled up across their sites.
+ *
+ * Per client rather than per engagement, because the duplicate-engagement trap
+ * bites here the same way it bites the worklist: a second engagement opened
+ * mid-season drafts the same sites as the first, and summing per engagement
+ * would count one site's outcome twice. The rows behind this are deduplicated
+ * per site, keeping whichever engagement's row has travelled furthest.
+ */
+export const PracticeClientResultSchema = z.object({
+  clientId: z.string(),
+  clientName: z.string(),
+  /** The engagement to link to — the one whose rows were kept. */
+  engagementId: z.string(),
+
+  siteCount: z.number().int().nonnegative(),
+  settledCount: z.number().int().nonnegative(),
+
+  noticedTotal: z.number().nullable(),
+  noticedCount: z.number().int().nonnegative(),
+  standingTotal: z.number().nullable(),
+  standingCount: z.number().int().nonnegative(),
+  reductionTotal: z.number().nullable(),
+  reductionCount: z.number().int().nonnegative(),
+});
+
+export type PracticeClientResult = z.infer<typeof PracticeClientResultSchema>;
+
+/**
+ * What the season has come to across the book.
+ *
+ * The other half of the practice board: the worklist above says what still has
+ * to happen, this says what it has all been worth. Totals follow the same rule
+ * as the engagement card — summed only over rows where the figure exists, with
+ * the counts carried alongside.
+ */
+export const PracticeResultSchema = z.object({
+  clients: z.array(PracticeClientResultSchema),
+
+  siteCount: z.number().int().nonnegative(),
+  settledCount: z.number().int().nonnegative(),
+  noticedTotal: z.number().nullable(),
+  standingTotal: z.number().nullable(),
+  reductionTotal: z.number().nullable(),
+  reductionCount: z.number().int().nonnegative(),
+
+  /** The book's season in a sentence. */
+  standing: z.string(),
+});
+
+export type PracticeResult = z.infer<typeof PracticeResultSchema>;
+
 export const PracticeSeasonSchema = z.object({
   taxYear: z.number().int(),
   dueOn: z.string(),
@@ -1453,6 +1506,9 @@ export const PracticeSeasonSchema = z.object({
 
   returns: z.array(PracticeReturnSchema),
   holds: z.array(SeasonHoldSchema),
+
+  /** The scoreboard, built from the same seasons as the rows above. */
+  result: PracticeResultSchema,
 
   /** Held property on no return at all, summed across the book. */
   unplacedCount: z.number().int().nonnegative(),
