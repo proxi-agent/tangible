@@ -51,12 +51,24 @@ export default async function FiledRenditionPage({
           ← Back to the draft
         </Link>
         <div className="ml-auto flex items-center gap-3">
-          <a
-            href={`/api/filings/${filingId}/pdf`}
-            className="rounded-md border border-[var(--color-hairline)] px-2.5 py-1.5 text-[13px] hover:bg-[var(--color-surface-raised)]"
-          >
-            Download the filed PDF
-          </a>
+          {/* Offered only where it can actually be produced. The alternative —
+              a link that returns an error document — reads as a broken app on
+              the one page whose whole job is to be dependable. */}
+          {printed.blocked === null ? (
+            <a
+              href={`/api/filings/${filingId}/pdf`}
+              className="rounded-md border border-[var(--color-hairline)] px-2.5 py-1.5 text-[13px] hover:bg-[var(--color-surface-raised)]"
+            >
+              Download the filed PDF
+            </a>
+          ) : (
+            <span
+              className="rounded-md border border-[var(--color-hairline)] px-2.5 py-1.5 text-[13px] text-[var(--color-ink-muted)]"
+              title={printed.blocked}
+            >
+              No {printed.revision} PDF for {filing.taxYear}
+            </span>
+          )}
           <div className="flex items-center gap-1 rounded-md border border-[var(--color-hairline)] p-0.5 text-[13px]">
             <Copy href={href('file')} active={audience === 'file'} label="File copy" />
             <Copy href={href('district')} active={audience === 'district'} label="District copy" />
@@ -76,6 +88,18 @@ export default async function FiledRenditionPage({
             filing.status === 'void'
               ? `${filing.voidReason ?? 'No reason recorded.'} It is kept because a return that was recorded and withdrawn is a different fact from one that was never recorded.`
               : 'An amendment for this site and tax year was recorded after it. This page still shows what actually went out on the date below, which is what the district worked from until the amendment landed.',
+          ]}
+        />
+      ) : null}
+
+      {printed.blocked !== null ? (
+        <Omissions
+          tone="warning"
+          title={`The ${printed.revision} PDF cannot carry this return`}
+          items={[
+            `${printed.blocked} Schedule E's year rungs are printed on the sheet, so filling this ` +
+              'one would put every cost on the wrong year. Nothing below is affected — this page ' +
+              'is rebuilt from the frozen inputs and says exactly what was filed.',
           ]}
         />
       ) : null}

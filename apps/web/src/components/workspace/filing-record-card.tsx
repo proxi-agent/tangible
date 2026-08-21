@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileCheck, FileText, Lock, ShieldAlert } from 'lucide-react';
+import { FileText, Lock, ShieldAlert } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import type { FilingMethod, Rendition, RenditionFiling } from '@tangible/types';
@@ -178,6 +178,9 @@ function Standing({
       </p>
 
       <div className="flex flex-wrap items-center gap-4">
+        {/* One link, not two. The download lives on the page this opens, which
+            is the only place that knows whether the pinned revision can carry
+            this year — a card offering it blind offers a link that fails. */}
         <Link
           href={`/filings/${filing.id}`}
           className="inline-flex items-center gap-1.5 text-xs font-medium hover:underline"
@@ -185,13 +188,6 @@ function Standing({
           <FileText size={13} strokeWidth={2} />
           The form as filed
         </Link>
-        <a
-          href={`/api/filings/${filing.id}/pdf`}
-          className="inline-flex items-center gap-1.5 text-xs font-medium hover:underline"
-        >
-          <FileCheck size={13} strokeWidth={2} />
-          Download the filed PDF
-        </a>
         {!voiding ? (
           <button
             type="button"
