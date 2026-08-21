@@ -1460,3 +1460,129 @@ export const PracticeSeasonSchema = z.object({
 });
 
 export type PracticeSeason = z.infer<typeof PracticeSeasonSchema>;
+
+/**
+ * Where a site's year stands, as one of six phases in order.
+ *
+ * Not a status — a position in a sequence that only moves forward. `unfiled`
+ * and `awaiting-notice` are before the district has spoken; `protest-window`
+ * and `protest-live` are while the answer can still be argued with;
+ * `appeal-window` is after an ARB order while 42.21 still runs; `settled` is
+ * when nothing follows. The order matters because the roll-up counts what is
+ * finished against what is still moving, and "finished" is a phase, not a
+ * flag.
+ */
+export const OUTCOME_PHASES = [
+  'unfiled',
+  'awaiting-notice',
+  'protest-window',
+  'protest-live',
+  'appeal-window',
+  'settled',
+] as const;
+
+export const OutcomePhaseSchema = z.enum(OUTCOME_PHASES);
+export type OutcomePhase = (typeof OUTCOME_PHASES)[number];
+
+/**
+ * How the standing value came to stand.
+ *
+ * `unprotested` earns its place: a value nobody protested is as final as one
+ * the board ordered, and a roll-up that only counted argued endings would
+ * report a quiet year as an unfinished one. `motion` means a 25.25 motion
+ * moved the roll *after* the year had already settled some other way — the
+ * one route back into a closed year, so it wins over whatever it reopened.
+ */
+export const SETTLED_VIA = [
+  'agreement',
+  'arb-order',
+  'withdrawn',
+  'dismissed',
+  'unprotested',
+  'motion',
+] as const;
+
+export const SettledViaSchema = z.enum(SETTLED_VIA);
+export type SettledVia = (typeof SETTLED_VIA)[number];
+
+/**
+ * The value story of one site's year: what went out, what came back, where it
+ * ended.
+ *
+ * Cost and value are different quantities and the row keeps them apart on
+ * purpose. `renderedCost` is historical cost off the return; everything from
+ * `noticedValue` on is the district's appraised value. The two are never
+ * subtracted from each other — the only difference this screen computes is
+ * noticed against standing, which is the engagement's work measured in the
+ * district's own units.
+ */
+export const SiteOutcomeSchema = z.object({
+  locationId: z.string(),
+  label: z.string(),
+  accountId: z.string().nullable(),
+
+  phase: OutcomePhaseSchema,
+
+  /** Historical cost on the standing return. Null where none went out. */
+  renderedCost: z.number().nullable(),
+  filedOn: z.string().nullable(),
+
+  /** The district's appraised value, where a notice arrived and printed one. */
+  noticedValue: z.number().nullable(),
+  noticedOn: z.string().nullable(),
+
+  /**
+   * The value that stands on the roll today, and how it came to.
+   *
+   * Null while the year is still moving — a live protest has no standing value
+   * yet, only a noticed one — and null where a notice never printed a figure.
+   */
+  standingValue: z.number().nullable(),
+  settledVia: SettledViaSchema.nullable(),
+  /** True once nothing follows: the phase is `settled` and no clock runs. */
+  final: z.boolean(),
+
+  /** Appraised value taken off: noticed minus standing. Null until both exist. */
+  reduction: z.number().nullable(),
+
+  /** The next date that matters for this site, where one is still running. */
+  nextDeadline: z.string().nullable(),
+
+  /** The whole row in prose somebody can read to a client. */
+  standing: z.string(),
+});
+
+export type SiteOutcome = z.infer<typeof SiteOutcomeSchema>;
+
+/**
+ * The engagement's answer to "what did the year come to", per site and summed.
+ *
+ * Totals are summed only over rows where the figure exists, and the counts say
+ * how many that was — a total over three of five sites presented as the
+ * engagement's number would be the kind of figure that gets repeated to a
+ * client and then corrected. `reductionTotal` in particular only adds rows
+ * where both the noticed and the standing value are known.
+ */
+export const EngagementResultSchema = z.object({
+  taxYear: z.number().int(),
+  sites: z.array(SiteOutcomeSchema),
+
+  /** How many rows are finished against how many there are. */
+  settledCount: z.number().int().nonnegative(),
+  siteCount: z.number().int().nonnegative(),
+
+  renderedTotal: z.number().nullable(),
+  renderedCount: z.number().int().nonnegative(),
+  noticedTotal: z.number().nullable(),
+  noticedCount: z.number().int().nonnegative(),
+  standingTotal: z.number().nullable(),
+  standingCount: z.number().int().nonnegative(),
+  /** Appraised value the season took off, over rows where both sides are known. */
+  reductionTotal: z.number().nullable(),
+  reductionCount: z.number().int().nonnegative(),
+
+  /** The season in a sentence or two. */
+  standing: z.string(),
+});
+
+export type EngagementResult = z.infer<typeof EngagementResultSchema>;

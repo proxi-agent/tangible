@@ -75,3 +75,5 @@ export * from './verify-rendition.js';
 export * from './mapped-basis.js';
 export * from './compare-register.js';
 export * from './carry-forward.js';
+export { siteOutcome } from './outcome.js';
+export type { OutcomeInput, OutcomeMotion, OutcomeNotice, OutcomeResolution } from './outcome.js';

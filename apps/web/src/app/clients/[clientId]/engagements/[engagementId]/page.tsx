@@ -18,6 +18,7 @@ import { ClassificationCard } from '@/components/workspace/classification-card';
 import { FindingsCard } from '@/components/workspace/findings-card';
 import { OpenYearsCard } from '@/components/workspace/open-years-card';
 import { PriorsCard } from '@/components/workspace/priors-card';
+import { ResultCard } from '@/components/workspace/result-card';
 import { ReturnsBoard } from '@/components/workspace/returns-board';
 import { SitesCard } from '@/components/workspace/sites-card';
 import { ValuationCard } from '@/components/workspace/valuation-card';
@@ -80,6 +81,11 @@ export default function EngagementPage() {
       {/* The end of the pipeline, read first: what still has to go out, and
           by when, is the question somebody holds about a live engagement. */}
       <ReturnsBoard clientId={clientId} engagementId={engagementId} />
+      {/* The scoreboard under the worklist: the board says what still has to
+          happen, this says what it has all come to. Absent until a return has
+          gone out, because a scoreboard for a game that has not started is a
+          to-do list wearing the wrong clothes. */}
+      <ResultCard engagementId={engagementId} />
       {/* Directly under the board, because it changes what goes on those
           returns. A second season opens with a question the first did not have
           — what moved since we last filed — and it is cheapest to answer before

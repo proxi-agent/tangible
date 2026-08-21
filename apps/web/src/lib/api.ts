@@ -22,6 +22,7 @@ import type {
   CommitFindingsRequest,
   CorrectionMotion,
   Engagement,
+  EngagementResult,
   EngagementDetail,
   EngagementReturns,
   EngagementSite,
@@ -452,6 +453,15 @@ export const api = {
    */
   openYears: (engagementId: string) =>
     request<OpenYears>(`/engagements/${engagementId}/open-years`),
+
+  /**
+   * What the engagement's year came to: rendered, noticed, standing, per site.
+   *
+   * Derived entirely from records other calls wrote, which is what makes it
+   * safe to read to a client.
+   */
+  engagementResult: (engagementId: string) =>
+    request<EngagementResult>(`/engagements/${engagementId}/result`),
 
   /**
    * Write down a 25.25 motion that has gone in.
