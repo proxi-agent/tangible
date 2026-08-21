@@ -101,7 +101,8 @@ export function ClassificationCard({
     <Card>
       <CardHeader
         title="Classification"
-        description="Which schedule each asset is valued on — the decision the money turns on. Prior human decisions are replayed first and cost nothing; the model only sees what is genuinely new, once per distinct description."
+        description="Which schedule each asset is valued on — the decision the money turns on."
+        help="Prior human decisions are replayed first and cost nothing; the model only sees what is genuinely new, once per distinct description."
         action={
           <div className="flex gap-2">
             {stats.classifiedCount > 0 ? (

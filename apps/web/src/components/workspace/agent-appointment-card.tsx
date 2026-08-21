@@ -58,7 +58,8 @@ export function AgentAppointmentCard({
     <Card>
       <CardHeader
         title="Agent appointments"
-        description="Form 50-162, one per appraisal district. It is what lets us sign a rendition for this client — and it authorises nothing until the district has it."
+        description="Form 50-162, one per appraisal district."
+        help="The appointment is what lets us sign a rendition for this client — and it authorises nothing until the district has it. Tax Code 1.111 governs who may act for a property owner."
       />
       <AgentRecord />
       <div className="space-y-4 px-5 py-4">

@@ -103,7 +103,8 @@ export function PriorComparisonView({ comparison }: { comparison: RegisterCompar
         <Card>
           <CardHeader
             title="What the difference is"
-            description="Named rather than netted. A saving and an exposure are different claims about the same client, and both belong on the page."
+            description="Named rather than netted."
+            help="A saving and an exposure are different claims about the same client, and both belong on the page — netting them would hide one behind the other."
           />
           <ul className="divide-y divide-[var(--color-hairline)]">
             {comparison.findings.map((finding) => (
@@ -469,7 +470,8 @@ function CategoryTable({ comparison }: { comparison: RegisterComparison }) {
     <Card>
       <CardHeader
         title="Category by category"
-        description="Open a row for its acquisition years. A category can agree in total and disagree in every vintage inside it, which on an indexed schedule is most of what the property is worth."
+        description="Open a row for its acquisition years."
+        help="A category can agree in total and disagree in every vintage inside it, which on an indexed schedule is most of what the property is worth."
       />
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
@@ -583,7 +585,8 @@ function OutOfScope({ comparison }: { comparison: RegisterComparison }) {
     <Card>
       <CardHeader
         title="What this comparison did not touch"
-        description="Held out rather than netted. Cost on either side that is not in the columns above is here, with the reason it is here."
+        description="Held out rather than netted."
+        help="Cost on either side that is not in the columns above is here, with the reason it is here — folding it into the totals would make the comparison foot by accident."
       />
 
       {registerAside === 0 && reportedAside === 0 ? (

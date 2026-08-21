@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { cn } from '@/lib/cn';
+import { InfoTip } from '@/components/ui/tooltip';
 
 export function Card({ className, children }: { className?: string; children: ReactNode }) {
   return <section className={cn('card', className)}>{children}</section>;
@@ -8,16 +9,26 @@ export function Card({ className, children }: { className?: string; children: Re
 export function CardHeader({
   title,
   description,
+  help,
   action,
 }: {
   title: string;
   description?: ReactNode;
+  /**
+   * The "why" behind the card, tucked behind a help icon beside the title.
+   * The description below stays for what the reader needs every visit; this
+   * holds the statutory reasoning they need once.
+   */
+  help?: ReactNode;
   action?: ReactNode;
 }) {
   return (
     <header className="flex items-start justify-between gap-4 border-b border-[var(--color-hairline)] px-5 py-4">
       <div className="min-w-0">
-        <h2 className="text-sm font-semibold tracking-tight">{title}</h2>
+        <h2 className="inline-flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+          {title}
+          {help ? <InfoTip content={help} size={12} /> : null}
+        </h2>
         {description ? (
           <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
             {description}

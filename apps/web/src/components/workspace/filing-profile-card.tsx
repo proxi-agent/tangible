@@ -98,7 +98,8 @@ export function FilingProfileCard({
     <Card>
       <CardHeader
         title="Filing profile"
-        description="What Form 50-144 asks about the taxpayer. The register cannot answer any of it, and a blank box is a blocking omission on the return."
+        description="What Form 50-144 asks about the taxpayer."
+        help="The register cannot answer any of it, and a blank box is a blocking omission on the return."
       />
       <form
         className="space-y-5 px-5 py-4"

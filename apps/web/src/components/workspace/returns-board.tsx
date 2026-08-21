@@ -16,7 +16,7 @@ import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
 import { ExtensionPanel } from '@/components/workspace/extension-panel';
 import { NoticePanel } from '@/components/workspace/notice-panel';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
-import { Tooltip } from '@/components/ui/tooltip';
+import { InfoTip, Tooltip } from '@/components/ui/tooltip';
 
 /**
  * The season: every return this engagement owes, and where each one stands.
@@ -151,8 +151,12 @@ function Calendar({ season, outstanding }: { season: FilingSeason; outstanding: 
   if (outstanding.length === 0) {
     return (
       <>
-        Frozen as they went out. These figures do not move when the register does — which is the
-        point, and what a 22.28 penalty would be measured against.
+        Frozen as they went out.{' '}
+        <InfoTip
+          size={12}
+          className="align-text-bottom"
+          content="These figures do not move when the register does — which is the point, and what a 22.28 penalty would be measured against."
+        />
       </>
     );
   }
@@ -165,14 +169,22 @@ function Calendar({ season, outstanding }: { season: FilingSeason; outstanding: 
       {season.daysToDue >= 0
         ? `, ${count(season.daysToDue)} ${plural(season.daysToDue, 'day')} away`
         : ''}
-      . A written request on or before that date moves one return to{' '}
-      {dayShort(season.extendedDueOn)} under 22.23(b) — per account rather than per engagement, so
-      each row works to its own date.
+      .
       {extended > 0
         ? ` ${count(extended)} of the ones still out ${plural(extended, 'is', 'are')} on an extension.`
         : ''}{' '}
-      A late return draws 10% of the taxes due on the property it covers (22.28), per return rather
-      than per engagement.
+      <InfoTip
+        size={12}
+        className="align-text-bottom"
+        content={
+          <>
+            A written request on or before the due date moves one return to{' '}
+            {dayShort(season.extendedDueOn)} under 22.23(b) — per account rather than per
+            engagement, so each row works to its own date. A late return draws 10% of the taxes due
+            on the property it covers (22.28), per return rather than per engagement.
+          </>
+        }
+      />
     </>
   );
 }

@@ -9,7 +9,7 @@ import type { PracticeResult, PracticeReturn, PracticeSeason, SeasonHold } from 
 import { api } from '@/lib/api';
 import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
 import { Badge, Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
-import { Tooltip } from '@/components/ui/tooltip';
+import { InfoTip, Tooltip } from '@/components/ui/tooltip';
 
 /**
  * The season across the whole book.
@@ -331,9 +331,12 @@ function Calendar({
         ? `, ${count(season.daysToDue)} ${plural(season.daysToDue, 'day')} away`
         : ', which has passed'}
       . {count(still)} {plural(still, 'return')} across {count(clients)}{' '}
-      {plural(clients, 'client')} {plural(still, 'is', 'are')} still out. Each carries its own date
-      — 22.23(b) extensions are granted per account, so one client&rsquo;s May does not move the
-      return next to it.
+      {plural(clients, 'client')} {plural(still, 'is', 'are')} still out.{' '}
+      <InfoTip
+        size={12}
+        className="align-text-bottom"
+        content="Each return carries its own date — 22.23(b) extensions are granted per account, so one client's May does not move the return next to it."
+      />
       <Doubled season={season} />
     </>
   );
@@ -359,9 +362,13 @@ function Doubled({ season }: { season: PracticeSeason }) {
       {' '}
       <span className="text-[var(--color-warning)]">
         {count(sites)} {plural(sites, 'site')} {plural(sites, 'is', 'are')} drafted by more than one
-        engagement this year. Under 22.01 an account is rendered once — the rows below are the
-        drafts, not the returns owed, and only one of each pair should go out.
-      </span>
+        engagement this year.
+      </span>{' '}
+      <InfoTip
+        size={12}
+        className="align-text-bottom"
+        content="Under 22.01 an account is rendered once — the rows below are the drafts, not the returns owed, and only one of each pair should go out."
+      />
     </>
   );
 }
@@ -385,24 +392,20 @@ function Holds({ holds }: { holds: SeasonHold[] }) {
     <Card>
       <CardHeader
         title="What is holding the book up"
+        // The leverage claim only where there is leverage. On a book where
+        // every defect holds a single return this is just the blockers listed
+        // in one place, which is worth having and is not worth a speech.
         description={
-          // The leverage claim only where there is leverage. On a book where
-          // every defect holds a single return this is just the blockers listed
-          // in one place, which is worth having and is not worth a speech.
           most > 1 ? (
             <>
-              Every blocking defect on the board, counted across returns rather than listed per
-              client. The one at the top is holding {count(most)} {plural(most, 'return')} — one fix
-              releases all of them, and that is invisible from inside any one engagement.
+              The defect at the top is holding {count(most)} {plural(most, 'return')} — one fix
+              releases all of them.
             </>
           ) : (
-            <>
-              Every blocking defect on the board, gathered in one place. Each is holding a single
-              return today; the count is what to watch as the book fills up, because a defect that
-              starts holding several is one fix that releases several.
-            </>
+            'Every blocking defect on the board, gathered in one place.'
           )
         }
+        help="Counted across returns rather than listed per client, because the leverage is invisible from inside any one engagement: the same missing signature can hold a dozen returns, and the count is what predicts the afternoon."
       />
       <ul className="divide-y divide-[var(--color-hairline)]">
         {holds.map((hold) => (

@@ -14,6 +14,7 @@ import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { count, day, money, moneyExact, plural } from '@/lib/format';
 import { Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { InfoTip } from '@/components/ui/tooltip';
 import { Tooltip } from '@/components/ui/tooltip';
 
 /**
@@ -245,9 +246,16 @@ function Finding({ finding, groups }: { finding: CarryFinding; groups: CarryGrou
     <li className="flex gap-3 px-5 py-4">
       <span className={cn('mt-1 w-0.5 shrink-0 self-stretch rounded-full', severity.rail)} />
       <div className="min-w-0 flex-1">
-        <p className={cn('text-sm font-medium', severity.text)}>{finding.headline}</p>
+        <p className={cn('inline-flex items-center gap-1.5 text-sm font-medium', severity.text)}>
+          {finding.headline}
+          {/* The full reasoning — statute, the innocent explanations, what to
+              check — moves behind the icon. The first sentence stays on the
+              page because it says what the finding *is*; the rest says why,
+              and why is read once, not every visit. */}
+          <InfoTip content={finding.detail} size={12} />
+        </p>
         <p className="mt-1 text-sm leading-relaxed text-[var(--color-ink-secondary)]">
-          {finding.detail}
+          {lead(finding.detail)}
         </p>
         {group ? (
           <>
@@ -312,4 +320,10 @@ function Evidence({ group }: { group: CarryGroup }) {
       ) : null}
     </div>
   );
+}
+
+/** The first sentence of a detail paragraph — what the finding is, without the why. */
+function lead(detail: string): string {
+  const stop = detail.indexOf('. ');
+  return stop === -1 ? detail : detail.slice(0, stop + 1);
 }

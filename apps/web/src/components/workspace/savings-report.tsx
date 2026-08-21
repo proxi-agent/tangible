@@ -57,7 +57,8 @@ export function SavingsReportView({ report }: { report: SavingsReport }) {
         <Card>
           <CardHeader
             title="What comes off the rendition"
-            description="Each line is an adjustment to the value rendered, with the rows behind it and the basis it rests on."
+            description="Each line is an adjustment to the value rendered."
+            help="Every adjustment carries the register rows behind it and the statutory basis it rests on — a number without its basis is not a finding."
           />
           <ul className="divide-y divide-[var(--color-hairline)]">
             {priced.map((finding) => (
@@ -71,7 +72,8 @@ export function SavingsReportView({ report }: { report: SavingsReport }) {
         <Card>
           <CardHeader
             title="Worth asking about"
-            description="Levers a register cannot settle on its own. Each needs one answer from the client, and none of them is counted in the figures above — an unanswered question is not a saving."
+            description="Levers a register cannot settle on its own."
+            help="Each needs one answer from the client, and none of them is counted in the figures above — an unanswered question is not a saving."
           />
           <ul className="divide-y divide-[var(--color-hairline)]">
             {screening.map((finding) => (

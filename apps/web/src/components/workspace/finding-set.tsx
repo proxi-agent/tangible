@@ -59,7 +59,8 @@ export function FindingSetView({ set }: { set: FindingSet }) {
       <Card>
         <CardHeader
           title="Findings"
-          description="Each line was frozen when this version was committed. What you decide here is recorded against the engagement, not against this copy, so it carries forward the next time the analysis is committed."
+          description="Each line was frozen when this version was committed."
+          help="What you decide here is recorded against the engagement, not against this copy, so it carries forward the next time the analysis is committed."
         />
         <ul className="divide-y divide-[var(--color-hairline)]">
           {set.findings.map((finding) => (

@@ -81,7 +81,8 @@ export function SitesCard({ clientId, engagementId }: { clientId: string; engage
     <Card>
       <CardHeader
         title="Sites"
-        description="What the register calls each place, and where we have decided it is. Property is assessed where it stood on January 1, so this decides which district values it, and how many returns there are."
+        description="What the register calls each place, and where we have decided it is."
+        help="Property is assessed where it stood on January 1 (Tax Code 21.02), so placement decides which district values each asset — and how many returns there are."
         action={
           unplaced > 0 ? (
             <span className="text-xs text-[var(--color-warning)]">

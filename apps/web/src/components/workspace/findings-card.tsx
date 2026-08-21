@@ -44,7 +44,8 @@ export function FindingsCard({
     <Card>
       <CardHeader
         title="Committed versions"
-        description="Each of these is a dated record of figures that went out, with what was decided about every line of it. Decisions carry forward; the numbers do not."
+        description="Dated records of the figures that went out, with what was decided about every line."
+        help="Decisions carry forward; the numbers do not. A finding dispositioned once stays dispositioned when the analysis is committed again."
       />
       <ul className="divide-y divide-[var(--color-hairline)]">
         {sets.map((set) => (
