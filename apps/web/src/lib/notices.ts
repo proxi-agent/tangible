@@ -14,6 +14,7 @@ import {
 import type {
   AssessmentNotice,
   AssessmentNoticeFacts,
+  CorrectionMotion,
   ProtestResolution,
   ProtestResolutionFacts,
   RecordNoticeRequest,
@@ -27,6 +28,7 @@ import type {
 import { currentActor } from '@/lib/actor';
 import { engagementExtensions } from '@/lib/extensions';
 import { engagementFilings } from '@/lib/filings';
+import { clientMotions, motionKey, spentBy } from '@/lib/motions';
 import { HttpError, notFound } from '@/lib/route';
 import { engagementReturns } from '@/lib/sites';
 import { fetchEngagement } from '@/lib/workspace';
@@ -400,12 +402,23 @@ async function decorate(
   engagementId: string,
   rows: AssessmentNoticeRow[],
 ): Promise<AssessmentNotice[]> {
-  const [filings, extensions, resolutions] = await Promise.all([
+  const { engagement } = await fetchEngagement(engagementId);
+  const [filings, extensions, resolutions, motions] = await Promise.all([
     engagementFilings(engagementId),
     engagementExtensions(engagementId),
     standingResolutions(rows.map((row) => row.id)),
+    // Client-wide, and it has to be: 25.25(c-1)(3) is spent by a motion brought
+    // under any engagement, and an engagement-scoped read would miss the one
+    // this firm filed last season.
+    clientMotions(engagement.clientId),
   ]);
   const today = new Date().toISOString().slice(0, 10);
+
+  const filed = new Map<string, CorrectionMotion[]>();
+  for (const motion of motions) {
+    const key = motionKey(motion.accountId, motion.subjectTaxYear, motion.locationId);
+    filed.set(key, [...(filed.get(key) ?? []), motion]);
+  }
 
   // The return that stands for a site and year, if one went out. Keyed on both
   // because a notice recorded for one year must not be read against a filing
@@ -474,6 +487,8 @@ async function decorate(
               // This year is ours: we hold the notice, the protest date and the
               // ending, so a route we call open is open.
               historyKnown: true,
+              // 25.25(c-1)(3): our own earlier motion, where there was one.
+              priorMotion: spentBy(filed.get(motionKey(row.accountId, row.taxYear, row.locationId)) ?? []),
             },
             today,
           )

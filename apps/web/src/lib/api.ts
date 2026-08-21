@@ -20,6 +20,7 @@ import type {
   CreateLocationRequest,
   DistributionBucket,
   CommitFindingsRequest,
+  CorrectionMotion,
   Engagement,
   EngagementDetail,
   EngagementReturns,
@@ -40,18 +41,19 @@ import type {
   MappedPriorLine,
   MarketOverview,
   NormalizationResult,
+  OpenYears,
   OpportunityModel,
   OwnerRollup,
   OwnerSortField,
   Paginated,
   PracticeSeason,
-  OpenYears,
   PlaceSiteRequest,
   PriorDocument,
   PriorDocumentKind,
   RecordAppointmentRequest,
   RecordExtensionRequest,
   RecordFilingRequest,
+  RecordMotionRequest,
   RecordNoticeRequest,
   RecordResolutionRequest,
   Rendition,
@@ -74,6 +76,7 @@ import type {
   UpdateLineMappingRequest,
   UpdateLocationRequest,
   UpdateEngagementRequest,
+  UpdateMotionRequest,
   YearTrendPoint,
 } from '@tangible/types';
 // Type-only, so nothing from the filing package reaches the client bundle.
@@ -449,6 +452,33 @@ export const api = {
    */
   openYears: (engagementId: string) =>
     request<OpenYears>(`/engagements/${engagementId}/open-years`),
+
+  /**
+   * Write down a 25.25 motion that has gone in.
+   *
+   * Returns the motion, but the screen it lives on re-reads the whole board:
+   * a motion that ended closes (c-1) for its year under (c-1)(3), so the row
+   * that changed is never the only row whose answer changed.
+   */
+  recordMotion: (engagementId: string, body: RecordMotionRequest) =>
+    request<CorrectionMotion>(`/engagements/${engagementId}/motions`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Record a hearing date, a 25.26 payment, or how the motion ended. */
+  updateMotion: (motionId: string, body: UpdateMotionRequest) =>
+    request<CorrectionMotion>(`/motions/${motionId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Take back a motion recorded in error, which gives its year the route back. */
+  voidMotion: (motionId: string, reason: string) =>
+    request<CorrectionMotion>(`/motions/${motionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ reason }),
+    }),
 
   /** Every return recorded as filed on this engagement, newest first. */
   filings: (engagementId: string) =>

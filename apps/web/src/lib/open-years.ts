@@ -2,12 +2,14 @@ import 'server-only';
 import { and, desc, eq, inArray, isNotNull } from 'drizzle-orm';
 import { correctionOutlook } from '@tangible/filing';
 import type {
+  CorrectionMotion,
   CorrectionOutlook,
   ExtractedNotice,
   OpenYear,
   OpenYears,
   ResolutionStage,
 } from '@tangible/types';
+import { clientMotions, motionKey, spentBy } from '@/lib/motions';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -40,19 +42,43 @@ import { requireDb, schema } from '@/lib/workspace-db';
  * The grain is (account, year). A prior document names an account and a year
  * and nothing else we could key on, and forcing it onto a site would either
  * invent a link or throw the document away.
+ *
+ * Motions brought under 25.25 are folded in on the same key, and they are not
+ * decoration. 25.25(c-1)(3) closes (c-1) once a previous motion on the property
+ * and year was agreed to, determined, or forfeited — so a firm's own earlier
+ * filing is one of the bars this screen has to know about, and reading motions
+ * client-wide rather than per engagement is what makes last season's motion
+ * visible to this season's answer.
  */
 export async function engagementOpenYears(engagementId: string): Promise<OpenYears> {
   const { engagement } = await fetchEngagement(engagementId);
   const today = new Date().toISOString().slice(0, 10);
+  const motions = await clientMotions(engagement.clientId);
+
+  // Grouped before the outlooks are computed, because a motion is an input to
+  // one — not something hung on the answer afterwards.
+  const byYear = new Map<string, CorrectionMotion[]>();
+  for (const motion of motions) {
+    const key = motionKey(motion.accountId, motion.subjectTaxYear, motion.locationId);
+    byYear.set(key, [...(byYear.get(key) ?? []), motion]);
+  }
+
   const [recorded, uploaded] = await Promise.all([
-    recordedYears(engagement.clientId, today),
-    uploadedYears(engagement.clientId, today),
+    recordedYears(engagement.clientId, today, byYear),
+    uploadedYears(engagement.clientId, today, byYear),
   ]);
 
   // Ours wins on a collision. Both rows describe the same account and year, and
   // only one of them knows how the protest ended.
   const byKey = new Map<string, OpenYear>();
   for (const year of [...uploaded, ...recorded]) byKey.set(year.key, year);
+
+  // A motion whose year has no paper on either side still gets a row. Losing it
+  // would not just hide the filing — it would hide the bar the filing created.
+  for (const [key, filed] of byYear) {
+    if (byKey.has(key)) continue;
+    byKey.set(key, motionOnlyYear(key, filed, today));
+  }
   const years = [...byKey.values()];
 
   return {
@@ -88,7 +114,11 @@ function byUrgency(a: OpenYear, b: OpenYear): number {
  * second row on the same account and year, and the second row would disagree
  * with the first about a value.
  */
-async function recordedYears(clientId: string, today: string): Promise<OpenYear[]> {
+async function recordedYears(
+  clientId: string,
+  today: string,
+  motions: Map<string, CorrectionMotion[]>,
+): Promise<OpenYear[]> {
   const db = requireDb();
   const notices = await db
     .select({
@@ -117,6 +147,11 @@ async function recordedYears(clientId: string, today: string): Promise<OpenYear[
 
   return notices.map((notice) => {
     const ending = endings.get(notice.id) ?? null;
+    // Keyed on the account where there is one, and on the site where there is
+    // not — a site with no account number yet is still a real return, and
+    // keying every one of them on the empty string would collapse them.
+    const key = motionKey(notice.accountId, notice.taxYear, notice.locationId);
+    const filed = motions.get(key) ?? [];
     const outlook = correctionOutlook(
       {
         taxYear: notice.taxYear,
@@ -124,23 +159,23 @@ async function recordedYears(clientId: string, today: string): Promise<OpenYear[
         renditionPenaltyApplied: notice.renditionPenaltyApplied,
         ending,
         historyKnown: true,
+        priorMotion: spentBy(filed),
       },
       today,
     );
     return {
-      // Keyed on the account where there is one, and on the site where there is
-      // not — a site with no account number yet is still a real return, and
-      // keying every one of them on the empty string would collapse them.
-      key: `${notice.accountId ?? `site:${notice.locationId}`}:${notice.taxYear}`,
+      key,
       taxYear: notice.taxYear,
       source: 'recorded' as const,
       label: notice.locationLabel,
       accountId: notice.accountId,
+      locationId: notice.locationId,
       districtName: notice.districtName,
       rolledValue: notice.appraisedValue,
       noticeId: notice.id,
       documentId: null,
       outlook,
+      motions: filed,
     };
   });
 }
@@ -172,7 +207,11 @@ async function standingEndings(
  * the district's, and a discrepancy in it is a reason to look at the year
  * rather than a reason to drop it.
  */
-async function uploadedYears(clientId: string, today: string): Promise<OpenYear[]> {
+async function uploadedYears(
+  clientId: string,
+  today: string,
+  motions: Map<string, CorrectionMotion[]>,
+): Promise<OpenYear[]> {
   const db = requireDb();
   const [documents, locations] = await Promise.all([
     db
@@ -206,6 +245,10 @@ async function uploadedYears(clientId: string, today: string): Promise<OpenYear[
   return documents.map((document) => {
     const notice = (document.extracted as ExtractedNotice | null) ?? null;
     const taxYear = document.taxYear as number;
+    const key = document.accountId
+      ? motionKey(document.accountId, taxYear, null)
+      : `doc:${document.id}:${taxYear}`;
+    const filed = motions.get(key) ?? [];
     const outlook: CorrectionOutlook = correctionOutlook(
       {
         taxYear,
@@ -214,22 +257,64 @@ async function uploadedYears(clientId: string, today: string): Promise<OpenYear[
         // A scan cannot say a protest ended, and it cannot say one did not.
         ending: null,
         historyKnown: false,
+        // A motion is ours, though. It is the one part of this year's history
+        // that does not depend on the client remembering.
+        priorMotion: spentBy(filed),
       },
       today,
     );
     return {
-      key: `${document.accountId ?? `doc:${document.id}`}:${taxYear}`,
+      key,
       taxYear,
       source: 'uploaded' as const,
       label:
         (document.accountId ? labels.get(document.accountId) : undefined) ??
         (document.accountId ? `Account ${document.accountId}` : document.originalFilename),
       accountId: document.accountId,
+      locationId: null,
       districtName: notice?.districtName ?? null,
       rolledValue: notice?.appraisedValue ?? null,
       noticeId: null,
       documentId: document.id,
       outlook,
+      motions: filed,
     };
   });
+}
+
+/**
+ * A year we hold no notice for and moved on anyway.
+ *
+ * `historyKnown: false`, and for a sharper reason than an uploaded year: there
+ * is no paper here at all. What the roll said comes off the motion itself,
+ * where the firm copied it at filing — which is the only value on file, and the
+ * reason the motion carries one.
+ */
+function motionOnlyYear(key: string, filed: CorrectionMotion[], today: string): OpenYear {
+  const first = filed[0] as CorrectionMotion;
+  const rolledValue = filed.map((motion) => motion.rolledValue).find((v) => v !== null) ?? null;
+  return {
+    key,
+    taxYear: first.subjectTaxYear,
+    source: 'motion' as const,
+    label: first.locationLabel ?? (first.accountId ? `Account ${first.accountId}` : 'No site'),
+    accountId: first.accountId,
+    locationId: first.locationId,
+    districtName: first.districtName,
+    rolledValue,
+    noticeId: null,
+    documentId: null,
+    outlook: correctionOutlook(
+      {
+        taxYear: first.subjectTaxYear,
+        rolledValue,
+        renditionPenaltyApplied: null,
+        ending: null,
+        historyKnown: false,
+        priorMotion: spentBy(filed),
+      },
+      today,
+    ),
+    motions: filed,
+  };
 }

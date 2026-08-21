@@ -7,6 +7,7 @@ import type { OpenYear, OpenYears } from '@tangible/types';
 import { api } from '@/lib/api';
 import { moneyExact, plural } from '@/lib/format';
 import { CorrectionRoutes } from '@/components/workspace/correction-routes';
+import { Motions } from '@/components/workspace/correction-motions';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 
 /**
@@ -113,6 +114,7 @@ function Year({
         <Source year={year} clientId={clientId} engagementId={engagementId} />
       </div>
       <CorrectionRoutes outlook={year.outlook} heading="What 25.25 leaves" />
+      <Motions year={year} engagementId={engagementId} />
     </li>
   );
 }
@@ -141,6 +143,14 @@ function Source({
       >
         uploaded notice
       </Link>
+    );
+  }
+  if (year.source === 'motion') {
+    // No notice and no scan — the year is on the board because we filed on it.
+    // Saying so matters: the routes below are computed without a document, and
+    // the reader should know that before relying on the value beside them.
+    return (
+      <span className="ml-auto text-[11px] text-[var(--color-ink-muted)]">from a motion we filed</span>
     );
   }
   return <span className="ml-auto text-[11px] text-[var(--color-ink-muted)]">recorded here</span>;

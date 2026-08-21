@@ -8,6 +8,7 @@ const subject = (over: Partial<CorrectionSubject> = {}): CorrectionSubject => ({
   renditionPenaltyApplied: null,
   ending: null,
   historyKnown: true,
+  priorMotion: null,
   ...over,
 });
 
@@ -154,5 +155,45 @@ describe('correctionOutlook', () => {
     const outlook = correctionOutlook(subject(), '2026-09-01');
     expect(outlook.standing).toContain('25.25(c), 25.25(c-1) and 25.25(d)');
     expect(outlook.standing).toContain('25.25(c) and 25.25(c-1) first');
+  });
+});
+
+describe('a motion already brought for this year', () => {
+  it('closes (c-1) and nothing else, whichever route the earlier motion used', () => {
+    for (const outcome of ['agreed', 'determined', 'forfeited'] as const) {
+      const after = subject({ priorMotion: outcome });
+      expect(openCites(after, '2026-09-01')).toEqual(['25.25(c)', '25.25(d)']);
+      expect(route('25.25(c-1)', after, '2026-09-01').barred).toContain('25.25(c-1)(3)');
+      // (d) is untouched: neither it nor (d-1) has a prior-motion bar, so a
+      // spent (c-1) leaves the expensive route exactly where it was.
+      expect(route('25.25(d)', after, '2026-09-01').open).toBe(true);
+    }
+  });
+
+  it('says the bar reaches across subsections, because (c-1)(3) says section', () => {
+    const barred = route('25.25(c-1)', subject({ priorMotion: 'determined' }), '2026-09-01').barred;
+    expect(barred).toContain('under this *section*');
+  });
+
+  it('spends nothing when the earlier motion was withdrawn', () => {
+    // Withdrawal is the one ending missing from (c-1)(3)'s list, and the
+    // omission is the difference between pulling a motion back and losing one.
+    const pulled = subject({ priorMotion: 'withdrawn' });
+    expect(openCites(pulled, '2026-09-01')).toEqual(['25.25(c)', '25.25(c-1)', '25.25(d)']);
+    expect(route('25.25(c-1)', pulled, '2026-09-01').barred).toBeNull();
+  });
+
+  it('carries the reason up into the year’s own answer', () => {
+    const standing = correctionOutlook(subject({ priorMotion: 'forfeited' }), '2026-09-01').standing;
+    expect(standing).toContain('forfeited for want of the 25.26 payment');
+    expect(standing).toContain('did not touch (c) or (d)');
+  });
+
+  it('reports the agreement first where both bars apply', () => {
+    // A 1.111(e) agreement closes (c-1) *and* (d); the motion bar closes only
+    // (c-1). Leading with the narrower one would understate the year.
+    const both = subject({ ending: 'informal', priorMotion: 'determined' });
+    expect(route('25.25(c-1)', both, '2026-09-01').barred).toContain('1.111(e)');
+    expect(route('25.25(d)', both, '2026-09-01').open).toBe(false);
   });
 });

@@ -1,4 +1,10 @@
-import type { CorrectionOutlook, CorrectionRoute, CorrectionSubject } from '@tangible/types';
+import type {
+  CorrectionMotionOutcome,
+  CorrectionOutlook,
+  CorrectionRoute,
+  CorrectionRouteKey,
+  CorrectionSubject,
+} from '@tangible/types';
 import { stamp } from './extensions.js';
 
 /**
@@ -50,6 +56,21 @@ const C1_YEARS = 2;
 const D_THRESHOLD = 1 / 3;
 
 /**
+ * The last day a route can be used for a year, without asking whether it is barred.
+ *
+ * Exported because a filed motion has to be checked against the same dates the
+ * outlook offered — a motion that went in after its route shut is a finding,
+ * and it cannot be one if the two sides compute the deadline separately.
+ */
+export function routeDeadline(route: CorrectionRouteKey, taxYear: number): string {
+  if (route === 'c') return `${taxYear + C_YEARS}-12-31`;
+  if (route === 'c-1') return `${taxYear + C1_YEARS}-12-31`;
+  // 31.02(a): delinquent February 1 of the following year, so (d) runs to the
+  // day before. 31.04 can postpone it where the bill went out late.
+  return `${taxYear + 1}-01-31`;
+}
+
+/**
  * Which routes are still open for a year, and what shut the ones that are not.
  *
  * `resolution` is how the protest ended, where it did. It is load-bearing: two
@@ -78,7 +99,15 @@ export function correctionOutlook(subject: CorrectionSubject, today: string): Co
   // bar are met — the rendition was not filed on time, and a penalty followed.
   const penalised = subject.renditionPenaltyApplied === true;
 
-  const bars = { agreed, determined, penalised, historyKnown };
+  // 25.25(c-1)(3): a previous motion the chief appraiser agreed to, that the
+  // board determined, or on which the board found the owner forfeited. Read the
+  // scope carefully — "a previous motion filed by the property owner under this
+  // *section*", not under this subsection, so a determined (d) motion spends
+  // (c-1) too. Withdrawing a motion is not in the list, which is the whole
+  // difference between pulling one back and losing one.
+  const spent = subject.priorMotion !== null && subject.priorMotion !== 'withdrawn';
+
+  const bars = { agreed, determined, penalised, spent, priorMotion: subject.priorMotion, historyKnown };
   const routes = [
     routeC(year, today),
     routeC1(year, today, bars),
@@ -109,12 +138,19 @@ const UNCONFIRMED =
   'Confirm with the district before filing: a protest determined on the merits, or a value ' +
   'agreed with the chief appraiser, closes this route and neither leaves a trace on the notice.';
 
-type Bars = { agreed: boolean; determined: boolean; penalised: boolean; historyKnown: boolean };
+type Bars = {
+  agreed: boolean;
+  determined: boolean;
+  penalised: boolean;
+  spent: boolean;
+  priorMotion: CorrectionMotionOutcome | null;
+  historyKnown: boolean;
+};
 
 function routeC(year: number, today: string): CorrectionRoute {
   // "Any of the five preceding years" counts back from the year the motion is
   // made, so a year stays reachable through the end of the fifth year after it.
-  const deadline = `${year + C_YEARS}-12-31`;
+  const deadline = routeDeadline('c', year);
   return {
     key: 'c',
     cite: '25.25(c)',
@@ -135,7 +171,7 @@ function routeC(year: number, today: string): CorrectionRoute {
 }
 
 function routeC1(year: number, today: string, bars: Bars): CorrectionRoute {
-  const deadline = `${year + C1_YEARS}-12-31`;
+  const deadline = routeDeadline('c-1', year);
   const expired = today > deadline;
   const barred = bars.agreed
     ? 'The value for this year was established by agreement with the district. 25.25(c-1)(4) ' +
@@ -151,10 +187,15 @@ function routeC1(year: number, today: string, bars: Bars): CorrectionRoute {
           'year in which the rendition was late and a penalty was assessed, and 22.28 is the ' +
           'penalty for a delinquent report — so the penalty did not just cost 10% of the taxes, it ' +
           'took away the way back.'
-        : expired
-          ? `The current year and the two before it is all 25.25(c-1) reaches, and ${year} ran out ` +
-            `${stamp(deadline)}.`
-          : null;
+        : bars.spent
+          ? `A 25.25 motion has already been ${settled(bars.priorMotion)} for this property and ` +
+            `year. 25.25(c-1)(3) closes this route once that has happened — and it says a previous ` +
+            `motion under this *section*, so a motion brought under (c) or (d) spends (c-1) just ` +
+            `as a (c-1) motion does. What is left is whatever that motion did not use up.`
+          : expired
+            ? `The current year and the two before it is all 25.25(c-1) reaches, and ${year} ran ` +
+              `out ${stamp(deadline)}.`
+            : null;
 
   return {
     key: 'c-1',
@@ -175,11 +216,9 @@ function routeC1(year: number, today: string, bars: Bars): CorrectionRoute {
 }
 
 function routeD(year: number, today: string, rolledValue: number | null, bars: Bars): CorrectionRoute {
-  // 31.02(a): taxes are delinquent if not paid before February 1 of the year
-  // following the year imposed, and (d) runs to the day before that. 31.04 can
-  // postpone the delinquency date where the bill went out late, which moves
-  // this with it — the prose says so rather than guessing at it here.
-  const deadline = `${year + 1}-01-31`;
+  // 31.04 can postpone the delinquency date where the bill went out late, which
+  // moves this with it — the prose says so rather than guessing at it here.
+  const deadline = routeDeadline('d', year);
   const expired = today > deadline;
 
   // (d) is written against the *correct* value, not the rolled one: the rolled
@@ -261,7 +300,10 @@ function describe(
       : bars.penalised
         ? ' The 22.28 penalty on this notice closed (c-1) for this year, which is the second and ' +
           'larger cost of a late rendition.'
-        : '';
+        : bars.spent
+          ? ` An earlier 25.25 motion on this year was ${settled(bars.priorMotion)}, which closes ` +
+            '(c-1) under (c-1)(3). It did not touch (c) or (d): neither has a prior-motion bar.'
+          : '';
 
   const unconfirmed =
     !bars.historyKnown && open.some((route) => route.key !== 'c')
@@ -278,6 +320,14 @@ function describe(
       : '';
 
   return lead + closed + unconfirmed + order;
+}
+
+/** How the earlier motion ended, in the words (c-1)(3) uses for it. */
+function settled(outcome: CorrectionMotionOutcome | null): string {
+  if (outcome === 'agreed') return 'agreed to by the chief appraiser';
+  if (outcome === 'determined') return 'determined by the board';
+  if (outcome === 'forfeited') return 'forfeited for want of the 25.26 payment';
+  return 'brought';
 }
 
 function list(items: string[]): string {

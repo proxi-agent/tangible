@@ -732,6 +732,48 @@ export const CorrectionRouteKeySchema = z.enum(CORRECTION_ROUTES);
 export type CorrectionRouteKey = (typeof CORRECTION_ROUTES)[number];
 
 /**
+ * How a motion under 25.25 ended, in the four ways it can.
+ *
+ * `CorrectionOutlook` below answers "can this year be reopened". This is the
+ * record of having tried, and it exists for three reasons that are not
+ * bookkeeping.
+ *
+ * The first is 25.25(c-1)(3). A previous motion *under this section* that the
+ * chief appraiser agreed to, that the board determined, or on which the board
+ * found the owner forfeited, closes 25.25(c-1) for that property and year. Note
+ * the scope: "under this section", not "under this subsection" — a determined
+ * (d) motion spends (c-1) just as surely as a determined (c-1) one. Until there
+ * was somewhere to record a motion, this bar was permanently false, and the
+ * outlook was telling firms a route was open that their own earlier filing had
+ * shut.
+ *
+ * The second is 25.26. Filing a motion does not postpone anything — (a) says
+ * the pendency of a motion does not affect the delinquency date — and (b) says
+ * the owner must pay the taxes on the *undisputed* portion before that date or
+ * forfeit the right to a final determination. So the motion can be right, and
+ * timely, and die anyway because a tax bill went unpaid in January. On an old
+ * year reached through (c), that date is already in the past and the question
+ * is archaeological: was it paid then.
+ *
+ * The third is that a motion has an end, and the ends are not alike. An agreed
+ * correction is the chief appraiser signing off. A determination is a board
+ * order, and 25.25(g) gives sixty days from notice of it to sue to compel the
+ * change. A forfeiture under 25.26 determines nothing about value and still
+ * bars (c-1), which is the worst of both. A withdrawal bars nothing at all —
+ * it is not in (c-1)(3)'s list, and that omission is the difference between
+ * pulling a motion back and losing one.
+ */
+export const CORRECTION_MOTION_OUTCOMES = [
+  'agreed',
+  'determined',
+  'forfeited',
+  'withdrawn',
+] as const;
+
+export const CorrectionMotionOutcomeSchema = z.enum(CORRECTION_MOTION_OUTCOMES);
+export type CorrectionMotionOutcome = (typeof CORRECTION_MOTION_OUTCOMES)[number];
+
+/**
  * The year 25.25 is being asked about, reduced to what the section turns on.
  *
  * Deliberately not an assessment notice. The same question gets asked of a year
@@ -758,6 +800,14 @@ export const CorrectionSubjectSchema = z.object({
    * "nothing on file", not "nothing happened", and the two must not read alike.
    */
   historyKnown: z.boolean(),
+  /**
+   * How an earlier 25.25 motion on this property and year ended, where one was.
+   *
+   * 25.25(c-1)(3), and only (c-1) — neither (c) nor (d-1) has a prior-motion
+   * bar. Null covers both "none was filed" and "none is on file", which is the
+   * same ambiguity `historyKnown` exists to flag and is flagged the same way.
+   */
+  priorMotion: CorrectionMotionOutcomeSchema.nullable(),
 });
 
 export type CorrectionSubject = z.infer<typeof CorrectionSubjectSchema>;
@@ -802,6 +852,114 @@ export const CorrectionOutlookSchema = z.object({
 
 export type CorrectionOutlook = z.infer<typeof CorrectionOutlookSchema>;
 
+/** The facts a motion turns on, apart from who typed them in. */
+export const CorrectionMotionFactsSchema = z.object({
+  /** The year being corrected, which is not the engagement's year. */
+  subjectTaxYear: z.number().int(),
+  /** Which subsection it was brought under. */
+  route: CorrectionRouteKeySchema,
+  status: z.enum(['recorded', 'superseded', 'void']),
+  /** The day the motion went to the district. */
+  filedOn: z.string(),
+  /** What the roll said when the motion went in, copied so the two cannot drift. */
+  rolledValue: z.number().nullable(),
+  /** What the motion says the value should be. 25.25(d)'s threshold is measured on this. */
+  claimedValue: z.number().nullable(),
+  /**
+   * The day the undisputed taxes were paid, where that is known.
+   *
+   * 25.26(b)'s condition. Null is not "unpaid" — it is "we have not asked",
+   * which on a motion that is still live is the thing to go and ask.
+   */
+  undisputedTaxPaidOn: z.string().nullable(),
+  /** The hearing date the board set, where it has set one. */
+  hearingScheduledFor: z.string().nullable(),
+  /** When written notice of that hearing was delivered. 25.25(e) requires 15 days. */
+  hearingNoticedOn: z.string().nullable(),
+  /** How it ended. Null while it is still pending. */
+  outcome: CorrectionMotionOutcomeSchema.nullable(),
+  outcomeOn: z.string().nullable(),
+  /** The value the roll was changed to, where it was changed. */
+  correctedValue: z.number().nullable(),
+  /** The board's order number, which is what a 25.25(g) suit is filed against. */
+  orderReference: z.string().nullable(),
+});
+
+export type CorrectionMotionFacts = z.infer<typeof CorrectionMotionFactsSchema>;
+
+/** Where a filed motion stands, and what it has spent. */
+export const CorrectionMotionStandingSchema = z.object({
+  /** True while the motion is pending: recorded, with no outcome yet. */
+  live: z.boolean(),
+  /**
+   * 25.26(b)'s date — the delinquency date for the subject year, not for now.
+   *
+   * Always present, because it is always answerable: 31.02(a) puts it at
+   * February 1 of the year after the year imposed, so the last day to pay is
+   * January 31. 31.04 can move it where the bill went out late.
+   */
+  prepaymentDeadline: z.string(),
+  /** Whether the undisputed taxes were paid in time. Null where we have not asked. */
+  prepaymentMet: z.boolean().nullable(),
+  /** 25.25(e)'s ninety days, where they can be counted at all. */
+  hearingDueBy: z.string().nullable(),
+  /** 25.25(e)'s fifteen days of written notice before the hearing. */
+  hearingNoticeDueBy: z.string().nullable(),
+  /** 25.25(g)'s sixty days to sue to compel, where a determination started them. */
+  suitDeadline: z.string().nullable(),
+  suitOpen: z.boolean(),
+  /** Whether this motion closes 25.25(c-1) for the property and year under (c-1)(3). */
+  barsAnother: z.boolean(),
+  /** Assessed value taken off the roll, never tax dollars. */
+  reduction: z.number().nullable(),
+  /** Which of those applies and why, in prose somebody can act on. */
+  standing: z.string(),
+});
+
+export type CorrectionMotionStanding = z.infer<typeof CorrectionMotionStandingSchema>;
+
+/**
+ * A recorded 25.25 motion.
+ *
+ * Kept on the (account, year) grain the open-years board uses, for the same
+ * reason: the years worth filing motions on are mostly years the firm was not
+ * engaged for, and their only paper names an account. `locationId` is set where
+ * we happen to know the site and left null where we do not, rather than being
+ * guessed at.
+ *
+ * Append-only like every other record in this file. Recording an outcome
+ * inserts a new row carrying the same facts plus the ending, and the earlier
+ * row becomes `superseded`; a motion recorded in error is voided with a reason.
+ * No row is edited, because the interesting question about a motion is often
+ * what we believed about it in March.
+ */
+export const CorrectionMotionSchema = CorrectionMotionFactsSchema.extend({
+  id: z.string(),
+  engagementId: z.string(),
+  clientId: z.string(),
+  accountId: z.string().nullable(),
+  locationId: z.string().nullable(),
+  locationLabel: z.string().nullable(),
+  districtName: z.string().nullable(),
+
+  /** What the motion says is wrong, in the firm's own words. */
+  groundsNote: z.string().nullable(),
+  note: z.string().nullable(),
+
+  recordedBy: z.string().nullable(),
+  recordedAt: z.string(),
+  voidedBy: z.string().nullable(),
+  voidedAt: z.string().nullable(),
+  voidReason: z.string().nullable(),
+
+  /** Derived on read: where it stands and what it has spent. */
+  standing: CorrectionMotionStandingSchema,
+  /** Derived on read: what about this motion is worth a second look. */
+  checks: z.array(NoticeCheckSchema),
+});
+
+export type CorrectionMotion = z.infer<typeof CorrectionMotionSchema>;
+
 /**
  * One year of one account, and what is left of it.
  *
@@ -816,8 +974,13 @@ export type CorrectionOutlook = z.infer<typeof CorrectionOutlookSchema>;
  * `uploaded` year is a scan, and everything it does not print — a protest, an
  * informal settlement — is a bar we cannot see. The outlook says so in its own
  * words; this field is what lets the screen say it in one.
+ *
+ * A `motion` year is one we hold no notice for at all and moved on anyway. It
+ * exists so a filed motion always has a row to sit under: a year that lost its
+ * notice to a void would otherwise take the motion off the screen with it, and
+ * a motion nobody can see is a motion somebody re-files.
  */
-export const OPEN_YEAR_SOURCES = ['recorded', 'uploaded'] as const;
+export const OPEN_YEAR_SOURCES = ['recorded', 'uploaded', 'motion'] as const;
 export const OpenYearSourceSchema = z.enum(OPEN_YEAR_SOURCES);
 export type OpenYearSource = (typeof OPEN_YEAR_SOURCES)[number];
 
@@ -828,6 +991,8 @@ export const OpenYearSchema = z.object({
   /** The site if we know it, otherwise the account, otherwise the filename. */
   label: z.string(),
   accountId: z.string().nullable(),
+  /** The site, where the year is one we placed. A scan does not name one. */
+  locationId: z.string().nullable(),
   districtName: z.string().nullable(),
   rolledValue: z.number().nullable(),
   /** Set on a `recorded` year: the notice whose panel carries the detail. */
@@ -835,6 +1000,15 @@ export const OpenYearSchema = z.object({
   /** Set on an `uploaded` year: the prior document it was read from. */
   documentId: z.string().nullable(),
   outlook: CorrectionOutlookSchema,
+  /**
+   * Motions already brought on this account and year, newest first.
+   *
+   * Carried on the year rather than fetched separately because they are half of
+   * what the outlook above means: a determined or agreed motion is what closed
+   * (c-1), and a year that shows one open route and no explanation of the
+   * missing two is a year somebody will re-file on.
+   */
+  motions: z.array(CorrectionMotionSchema),
 });
 export type OpenYear = z.infer<typeof OpenYearSchema>;
 
@@ -996,6 +1170,78 @@ export const VoidResolutionRequestSchema = z.object({
 });
 
 export type VoidResolutionRequest = z.infer<typeof VoidResolutionRequestSchema>;
+
+/**
+ * Record a 25.25 motion that has gone in.
+ *
+ * The route and the year are the two fields that cannot be inferred. Everything
+ * else is what a firm happens to know on the day, and the checks on the way out
+ * are where the arguing happens — a motion filed after its own route shut is
+ * saved and flagged, not refused, because the row is the evidence that it
+ * happened and refusing it would only mean the fact goes unrecorded.
+ */
+export const RecordMotionRequestSchema = z.object({
+  subjectTaxYear: z.number().int().min(2000).max(2100),
+  route: CorrectionRouteKeySchema,
+  filedOn: isoDate,
+  accountId: optionalText(60),
+  locationId: z.string().uuid().nullish().transform((v) => v ?? null),
+  districtName: optionalText(160),
+  rolledValue: z.number().nonnegative().nullish().transform((v) => v ?? null),
+  claimedValue: z.number().nonnegative().nullish().transform((v) => v ?? null),
+  groundsNote: optionalText(2000),
+  undisputedTaxPaidOn: isoDate.nullish().transform((v) => v ?? null),
+  hearingScheduledFor: isoDate.nullish().transform((v) => v ?? null),
+  hearingNoticedOn: isoDate.nullish().transform((v) => v ?? null),
+  note: optionalText(1000),
+});
+
+export type RecordMotionRequest = z.infer<typeof RecordMotionRequestSchema>;
+
+/**
+ * Record how a motion ended, or what the board has scheduled for it.
+ *
+ * One request for both because they are one act on this table: every change to
+ * a motion is a new row carrying the whole of it. Sending an outcome of null is
+ * how a hearing date gets added to a motion that is still live.
+ */
+export const UpdateMotionRequestSchema = z
+  .object({
+    outcome: CorrectionMotionOutcomeSchema.nullish().transform((v) => v ?? null),
+    outcomeOn: isoDate.nullish().transform((v) => v ?? null),
+    correctedValue: z.number().nonnegative().nullish().transform((v) => v ?? null),
+    orderReference: optionalText(120),
+    undisputedTaxPaidOn: isoDate.nullish().transform((v) => v ?? null),
+    hearingScheduledFor: isoDate.nullish().transform((v) => v ?? null),
+    hearingNoticedOn: isoDate.nullish().transform((v) => v ?? null),
+    note: optionalText(1000),
+  })
+  .refine((body) => body.outcome === null || body.outcomeOn !== null, {
+    path: ['outcomeOn'],
+    message:
+      'Say when it ended. 25.25(g) counts sixty days from a determination, and the count needs a day.',
+  })
+  .refine((body) => body.outcome !== 'withdrawn' || body.correctedValue === null, {
+    path: ['correctedValue'],
+    message:
+      'A withdrawn motion changed nothing on the roll. Leave the corrected value empty — recording ' +
+      'one would say the year moved when it did not.',
+  })
+  .refine((body) => body.outcome !== 'forfeited' || body.correctedValue === null, {
+    path: ['correctedValue'],
+    message:
+      'A forfeiture under 25.26 determines nothing about value. Leave the corrected value empty: ' +
+      'the roll is where it was, and (c-1) is gone anyway.',
+  });
+
+export type UpdateMotionRequest = z.infer<typeof UpdateMotionRequestSchema>;
+
+/** Take back a motion recorded in error. The reason is the whole of it. */
+export const VoidMotionRequestSchema = z.object({
+  reason: z.string().trim().min(1, 'Say why this motion is being taken back.').max(1000),
+});
+
+export type VoidMotionRequest = z.infer<typeof VoidMotionRequestSchema>;
 
 /**
  * Where one of an engagement's returns stands.

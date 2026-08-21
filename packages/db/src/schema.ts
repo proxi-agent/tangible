@@ -1242,6 +1242,102 @@ export const protestResolutions = pgTable(
 ).enableRLS();
 
 /**
+ * A motion filed under 25.25 to correct an appraisal roll after the fact.
+ *
+ * The open-years board asks whether a year can still be reopened. This is the
+ * record of having tried, and it is what makes 25.25(c-1)(3) answerable: a
+ * previous motion under the *section* that was agreed to, determined, or
+ * forfeited closes (c-1) for that property and year. Without this table the bar
+ * was permanently false and the board was telling firms a route was open that
+ * their own earlier filing had shut.
+ *
+ * Kept on the (account, year) grain the board uses. The years worth a motion
+ * are mostly years the firm was not engaged for, and their only paper names an
+ * account — so `location_id` is set where the site is known and left null
+ * rather than guessed at, which is the opposite of the notice table's rule and
+ * deliberate for that reason.
+ *
+ * Append-only. Recording an outcome inserts a new row carrying the same facts
+ * plus the ending and supersedes the earlier one; a motion recorded in error is
+ * voided with a reason. What we believed about a live motion in March is worth
+ * as much as how it ended.
+ */
+export const correctionMotions = pgTable(
+  'correction_motions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** The engagement the work was done under, which is not the year at issue. */
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** Null where the account has not been matched to a site. */
+    locationId: uuid('location_id').references(() => clientLocations.id, { onDelete: 'restrict' }),
+    locationLabel: text('location_label'),
+    accountId: text('account_id'),
+    districtName: text('district_name'),
+
+    /** The year being corrected. Almost never the engagement's year. */
+    subjectTaxYear: integer('subject_tax_year').notNull(),
+    /** 'c' | 'c-1' | 'd' — which subsection it was brought under. */
+    route: text('route').notNull(),
+
+    /** 'recorded' | 'superseded' | 'void'. */
+    status: text('status').notNull().default('recorded'),
+
+    /** The day the motion went to the district. */
+    filedOn: date('filed_on').notNull(),
+    /** What the roll said when it went in, copied so the two cannot drift. */
+    rolledValue: doublePrecision('rolled_value'),
+    /** What the motion says the value should be. 25.25(d)'s threshold rides on it. */
+    claimedValue: doublePrecision('claimed_value'),
+    /** What the motion says is wrong, in the firm's own words. */
+    groundsNote: text('grounds_note'),
+
+    /**
+     * The day the taxes on the undisputed portion were paid.
+     *
+     * 25.26(b) makes that payment before the delinquency date the condition of
+     * a final determination, and 25.26(a) says filing the motion does not move
+     * that date. Null means we have not asked, which on a live motion is the
+     * thing to go and do — not that it went unpaid.
+     */
+    undisputedTaxPaidOn: date('undisputed_tax_paid_on'),
+
+    /** The hearing the board set, and when it gave the 25.25(e) written notice. */
+    hearingScheduledFor: date('hearing_scheduled_for'),
+    hearingNoticedOn: date('hearing_noticed_on'),
+
+    /**
+     * 'agreed' | 'determined' | 'forfeited' | 'withdrawn', or null while pending.
+     *
+     * Three of the four close (c-1) under (c-1)(3). Withdrawal is the one that
+     * is not on the list, which is the difference between pulling a motion back
+     * and losing one — and a forfeiture is on it despite determining nothing
+     * about value, which makes it the worst ending available.
+     */
+    outcome: text('outcome'),
+    outcomeOn: date('outcome_on'),
+    /** The value the roll was changed to, where it was changed. */
+    correctedValue: doublePrecision('corrected_value'),
+    /** The board's order number, which a 25.25(g) suit is filed against. */
+    orderReference: text('order_reference'),
+
+    note: text('note'),
+
+    recordedBy: text('recorded_by'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    voidedBy: text('voided_by'),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidReason: text('void_reason'),
+  },
+  (table) => [
+    index('correction_motions_engagement_idx').on(table.engagementId, table.status),
+    /** The read that matters: has this account and year been moved on before. */
+    index('correction_motions_subject_idx').on(table.accountId, table.subjectTaxYear, table.status),
+  ],
+).enableRLS();
+
+/**
  * A committed finding set, and the findings in it.
  *
  * The reports themselves stay derived on read — see the header of
@@ -1532,6 +1628,8 @@ export type AssessmentNoticeRow = typeof assessmentNotices.$inferSelect;
 export type NewAssessmentNoticeRow = typeof assessmentNotices.$inferInsert;
 export type ProtestResolutionRow = typeof protestResolutions.$inferSelect;
 export type NewProtestResolutionRow = typeof protestResolutions.$inferInsert;
+export type CorrectionMotionRow = typeof correctionMotions.$inferSelect;
+export type NewCorrectionMotionRow = typeof correctionMotions.$inferInsert;
 export type FindingSetRow = typeof findingSets.$inferSelect;
 export type NewFindingSetRow = typeof findingSets.$inferInsert;
 export type FindingRow = typeof findings.$inferSelect;
