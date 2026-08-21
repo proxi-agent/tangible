@@ -1,6 +1,7 @@
 import 'server-only';
 import { operativeDeadline, statutoryDates } from '@tangible/filing';
 import type {
+  AssessmentNotice,
   FilingSeason,
   RenditionExtension,
   RenditionFiling,
@@ -8,6 +9,7 @@ import type {
 } from '@tangible/types';
 import { engagementExtensions } from '@/lib/extensions';
 import { blockingProblems, engagementFilings } from '@/lib/filings';
+import { engagementNotices } from '@/lib/notices';
 import { formInputs } from '@/lib/rendition';
 import { engagementReturns } from '@/lib/sites';
 import { fetchEngagement } from '@/lib/workspace';
@@ -43,10 +45,11 @@ const POSTURE = { basis: 'cost', filedByAgent: true } as const;
 
 export async function filingSeason(engagementId: string): Promise<FilingSeason> {
   const { engagement } = await fetchEngagement(engagementId);
-  const [filings, owed, extensions] = await Promise.all([
+  const [filings, owed, extensions, notices] = await Promise.all([
     engagementFilings(engagementId),
     engagementReturns(engagementId),
     engagementExtensions(engagementId),
+    engagementNotices(engagementId),
   ]);
   const statutory = statutoryDates(engagement.taxYear);
 
@@ -69,6 +72,16 @@ export async function filingSeason(engagementId: string): Promise<FilingSeason> 
   for (const filing of filings) {
     if (filing.status === 'filed' && filing.taxYear === engagement.taxYear) {
       standing.set(filing.locationId, filing);
+    }
+  }
+
+  // The notice that stands per site, on the same one-per-site-and-year rule.
+  // Only `active` rows: a superseded notice is a clock the district itself
+  // restarted, and a void one is a clock that never ran.
+  const noticed = new Map<string, AssessmentNotice>();
+  for (const notice of notices) {
+    if (notice.status === 'active' && notice.taxYear === engagement.taxYear) {
+      noticed.set(notice.locationId, notice);
     }
   }
 
@@ -100,6 +113,7 @@ export async function filingSeason(engagementId: string): Promise<FilingSeason> 
         blockers,
         warnings: rendition.blockers.filter((blocker) => blocker.severity === 'warning').length,
         filing,
+        notice: noticed.get(entry.locationId) ?? null,
         driftedBy: filing ? rendition.totalHistoricalCost - filing.totalHistoricalCost : null,
       };
     }),
@@ -110,7 +124,9 @@ export async function filingSeason(engagementId: string): Promise<FilingSeason> 
     dueOn: statutory.dueOn,
     extendedDueOn: statutory.extendedDueOn,
     daysToDue: daysUntil(statutory.dueOn),
-    returns: [...rows, ...filedButNoLongerOwed(rows, standing, deadlineFor)].sort(byWhatNeedsDoing),
+    returns: [...rows, ...filedButNoLongerOwed(rows, standing, noticed, deadlineFor)].sort(
+      byWhatNeedsDoing,
+    ),
     unplacedCount: owed.unplacedCount,
     unplacedCost: owed.unplacedCost,
   };
@@ -129,6 +145,7 @@ export async function filingSeason(engagementId: string): Promise<FilingSeason> 
 function filedButNoLongerOwed(
   rows: SeasonReturn[],
   standing: Map<string, RenditionFiling>,
+  noticed: Map<string, AssessmentNotice>,
   deadlineFor: (locationId: string) => { dueOn: string; extension: RenditionExtension | null },
 ): SeasonReturn[] {
   const covered = new Set(rows.map((row) => row.locationId));
@@ -153,6 +170,10 @@ function filedButNoLongerOwed(
         blockers: [],
         warnings: 0,
         filing,
+        // Carried here too. A site whose property has all gone still received
+        // a notice for the year it was rendered, and the protest window on it
+        // runs on regardless of what the register now holds.
+        notice: noticed.get(filing.locationId) ?? null,
         driftedBy: -filing.totalHistoricalCost,
       };
     });

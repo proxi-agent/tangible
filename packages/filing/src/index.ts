@@ -1,5 +1,5 @@
 export { buildRendition, type RenditionAsset, type RenditionInput } from './rendition.js';
-export { deadlinesFor } from './deadlines.js';
+export { deadlinesFor, observedDate } from './deadlines.js';
 export { APPRAISAL_DISTRICTS, appraisalDistrictName } from './districts.js';
 export {
   appointmentFor,
@@ -60,6 +60,7 @@ export {
   type AppointmentProperty,
   type AppointmentTerms,
 } from './fill-50-162.js';
+export { checkNotice, protestStanding, type FiledReturnFacts } from './protest.js';
 export {
   describePositions,
   planPositions,

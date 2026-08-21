@@ -1,14 +1,20 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { CalendarClock, FileText, MapPinOff } from 'lucide-react';
+import { CalendarClock, FileText, Gavel, MapPinOff } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { appraisalDistrictName } from '@tangible/filing/districts';
-import type { FilingSeason, RenditionExtension, SeasonReturn } from '@tangible/types';
+import type {
+  AssessmentNotice,
+  FilingSeason,
+  RenditionExtension,
+  SeasonReturn,
+} from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
 import { ExtensionPanel } from '@/components/workspace/extension-panel';
+import { NoticePanel } from '@/components/workspace/notice-panel';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { Tooltip } from '@/components/ui/tooltip';
 
@@ -197,7 +203,10 @@ function ReturnRow({
   extensions: RenditionExtension[];
 }) {
   const site = `${draft}?site=${encodeURIComponent(entry.locationId)}`;
-  const [open, setOpen] = useState(false);
+  // One panel at a time rather than two booleans. A row is a return, and the
+  // two things there are to say about it — what we asked the district for, and
+  // what it said back — are read one after the other, not side by side.
+  const [panel, setPanel] = useState<'extension' | 'notice' | null>(null);
 
   return (
     <li className="px-5 py-3">
@@ -212,7 +221,11 @@ function ReturnRow({
           )}
         </span>
         <District jurisdictionId={entry.jurisdictionId} />
-        {entry.status === 'filed' ? null : <Due entry={entry} statutory={season.dueOn} />}
+        {entry.status === 'filed' ? (
+          <Protest entry={entry} taxYear={season.taxYear} />
+        ) : (
+          <Due entry={entry} statutory={season.dueOn} />
+        )}
         {/* `ml-auto` belongs on the tooltip rather than the span inside it: the
             wrapper is the flex item, and a margin on the child pushes nothing. */}
         <Tooltip
@@ -244,24 +257,40 @@ function ReturnRow({
           </Link>
         )}
       </div>
-      <Detail entry={entry} />
-      {/* Offered on a filed row only where something is already on file. The
-          request that carried a return past April is part of its story; a form
-          for asking is not, once the thing has gone out. */}
-      {entry.status !== 'filed' || extensions.length > 0 ? (
-        <button
-          type="button"
-          onClick={() => setOpen((was) => !was)}
-          className="mt-1.5 cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline"
-        >
-          {open
-            ? 'Hide the extension record'
-            : extensions.length > 0
-              ? `The extension record · ${count(extensions.length)} on file`
-              : 'Ask for an extension'}
-        </button>
-      ) : null}
-      {open ? (
+      <Detail entry={entry} noticeOpen={panel === 'notice'} />
+      <div className="mt-1.5 flex flex-wrap items-center gap-x-4">
+        {/* Offered on a filed row only where something is already on file. The
+            request that carried a return past April is part of its story; a form
+            for asking is not, once the thing has gone out. */}
+        {entry.status !== 'filed' || extensions.length > 0 ? (
+          <Toggle
+            open={panel === 'extension'}
+            onClick={() => setPanel((was) => (was === 'extension' ? null : 'extension'))}
+          >
+            {panel === 'extension'
+              ? 'Hide the extension record'
+              : extensions.length > 0
+                ? `The extension record · ${count(extensions.length)} on file`
+                : 'Ask for an extension'}
+          </Toggle>
+        ) : null}
+        {/* Only once a return has gone out. A notice answers a rendition, and
+            offering to record one against a return still sitting in the drafts
+            is offering to record somebody else's mail. */}
+        {entry.status === 'filed' ? (
+          <Toggle
+            open={panel === 'notice'}
+            onClick={() => setPanel((was) => (was === 'notice' ? null : 'notice'))}
+          >
+            {panel === 'notice'
+              ? 'Hide the district’s answer'
+              : entry.notice
+                ? 'The district’s answer'
+                : 'Record the notice'}
+          </Toggle>
+        ) : null}
+      </div>
+      {panel === 'extension' ? (
         <ExtensionPanel
           engagementId={engagementId}
           locationId={entry.locationId}
@@ -271,8 +300,134 @@ function ReturnRow({
           extensions={extensions}
         />
       ) : null}
+      {panel === 'notice' ? (
+        <NoticePanel
+          engagementId={engagementId}
+          locationId={entry.locationId}
+          label={entry.label}
+          taxYear={season.taxYear}
+          notice={entry.notice}
+        />
+      ) : null}
     </li>
   );
+}
+
+function Toggle({
+  open,
+  onClick,
+  children,
+}: {
+  open: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-expanded={open}
+      className="cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline"
+    >
+      {children}
+    </button>
+  );
+}
+
+/**
+ * Where a filed return stands with the district.
+ *
+ * This is the half of the season the board used to stop short of. A return
+ * going out is not the end of the exposure — it is the point at which the
+ * district gets to answer, and 41.44 gives the later of May 15 and thirty days
+ * from delivery to disagree with the answer. After that the value stands for
+ * the year, and nothing in the software or the statute reopens it.
+ *
+ * A filed row with no notice says so only once notices are actually late: under
+ * 25.19 the chief appraiser has until May 1 for personal property, so before
+ * then "no notice" is the expected state and printing it would be an alarm
+ * about the calendar working correctly.
+ */
+function Protest({ entry, taxYear }: { entry: SeasonReturn; taxYear: number }) {
+  if (entry.notice === null) {
+    const noticesDue = `${taxYear}-05-01`;
+    if (today() <= noticesDue) return null;
+    return (
+      <Tooltip
+        title="No notice recorded"
+        content={`Under 25.19 the district delivers a notice of appraised value for personal property by ${day(noticesDue)}. Either one has not come — worth a call, because the protest window runs from delivery whether or not anybody opened the envelope — or one came and is not recorded here.`}
+      >
+        <span className="text-xs text-[var(--color-warning)]">no notice recorded</span>
+      </Tooltip>
+    );
+  }
+
+  const { protest } = entry.notice;
+  // Whichever clock runs out first. The waiver has no May 15 under it and so
+  // usually closes weeks before the protest window does — counting down to the
+  // protest date while the penalty waiver quietly expires is the exact failure
+  // this row exists to prevent.
+  const soonest =
+    protest.waiverDeadline &&
+    entry.notice.protestFiledOn === null &&
+    protest.waiverDeadline < protest.deadline
+      ? { date: protest.waiverDeadline, what: 'waiver' as const }
+      : { date: protest.deadline, what: 'protest' as const };
+  const left = daysUntil(soonest.date);
+
+  if (entry.notice.protestFiledOn !== null) {
+    return (
+      <Tooltip title="Protested" content={protest.standing}>
+        <span className="inline-flex items-center gap-1 text-xs text-[var(--color-good)]">
+          <Gavel size={11} strokeWidth={2} />
+          protested {dayShort(entry.notice.protestFiledOn)}
+        </span>
+      </Tooltip>
+    );
+  }
+
+  const colour = !protest.open
+    ? 'text-[var(--color-ink-muted)]'
+    : left <= 14
+      ? 'text-[var(--color-warning)]'
+      : 'text-[var(--color-ink-secondary)]';
+
+  return (
+    <Tooltip
+      title={protest.open ? 'The protest window' : 'The protest window has closed'}
+      content={
+        protest.standing +
+        (protest.waiverDeadline && soonest.what === 'waiver'
+          ? ` The 22.30(b) penalty waiver has to be asked for by ${day(protest.waiverDeadline)}, which comes first.`
+          : '')
+      }
+    >
+      <span className={`tabular inline-flex items-center gap-1 text-xs ${colour}`}>
+        <Gavel size={11} strokeWidth={2} />
+        {soonest.what === 'waiver' ? 'waiver by ' : 'protest by '}
+        {dayShort(soonest.date)}
+        {protest.open ? ` · ${countdown(left)}` : ' · closed'}
+      </span>
+    </Tooltip>
+  );
+}
+
+/** Today in UTC, to compare against dates that are dates rather than instants. */
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * Whole days from today to an ISO date, in UTC on both sides.
+ *
+ * The same rule the season uses on the server. A statutory date is a date, not
+ * an instant, and subtracting a local midnight from a UTC one is how a deadline
+ * reads as a day nearer or further depending on the reader's timezone.
+ */
+function daysUntil(iso: string): number {
+  const now = new Date();
+  const from = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.round((Date.parse(`${iso}T00:00:00Z`) - from) / 86_400_000);
 }
 
 /**
@@ -323,7 +478,7 @@ function countdown(days: number): string {
  * count is what the draft screen already shows and it tells nobody whether the
  * thing to do is five minutes' typing or a call to the client.
  */
-function Detail({ entry }: { entry: SeasonReturn }) {
+function Detail({ entry, noticeOpen }: { entry: SeasonReturn; noticeOpen: boolean }) {
   if (entry.status === 'blocked') {
     const rest = entry.blockers.length - 1;
     return (
@@ -381,7 +536,32 @@ function Detail({ entry }: { entry: SeasonReturn }) {
           </span>
         </>
       ) : null}
+      {noticeOpen ? null : <Contradiction notice={entry.notice} />}
     </p>
+  );
+}
+
+/**
+ * A notice that contradicts our own filing record, said out loud on the row.
+ *
+ * Only the critical one, and only on the row rather than behind the panel
+ * toggle. A district applying the 22.28 penalty to a return we can prove was
+ * postmarked in time is both an error to correct and the likeliest explanation
+ * for a value that ignores what we rendered — and it comes with 22.30(b)'s
+ * thirty days attached, which is not enough time to find it by opening panels.
+ *
+ * It stands down once the panel is open, where the same sentence sits three
+ * lines below in the check list. Saying it twice in one screen reads as two
+ * problems until somebody reads both.
+ */
+function Contradiction({ notice }: { notice: AssessmentNotice | null }) {
+  const critical = notice?.checks.find((check) => check.severity === 'critical');
+  if (!critical) return null;
+  return (
+    <>
+      <br />
+      <span className="text-[var(--color-critical)]">{critical.message}</span>
+    </>
   );
 }
 

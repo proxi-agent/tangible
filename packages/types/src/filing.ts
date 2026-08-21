@@ -517,6 +517,193 @@ export const AnswerExtensionRequestSchema = z.object({
 
 export type AnswerExtensionRequest = z.infer<typeof AnswerExtensionRequestSchema>;
 
+// ---------------------------------------------------------------------------
+// The district's answer
+// ---------------------------------------------------------------------------
+
+export const NOTICE_STATUSES = [
+  /** The notice we are working to for this site and year. */
+  'active',
+  /** Replaced by a later notice for the same site and year — a corrected one. */
+  'superseded',
+  /** Recorded in error. Kept, for the same reason a void filing is kept. */
+  'void',
+] as const;
+
+export const NoticeStatusSchema = z.enum(NOTICE_STATUSES);
+export type NoticeStatus = (typeof NOTICE_STATUSES)[number];
+
+/**
+ * The dates and flags a protest window is decided from.
+ *
+ * Split out from the row so the rules in `@tangible/filing` can be given
+ * exactly what they read and nothing else — which is what makes them testable
+ * against a date rather than against a database.
+ */
+export const AssessmentNoticeFactsSchema = z.object({
+  taxYear: z.number().int(),
+  status: NoticeStatusSchema,
+  /** ISO date printed on the notice. Under 1.07 this is presumed to be delivery. */
+  noticedOn: z.string(),
+  /** ISO date it actually arrived, where somebody recorded it. The better fact. */
+  deliveredOn: z.string().nullable(),
+  /** The protest deadline the notice itself prints, where it prints one. */
+  printedDeadline: z.string().nullable(),
+  /** Set where the notice says the 22.28 rendition penalty was applied. */
+  renditionPenaltyApplied: z.boolean().nullable(),
+  /** ISO date a protest went in, which closes the window whatever the date said. */
+  protestFiledOn: z.string().nullable(),
+});
+
+export type AssessmentNoticeFacts = z.infer<typeof AssessmentNoticeFactsSchema>;
+
+/**
+ * When the protest window closes, and what that is worth saying about.
+ *
+ * Three dates rather than one, because they disagree and the disagreement is
+ * the useful part. A district that prints a flat May 15 on a notice mailed on
+ * April 28 has given a shorter window than 41.44 requires; a printed date later
+ * than the statute allows usually means our delivery date is wrong. Either way
+ * `deadline` is the shorter of the two — a tool whose job is not missing
+ * deadlines does not get to pick the generous reading.
+ */
+export const ProtestStandingSchema = z.object({
+  /** The day to work to. The shorter of what the statute gives and what was printed. */
+  deadline: z.string(),
+  /** 41.44's own answer: the later of May 15 and thirty days from delivery. */
+  statutoryDeadline: z.string(),
+  /** What the notice printed, where it printed anything. */
+  printedDeadline: z.string().nullable(),
+  /**
+   * 22.30(b)'s thirty days to ask for the rendition penalty to be waived.
+   *
+   * Null unless a penalty was applied. Separate from the protest deadline
+   * because it has no May 15 floor under it and so routinely closes first —
+   * which is how a firm protests a value in time and loses the penalty anyway.
+   */
+  waiverDeadline: z.string().nullable(),
+  /** Whether there is still time to protest. False once protested, too. */
+  open: z.boolean(),
+  /** Which date applies and why, in prose somebody can act on. */
+  standing: z.string(),
+});
+
+export type ProtestStanding = z.infer<typeof ProtestStandingSchema>;
+
+/** Something the notice says that is worth reading against what we filed. */
+export const NoticeCheckSchema = z.object({
+  key: z.string(),
+  severity: z.enum(['critical', 'warning', 'note']),
+  message: z.string(),
+});
+
+export type NoticeCheck = z.infer<typeof NoticeCheckSchema>;
+
+/**
+ * A notice of appraised value, as it arrived.
+ *
+ * The season did not end when the return went out. Under 25.19 the chief
+ * appraiser delivers this by May 1 for personal property, and it is the first
+ * time anybody finds out whether the filing worked. Everything expensive about
+ * a BPP engagement happens in the four weeks after it: 41.44 gives the later of
+ * May 15 and thirty days to protest, and a value nobody protested is the value
+ * the client pays on for the year.
+ *
+ * Recorded per site and year for the same reason a filing is — the notice comes
+ * addressed to an account, and an account belongs to a site. Recording a
+ * corrected notice supersedes the earlier one rather than editing it.
+ */
+export const AssessmentNoticeSchema = AssessmentNoticeFactsSchema.extend({
+  id: z.string(),
+  engagementId: z.string(),
+  locationId: z.string(),
+  /** The label and account as they read when the notice was recorded. */
+  locationLabel: z.string(),
+  accountId: z.string().nullable(),
+  /** The district as the notice names itself, where that was typed in. */
+  districtName: z.string().nullable(),
+
+  /** What the district concluded. Null where the notice does not print it. */
+  appraisedValue: z.number().nullable(),
+  assessedValue: z.number().nullable(),
+  /** The prior year figure most notices print alongside. */
+  priorYearValue: z.number().nullable(),
+
+  note: z.string().nullable(),
+  protestNote: z.string().nullable(),
+
+  recordedBy: z.string().nullable(),
+  recordedAt: z.string(),
+  voidedBy: z.string().nullable(),
+  voidedAt: z.string().nullable(),
+  voidReason: z.string().nullable(),
+
+  /** Derived on read: which clock applies, and what to do about it. */
+  protest: ProtestStandingSchema,
+  /** Derived on read: what this notice says against what we filed. */
+  checks: z.array(NoticeCheckSchema),
+});
+
+export type AssessmentNotice = z.infer<typeof AssessmentNoticeSchema>;
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a YYYY-MM-DD date.');
+const optionalIsoDate = isoDate.nullish().transform((v) => v ?? null);
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullish()
+    .transform((v) => (v ? v : null));
+
+/**
+ * Record a notice that arrived.
+ *
+ * Every figure is optional and the date on the notice is not, because the date
+ * is what starts the clock and the figures are what a protest would be about.
+ * A notice typed in from the envelope on the day it lands — date only — is
+ * worth more than one recorded in full a week after the window closed.
+ */
+export const RecordNoticeRequestSchema = z.object({
+  locationId: z.string(),
+  noticedOn: isoDate,
+  deliveredOn: optionalIsoDate,
+  printedDeadline: optionalIsoDate,
+  districtName: optionalText(160),
+  appraisedValue: z.number().nonnegative().nullish().transform((v) => v ?? null),
+  assessedValue: z.number().nonnegative().nullish().transform((v) => v ?? null),
+  priorYearValue: z.number().nonnegative().nullish().transform((v) => v ?? null),
+  renditionPenaltyApplied: z.boolean().nullish().transform((v) => v ?? null),
+  note: optionalText(1000),
+});
+
+export type RecordNoticeRequest = z.infer<typeof RecordNoticeRequestSchema>;
+
+/**
+ * Write down that a protest went in, or take back a row recorded in error.
+ *
+ * Kept apart the way an extension's denial is kept apart from its void: "we
+ * protested this value" and "this notice was never ours" are different facts,
+ * and only the first one closes a window.
+ */
+export const UpdateNoticeRequestSchema = z
+  .object({
+    outcome: z.enum(['protested', 'void']),
+    /** ISO date the protest was filed. Not required to void — that is our own act. */
+    protestFiledOn: optionalIsoDate,
+    note: optionalText(1000),
+  })
+  .refine((body) => body.outcome !== 'protested' || body.protestFiledOn !== null, {
+    path: ['protestFiledOn'],
+    message: 'Say which day the protest went in — 41.44 makes the date the condition of a hearing.',
+  })
+  .refine((body) => body.outcome !== 'void' || body.note !== null, {
+    path: ['note'],
+    message: 'Say why this notice is being taken back.',
+  });
+
+export type UpdateNoticeRequest = z.infer<typeof UpdateNoticeRequestSchema>;
+
 /**
  * Where one of an engagement's returns stands.
  *
@@ -575,6 +762,21 @@ export const SeasonReturnSchema = z.object({
 
   /** The return that stands for this site and year, where one went out. */
   filing: RenditionFilingSchema.nullable(),
+  /**
+   * The district's answer, where it has arrived.
+   *
+   * On the board rather than on a screen of its own because the board is the
+   * only place that already knows what went out for this site — and the two
+   * facts are only worth anything together. A notice on its own is a number in
+   * the post; a notice beside the return it answers is either a value that
+   * matches the district's own schedule or a protest with an argument in it.
+   *
+   * Null covers two different things and the board says which: no notice has
+   * come yet, or one came and nobody recorded it. Under 25.19 personal-property
+   * notices go out by May 1, so after that date the second reading gets likelier
+   * every week.
+   */
+  notice: AssessmentNoticeSchema.nullable(),
   /**
    * What the register has done since this was filed, as a difference in cost.
    *

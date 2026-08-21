@@ -1044,6 +1044,104 @@ export const renditionExtensions = pgTable(
 ).enableRLS();
 
 /**
+ * A notice of appraised value, as it arrived.
+ *
+ * The season did not end when the return went out. Under 25.19 the chief
+ * appraiser delivers this by May 1 for personal property, and it is the first
+ * time anybody learns whether the filing worked — and the last chance to do
+ * anything about it. A late rendition costs 10% of the taxes on the property
+ * (22.28). A value nobody protested costs the whole difference between what the
+ * district decided and what the property is worth, for the year.
+ *
+ * Per site and year, like the filing and the extension, because the notice
+ * comes addressed to an account and an account belongs to a site. The same
+ * discipline holds: a corrected notice is a second row and the first becomes
+ * `superseded`, a mistake is a void, and nothing is edited in place except the
+ * one fact that is genuinely ours to add later — the day we protested.
+ *
+ * Deliberately not `prior_documents`, which also holds notices. That table is a
+ * *file*: it requires a storage path, a filename and a byte count, and its
+ * lifecycle is extraction and review of a prior year's paper. This one is a
+ * record of what a district concluded about a return we filed, typed off the
+ * envelope on the day it lands, usually before anybody has scanned anything.
+ */
+export const assessmentNotices = pgTable(
+  'assessment_notices',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** Restricted for the same reason the filing's is: closing a site un-notices nothing. */
+    locationId: uuid('location_id')
+      .notNull()
+      .references(() => clientLocations.id, { onDelete: 'restrict' }),
+    locationLabel: text('location_label').notNull(),
+    accountId: text('account_id'),
+    taxYear: integer('tax_year').notNull(),
+    /** The district as the notice names itself, where somebody typed it in. */
+    districtName: text('district_name'),
+
+    /** 'active' | 'superseded' | 'void'. */
+    status: text('status').notNull().default('active'),
+
+    /**
+     * The date printed on the notice, as a plain date.
+     *
+     * This is the clock. 41.44 counts thirty days from delivery, and 1.07
+     * presumes delivery on the day the notice went in the mail — so this date
+     * is usually the day the window opened. A timestamp would let a notice
+     * dated May 1 record itself as April 30 in another zone, which at the far
+     * end of thirty days is a day of protest window.
+     */
+    noticedOn: date('noticed_on').notNull(),
+    /** When it actually arrived, where that is known and differs from the above. */
+    deliveredOn: date('delivered_on'),
+    /**
+     * The protest deadline the notice itself prints.
+     *
+     * Stored rather than computed because it is the district's own statement
+     * and it is what the counter will enforce. Where it disagrees with 41.44 —
+     * commonly a flat May 15 on a notice mailed in late April — the
+     * disagreement is the finding, and it cannot be one if only our answer
+     * survives.
+     */
+    printedDeadline: date('printed_deadline'),
+
+    /** What the district concluded. Null where the notice does not print it. */
+    appraisedValue: doublePrecision('appraised_value'),
+    assessedValue: doublePrecision('assessed_value'),
+    priorYearValue: doublePrecision('prior_year_value'),
+    /**
+     * Set where the notice says the 22.28 rendition penalty was applied.
+     *
+     * Worth a column of its own rather than a line in the note, because it
+     * starts a second and shorter clock: 22.30(b) gives thirty days from this
+     * notice to ask for a waiver, with no May 15 floor under it. A firm can
+     * protest the value in time and lose the penalty anyway.
+     */
+    renditionPenaltyApplied: boolean('rendition_penalty_applied'),
+
+    note: text('note'),
+
+    /** The day a protest went in, which closes the window whatever the date said. */
+    protestFiledOn: date('protest_filed_on'),
+    protestNote: text('protest_note'),
+
+    recordedBy: text('recorded_by'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    voidedBy: text('voided_by'),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidReason: text('void_reason'),
+  },
+  (table) => [
+    index('assessment_notices_engagement_idx').on(table.engagementId, table.status),
+    /** Which value this site is living with this year, and how long there is to argue. */
+    index('assessment_notices_site_year_idx').on(table.locationId, table.taxYear, table.status),
+  ],
+).enableRLS();
+
+/**
  * A committed finding set, and the findings in it.
  *
  * The reports themselves stay derived on read — see the header of
@@ -1330,6 +1428,8 @@ export type RenditionFilingRow = typeof renditionFilings.$inferSelect;
 export type NewRenditionFilingRow = typeof renditionFilings.$inferInsert;
 export type RenditionExtensionRow = typeof renditionExtensions.$inferSelect;
 export type NewRenditionExtensionRow = typeof renditionExtensions.$inferInsert;
+export type AssessmentNoticeRow = typeof assessmentNotices.$inferSelect;
+export type NewAssessmentNoticeRow = typeof assessmentNotices.$inferInsert;
 export type FindingSetRow = typeof findingSets.$inferSelect;
 export type NewFindingSetRow = typeof findingSets.$inferInsert;
 export type FindingRow = typeof findings.$inferSelect;

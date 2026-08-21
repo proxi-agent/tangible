@@ -1,0 +1,494 @@
+'use client';
+
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
+import type { AssessmentNotice, NoticeCheck } from '@tangible/types';
+import { api } from '@/lib/api';
+import { day, dayShort, moneyExact } from '@/lib/format';
+import { Button, Field, TextArea, TextInput } from '@/components/ui/controls';
+import { Badge } from '@/components/ui/primitives';
+
+/**
+ * What the district concluded about one return, and how long there is to argue.
+ *
+ * The season used to end at "filed". It does not: under 25.19 the chief
+ * appraiser delivers a notice of appraised value for personal property by
+ * May 1, and that piece of mail is both the first news of whether the filing
+ * worked and the last chance to do anything about it. A rendition filed late
+ * costs 10% of the taxes on the property (22.28). A value nobody protested
+ * costs the difference between what the district decided and what the property
+ * is worth, for the whole year.
+ *
+ * Three clocks come off the one envelope and they are not the same clock —
+ * 41.44's protest window, 22.30(b)'s thirty days to ask for a rendition penalty
+ * to be waived, and whatever date the district printed. The panel shows all
+ * three where they differ, because the difference is the finding.
+ */
+export function NoticePanel({
+  engagementId,
+  locationId,
+  label,
+  taxYear,
+  notice,
+}: {
+  engagementId: string;
+  locationId: string;
+  label: string;
+  taxYear: number;
+  notice: AssessmentNotice | null;
+}) {
+  return (
+    <div className="mt-2.5 space-y-3 rounded-lg border border-[var(--color-hairline)] bg-[var(--color-plane)] p-3">
+      {notice ? (
+        <Recorded notice={notice} engagementId={engagementId} />
+      ) : (
+        <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+          Nothing recorded for {label}. Under 25.19 the district delivers a notice of appraised
+          value for personal property by May 1. Record it the day it lands, even if only the date —
+          41.44 runs the protest window to the later of {dayShort(`${taxYear}-05-15`)} and thirty
+          days from delivery, and the date is what starts it.
+        </p>
+      )}
+      <RecordForm engagementId={engagementId} locationId={locationId} taxYear={taxYear} />
+    </div>
+  );
+}
+
+const CHECK_TONE = { critical: 'critical', warning: 'warning', note: 'neutral' } as const;
+
+/**
+ * One notice on file.
+ *
+ * The standing sentence sits above the figures rather than under them because
+ * the deadline is the thing to act on and the value is only the reason. A
+ * notice whose window closed last week is a row somebody needs to see closed,
+ * not a set of numbers to read.
+ */
+function Recorded({ notice, engagementId }: { notice: AssessmentNotice; engagementId: string }) {
+  const { protest } = notice;
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-baseline gap-x-2.5 gap-y-1 text-xs">
+        <Badge
+          tone={
+            notice.status !== 'active'
+              ? 'neutral'
+              : notice.protestFiledOn
+                ? 'good'
+                : protest.open
+                  ? 'accent'
+                  : 'critical'
+          }
+        >
+          {notice.status !== 'active'
+            ? notice.status
+            : notice.protestFiledOn
+              ? 'protested'
+              : protest.open
+                ? 'open'
+                : 'closed'}
+        </Badge>
+        <span className="font-medium">Noticed {dayShort(notice.noticedOn)}</span>
+        {notice.deliveredOn ? (
+          <span className="text-[var(--color-ink-secondary)]">
+            arrived {dayShort(notice.deliveredOn)}
+          </span>
+        ) : null}
+        {notice.districtName ? (
+          <span className="text-[var(--color-ink-secondary)]">{notice.districtName}</span>
+        ) : null}
+        <span
+          className={
+            protest.open
+              ? 'tabular ml-auto font-medium text-[var(--color-good)]'
+              : 'tabular ml-auto text-[var(--color-ink-muted)] line-through'
+          }
+        >
+          protest by {dayShort(protest.deadline)}
+        </span>
+      </div>
+
+      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+        {protest.standing}
+        {notice.protestNote ? ` ${notice.protestNote}` : ''}
+        {notice.voidReason ? ` Voided: ${notice.voidReason}` : ''}
+      </p>
+
+      {/* The waiver clock, on its own line and only where it exists. It has no
+          May 15 under it, so it usually runs out first — and a firm that
+          protested the value in time and let this one pass has still lost 10%
+          of the taxes on the property. */}
+      {protest.waiverDeadline && !notice.protestFiledOn ? (
+        <p className="text-[11px] leading-relaxed text-[var(--color-warning)]">
+          The penalty waiver has to be asked for by {day(protest.waiverDeadline)} — thirty days
+          under 22.30(b), with no May 15 beneath it. That is{' '}
+          {protest.waiverDeadline < protest.deadline
+            ? 'earlier than the protest deadline above'
+            : protest.waiverDeadline === protest.deadline
+              ? 'the same day as the protest deadline'
+              : 'after the protest deadline above, so the protest is the one that closes first'}
+          .
+        </p>
+      ) : null}
+
+      <Values notice={notice} />
+      {notice.checks.length > 0 ? (
+        <ul className="space-y-1.5">
+          {notice.checks.map((check) => (
+            <Check key={check.key} check={check} />
+          ))}
+        </ul>
+      ) : null}
+      {notice.note ? (
+        <p className="text-[11px] text-[var(--color-ink-muted)]">{notice.note}</p>
+      ) : null}
+
+      {notice.status === 'active' && notice.protestFiledOn === null ? (
+        <Close notice={notice} engagementId={engagementId} />
+      ) : null}
+    </div>
+  );
+}
+
+/** What the notice printed. Blank where it printed nothing, never a zero. */
+function Values({ notice }: { notice: AssessmentNotice }) {
+  const figures = [
+    { label: 'appraised', value: notice.appraisedValue },
+    { label: 'assessed', value: notice.assessedValue },
+    { label: `prior year`, value: notice.priorYearValue },
+  ].filter((figure) => figure.value !== null);
+  if (figures.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
+      {figures.map((figure) => (
+        <span key={figure.label} className="text-[var(--color-ink-secondary)]">
+          {figure.label}{' '}
+          <span className="tabular font-medium text-[var(--color-ink)]">
+            {moneyExact(figure.value)}
+          </span>
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function Check({ check }: { check: NoticeCheck }) {
+  return (
+    <li className="flex gap-2 text-[11px] leading-relaxed">
+      <Badge tone={CHECK_TONE[check.severity]}>{check.severity}</Badge>
+      <span
+        className={
+          check.severity === 'note'
+            ? 'text-[var(--color-ink-secondary)]'
+            : 'text-[var(--color-ink)]'
+        }
+      >
+        {check.message}
+      </span>
+    </li>
+  );
+}
+
+/**
+ * Closing a notice out: we protested it, or it was never ours.
+ *
+ * Kept apart the way a denied extension is kept apart from a voided one. "We
+ * protested this value" and "this notice was recorded against the wrong site"
+ * are different facts, and only the first one is worth anything at a hearing.
+ */
+function Close({ notice, engagementId }: { notice: AssessmentNotice; engagementId: string }) {
+  const queryClient = useQueryClient();
+  const [outcome, setOutcome] = useState<'protested' | 'void' | null>(null);
+  const [filedOn, setFiledOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [note, setNote] = useState('');
+
+  const save = useMutation({
+    mutationFn: (chosen: 'protested' | 'void') =>
+      api.updateNotice(notice.id, {
+        outcome: chosen,
+        // Voiding is our own act on our own record, so it carries no date the
+        // district would recognise — the reason is the whole of it.
+        protestFiledOn: chosen === 'void' ? null : filedOn,
+        note: note.trim() || null,
+      }),
+    onSuccess: () => {
+      setOutcome(null);
+      setNote('');
+      void queryClient.invalidateQueries({ queryKey: ['engagement-notices', engagementId] });
+      void queryClient.invalidateQueries({ queryKey: ['engagement-season', engagementId] });
+    },
+  });
+
+  if (outcome === null) {
+    return (
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setOutcome('protested')}
+          className="cursor-pointer text-[11px] font-medium text-[var(--color-ink-secondary)] hover:underline"
+        >
+          We protested this
+        </button>
+        <button
+          type="button"
+          onClick={() => setOutcome('void')}
+          className="cursor-pointer text-[11px] text-[var(--color-ink-muted)] hover:text-[var(--color-critical)]"
+        >
+          Recorded in error
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-2 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-2.5">
+      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+        {outcome === 'void'
+          ? 'Voiding keeps the row and marks it as never having happened. Use it where the notice was recorded against the wrong site or the wrong year — not where the district was simply wrong about the value, which is what a protest is for.'
+          : '41.44 makes the filing date the condition of being entitled to a hearing at all, so this is the date the notice of protest went in — not the day of the hearing.'}
+      </p>
+      <div className="flex flex-wrap items-end gap-2">
+        {outcome === 'protested' ? (
+          <Field label="Protest filed">
+            <TextInput
+              type="date"
+              value={filedOn}
+              onChange={(event) => setFiledOn(event.target.value)}
+            />
+          </Field>
+        ) : null}
+        <TextInput
+          className="min-w-52 flex-1"
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder={
+            outcome === 'void'
+              ? 'Why — e.g. recorded against the wrong site'
+              : 'What was protested, and on what grounds'
+          }
+        />
+        <Button
+          variant={outcome === 'void' ? 'secondary' : 'primary'}
+          disabled={save.isPending || (outcome === 'void' && note.trim().length === 0)}
+          onClick={() => save.mutate(outcome)}
+        >
+          {save.isPending ? 'Saving…' : outcome === 'void' ? 'Void it' : 'Record the protest'}
+        </Button>
+        <Button variant="ghost" onClick={() => setOutcome(null)}>
+          Never mind
+        </Button>
+      </div>
+      {save.error ? (
+        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+          {save.error instanceof Error ? save.error.message : String(save.error)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Typing in what arrived.
+ *
+ * Only the date on the notice is required, and that is the point rather than a
+ * convenience: the date is what starts every clock here, and a notice recorded
+ * on the day it lands with nothing else on it is worth more than a complete one
+ * recorded after the window shut. The figures can be filled in later by
+ * recording a corrected notice.
+ */
+function RecordForm({
+  engagementId,
+  locationId,
+  taxYear,
+}: {
+  engagementId: string;
+  locationId: string;
+  taxYear: number;
+}) {
+  const queryClient = useQueryClient();
+  const [open, setOpen] = useState(false);
+  const [noticedOn, setNoticedOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [deliveredOn, setDeliveredOn] = useState('');
+  const [printedDeadline, setPrintedDeadline] = useState('');
+  const [appraised, setAppraised] = useState('');
+  const [assessed, setAssessed] = useState('');
+  const [priorYear, setPriorYear] = useState('');
+  const [penalty, setPenalty] = useState(false);
+  const [districtName, setDistrictName] = useState('');
+  const [note, setNote] = useState('');
+
+  const send = useMutation({
+    mutationFn: () =>
+      api.recordNotice(engagementId, {
+        locationId,
+        noticedOn,
+        deliveredOn: deliveredOn || null,
+        printedDeadline: printedDeadline || null,
+        districtName: districtName.trim() || null,
+        appraisedValue: amount(appraised),
+        assessedValue: amount(assessed),
+        priorYearValue: amount(priorYear),
+        // Sent as false rather than null once the form has been opened: "the
+        // notice does not say a penalty was applied" is a real answer, and it
+        // is the one that lets the checks below say the return was accepted.
+        renditionPenaltyApplied: penalty,
+        note: note.trim() || null,
+      }),
+    onSuccess: () => {
+      setOpen(false);
+      // Every field, not just the note. The form stays mounted behind the
+      // panel, so anything left in it is what the *next* notice gets filled
+      // with — and the next notice here is by definition a corrected one for
+      // the same site, where inheriting the superseded figures produces a
+      // record that looks typed off the envelope and is not.
+      setNoticedOn(new Date().toISOString().slice(0, 10));
+      setDeliveredOn('');
+      setPrintedDeadline('');
+      setAppraised('');
+      setAssessed('');
+      setPriorYear('');
+      setPenalty(false);
+      setDistrictName('');
+      setNote('');
+      void queryClient.invalidateQueries({ queryKey: ['engagement-notices', engagementId] });
+      void queryClient.invalidateQueries({ queryKey: ['engagement-season', engagementId] });
+    },
+  });
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline"
+      >
+        Record a notice
+      </button>
+    );
+  }
+
+  return (
+    <div className="space-y-2.5 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-3">
+      <div className="flex flex-wrap items-end gap-2.5">
+        <Field
+          label="Notice date"
+          help={`The date printed on it. Under 1.07 delivery is presumed on the day it went in the mail, so this is normally the day the ${taxYear} protest window opened.`}
+        >
+          <TextInput
+            type="date"
+            value={noticedOn}
+            onChange={(event) => setNoticedOn(event.target.value)}
+          />
+        </Field>
+        <Field
+          label="Arrived"
+          help="Only where it is known and differs from the notice date. 41.44 counts thirty days from delivery, and a notice that took a week to arrive is a week of window nobody should give away."
+        >
+          <TextInput
+            type="date"
+            value={deliveredOn}
+            onChange={(event) => setDeliveredOn(event.target.value)}
+          />
+        </Field>
+        <Field
+          label="Deadline printed"
+          help="Whatever protest date the notice itself prints. Where it disagrees with 41.44 — commonly a flat May 15 on a notice mailed in late April — the disagreement is worth catching, and it cannot be if only our answer is stored."
+        >
+          <TextInput
+            type="date"
+            value={printedDeadline}
+            onChange={(event) => setPrintedDeadline(event.target.value)}
+          />
+        </Field>
+      </div>
+
+      <div className="flex flex-wrap items-end gap-2.5">
+        <Field label="Appraised value">
+          <TextInput
+            inputMode="decimal"
+            className="w-32"
+            value={appraised}
+            onChange={(event) => setAppraised(event.target.value)}
+            placeholder="0"
+          />
+        </Field>
+        <Field label="Assessed value">
+          <TextInput
+            inputMode="decimal"
+            className="w-32"
+            value={assessed}
+            onChange={(event) => setAssessed(event.target.value)}
+            placeholder="0"
+          />
+        </Field>
+        <Field label="Prior year">
+          <TextInput
+            inputMode="decimal"
+            className="w-32"
+            value={priorYear}
+            onChange={(event) => setPriorYear(event.target.value)}
+            placeholder="0"
+          />
+        </Field>
+        <Field label="District as named">
+          <TextInput
+            className="w-56"
+            value={districtName}
+            onChange={(event) => setDistrictName(event.target.value)}
+            placeholder="Harris Central Appraisal District"
+          />
+        </Field>
+      </div>
+
+      <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+        <input
+          type="checkbox"
+          checked={penalty}
+          onChange={(event) => setPenalty(event.target.checked)}
+          className="mt-0.5 cursor-pointer"
+        />
+        <span>
+          The notice says a rendition penalty was applied. Ticking this starts a second and shorter
+          clock — 22.30(b) gives thirty days from this notice to ask for the 10% to be waived, with
+          no May 15 under it — and checks the claim against the postmark on our own filing record.
+        </span>
+      </label>
+
+      <TextArea
+        rows={2}
+        value={note}
+        onChange={(event) => setNote(event.target.value)}
+        placeholder="Anything else the notice says"
+      />
+
+      <div className="flex flex-wrap items-center gap-2">
+        <Button variant="primary" disabled={send.isPending} onClick={() => send.mutate()}>
+          {send.isPending ? 'Saving…' : 'Record it'}
+        </Button>
+        <Button variant="ghost" onClick={() => setOpen(false)}>
+          Never mind
+        </Button>
+      </div>
+      {send.error ? (
+        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+          {send.error instanceof Error ? send.error.message : String(send.error)}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * A typed figure, or null.
+ *
+ * Null rather than zero for anything unparseable, because a notice that prints
+ * no assessed value and one that assesses at nothing are different facts — and
+ * only the second is worth comparing against a schedule.
+ */
+function amount(input: string): number | null {
+  const cleaned = input.replace(/[$,\s]/g, '');
+  if (cleaned === '') return null;
+  const value = Number(cleaned);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}

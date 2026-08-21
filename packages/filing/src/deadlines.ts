@@ -17,6 +17,20 @@ import type { FilingDeadline } from '@tangible/types';
 /** Statutory dates land on the next business day when they fall on a weekend. */
 function observed(year: number, month: number, day: number): string {
   const date = new Date(Date.UTC(year, month - 1, day));
+  return observedDate(date.toISOString().slice(0, 10));
+}
+
+/**
+ * The same rule applied to a date already computed.
+ *
+ * Tax Code 1.06 is general — any act whose last day falls on a weekend is
+ * timely on the next business day — so it governs the dates this file lists
+ * *and* the ones counted off an event, like the thirty days a notice of
+ * appraised value starts running. Exported for the second kind; the calendar
+ * below uses the wrapper above.
+ */
+export function observedDate(iso: string): string {
+  const date = new Date(`${iso}T00:00:00Z`);
   const weekday = date.getUTCDay();
   if (weekday === 6) date.setUTCDate(date.getUTCDate() + 2);
   if (weekday === 0) date.setUTCDate(date.getUTCDate() + 1);

@@ -3,6 +3,7 @@ import type {
   AccountSeries,
   AgentAppointment,
   AnswerExtensionRequest,
+  AssessmentNotice,
   Asset,
   AssetQuery,
   ClassificationDecisionResult,
@@ -49,6 +50,7 @@ import type {
   RecordAppointmentRequest,
   RecordExtensionRequest,
   RecordFilingRequest,
+  RecordNoticeRequest,
   Rendition,
   RenditionBasis,
   RenditionExtension,
@@ -58,6 +60,7 @@ import type {
   SegmentDefinition,
   SortDirection,
   StartIngestRequest,
+  UpdateNoticeRequest,
   UpdateAppointmentRequest,
   UpdateClassificationRequest,
   UpdateClientRequest,
@@ -443,6 +446,30 @@ export const api = {
   /** What the district said back, or a row recorded in error. */
   answerExtension: (extensionId: string, body: AnswerExtensionRequest) =>
     request<RenditionExtension>(`/extensions/${extensionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  /** Every notice of appraised value recorded on this engagement, newest first. */
+  notices: (engagementId: string) =>
+    request<AssessmentNotice[]>(`/engagements/${engagementId}/notices`),
+
+  /**
+   * Record a notice that arrived.
+   *
+   * Only the date is required. What that date is worth — which of 41.44's two
+   * legs governs, whether 22.30's shorter clock is also running — is the
+   * server's answer off the statute, not a figure this screen works out.
+   */
+  recordNotice: (engagementId: string, body: RecordNoticeRequest) =>
+    request<AssessmentNotice>(`/engagements/${engagementId}/notices`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** That a protest went in, or that a notice was recorded in error. */
+  updateNotice: (noticeId: string, body: UpdateNoticeRequest) =>
+    request<AssessmentNotice>(`/notices/${noticeId}`, {
       method: 'PATCH',
       body: JSON.stringify(body),
     }),
