@@ -11,6 +11,7 @@ import type {
 } from '@tangible/types';
 import { appraise, type DepreciationSchedule, type LifeClass } from '@tangible/valuation';
 import { deadlinesFor } from './deadlines.js';
+import { appraisalDistrictName } from './districts.js';
 import {
   describePositions,
   planPositions,
@@ -484,14 +485,22 @@ function blockersFor(context: {
       key: 'no-jurisdiction',
       severity: 'blocking',
       message: 'No jurisdiction is set, so there is no district to file with.',
-      resolution: 'Set the situs jurisdiction on the engagement.',
+      // The site first, because that is where the answer belongs: property is
+      // taxed where it stood, and a client whose sites straddle a county line
+      // has two answers. The engagement's is the fallback for the ordinary
+      // client whose sites are all in one county, and saying only that would
+      // send the two-county case to the one field that cannot hold both.
+      resolution: 'Set the appraisal district on the site, or on the engagement to cover them all.',
     });
   }
   if (!context.hasSchedule && input.jurisdictionId) {
+    // By name where we know it. The id is a slug of ours and means nothing to
+    // the person deciding whether to chase a schedule for that district.
+    const district = appraisalDistrictName(input.jurisdictionId) ?? input.jurisdictionId;
     blockers.push({
       key: 'no-schedule',
       severity: 'warning',
-      message: `No published depreciation schedule is loaded for ${input.jurisdictionId}, so no values can be shown alongside cost.`,
+      message: `No published depreciation schedule is loaded for ${district}, so no values can be shown alongside cost.`,
       resolution:
         'Load the district’s schedule, or file on the cost basis, which does not need one.',
     });

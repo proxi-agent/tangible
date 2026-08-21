@@ -89,6 +89,7 @@ export async function filingSeason(engagementId: string): Promise<FilingSeason> 
         locationId: entry.locationId,
         label: entry.label,
         accountId: entry.accountId,
+        jurisdictionId: entry.jurisdictionId,
         status: filing ? 'filed' : blockers.length > 0 ? 'blocked' : 'ready',
         assetCount: entry.assetCount,
         registerCost: entry.totalCost,
@@ -139,6 +140,9 @@ function filedButNoLongerOwed(
         locationId: filing.locationId,
         label: filing.locationLabel,
         accountId: filing.accountId,
+        // Off the filing rather than the site: this row is a record of what
+        // went out, and it went to whichever district was named that day.
+        jurisdictionId: filing.jurisdictionId,
         status: 'filed' as const,
         assetCount: 0,
         registerCost: 0,

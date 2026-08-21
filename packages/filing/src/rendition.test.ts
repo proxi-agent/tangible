@@ -227,6 +227,21 @@ describe('what blocks a signature', () => {
     expect(blocker(empty, 'no-jurisdiction')?.severity).toBe('blocking');
     expect(blocker(empty, 'nothing-to-file')?.severity).toBe('blocking');
   });
+
+  it('names the unscheduled district the way the district does', () => {
+    // The slug is ours. The person deciding whether to chase a schedule knows
+    // the district by its name, and for Harris the two are not even close.
+    const unscheduled = build([asset({})], { jurisdictionId: 'tx-fort-bend', schedule: null });
+    const warning = blocker(unscheduled, 'no-schedule');
+    expect(warning?.severity).toBe('warning');
+    expect(warning?.message).toContain('Fort Bend Central Appraisal District');
+    expect(warning?.message).not.toContain('tx-fort-bend');
+  });
+
+  it('falls back to the id for a district we cannot print a form for', () => {
+    const unknown = build([asset({})], { jurisdictionId: 'tx-hidalgo', schedule: null });
+    expect(blocker(unknown, 'no-schedule')?.message).toContain('tx-hidalgo');
+  });
 });
 
 describe('deadlines', () => {

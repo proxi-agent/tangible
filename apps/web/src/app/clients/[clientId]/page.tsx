@@ -5,12 +5,14 @@ import { ArrowLeft, MapPin, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
+import { APPRAISAL_DISTRICTS } from '@tangible/filing/districts';
 import type { ClientLocation } from '@tangible/types';
+import { scheduledJurisdictions } from '@tangible/valuation';
 import { api } from '@/lib/api';
 import { AgentAppointmentCard } from '@/components/workspace/agent-appointment-card';
 import { ClientStatusBadge } from '@/components/workspace/badges';
 import { FilingProfileCard } from '@/components/workspace/filing-profile-card';
-import { Button, Field, TextInput } from '@/components/ui/controls';
+import { Button, Field, Select, TextInput } from '@/components/ui/controls';
 import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
 
 export default function ClientPage() {
@@ -188,6 +190,47 @@ export default function ClientPage() {
   );
 }
 
+const DISTRICT_NAMES = new Map(APPRAISAL_DISTRICTS.map((d) => [d.id, d.name]));
+const SCHEDULED = new Set(scheduledJurisdictions().map((j) => j.id));
+
+/**
+ * What choosing a district costs, said before the choice is saved.
+ *
+ * Two different unknowns hide behind an unset district and they are worth
+ * separating. Leaving it unset is right for the ordinary client whose sites are
+ * all in one county — the engagement already names it, and repeating it here
+ * would be a second place to get it wrong. It is only wrong for the client
+ * whose plant is over a county line, and that client's operator is the one
+ * reading this line.
+ *
+ * The list offered is every district we can print a form for, not the shorter
+ * list we can value against. A site in a county whose schedules we have not
+ * loaded still owes a return there on the date the statute says, and filing it
+ * on the cost basis needs no schedule at all — so refusing to name the district
+ * would block a return we are perfectly able to file.
+ */
+function DistrictNote({ jurisdictionId }: { jurisdictionId: string }) {
+  if (jurisdictionId === '') {
+    return (
+      <p className="w-full text-xs text-[var(--color-ink-muted)]">
+        This site files wherever the engagement points. Right where every site is in one county,
+        wrong the moment one is not — property is taxed where it stood on January 1.
+      </p>
+    );
+  }
+  const name = DISTRICT_NAMES.get(jurisdictionId) ?? jurisdictionId;
+  return SCHEDULED.has(jurisdictionId) ? (
+    <p className="w-full text-xs text-[var(--color-ink-muted)]">
+      Returns for this site print for {name} and are valued on its schedule.
+    </p>
+  ) : (
+    <p className="w-full text-xs text-[var(--color-warning)]">
+      Returns for this site print for {name}. No depreciation schedule is loaded for it, so property
+      here is classified but carries no value — which the cost basis does not ask for.
+    </p>
+  );
+}
+
 /**
  * A location, and the address the district needs, filled in when it is known.
  *
@@ -207,6 +250,11 @@ export default function ClientPage() {
  * belongs to the site rather than to a season's engagement, and it is the same
  * number next year. It is what each of this client's returns files under, and
  * what a prior year's assessment is looked up by.
+ *
+ * So does the appraisal district, and for a while nothing here let anyone say
+ * it. Everything downstream reads the site's district and falls back to the
+ * engagement's, which meant a client with a plant across a county line filed
+ * both returns in one county without anything on screen saying so.
  */
 function LocationRow({ clientId, location }: { clientId: string; location: ClientLocation }) {
   const queryClient = useQueryClient();
@@ -217,6 +265,7 @@ function LocationRow({ clientId, location }: { clientId: string; location: Clien
     city: location.city ?? '',
     stateCode: location.stateCode ?? '',
     zip: location.zip ?? '',
+    jurisdictionId: location.jurisdictionId ?? '',
   });
 
   const save = useMutation({
@@ -230,6 +279,12 @@ function LocationRow({ clientId, location }: { clientId: string; location: Clien
       // assessment and the form all read it off this row.
       void queryClient.invalidateQueries({ queryKey: ['engagement-rendition'] });
       void queryClient.invalidateQueries({ queryKey: ['engagement-returns'] });
+      // The district moves more than the paper: it decides whose schedule
+      // prices this site's property, and which Form 50-162 has to be on file
+      // before we may sign for it.
+      void queryClient.invalidateQueries({ queryKey: ['engagement-valuation'] });
+      void queryClient.invalidateQueries({ queryKey: ['engagement-season'] });
+      void queryClient.invalidateQueries({ queryKey: ['client-appointments', clientId] });
     },
   });
 
@@ -258,6 +313,11 @@ function LocationRow({ clientId, location }: { clientId: string; location: Clien
         ) : (
           <span className="text-xs text-[var(--color-warning)]">no account</span>
         )}
+        <span className="text-xs text-[var(--color-ink-muted)]">
+          {location.jurisdictionId
+            ? (DISTRICT_NAMES.get(location.jurisdictionId) ?? location.jurisdictionId)
+            : 'district from the engagement'}
+        </span>
         <Button variant="ghost" className="ml-auto h-7 text-xs" onClick={() => setOpen(!open)}>
           {open ? 'Cancel' : address || location.accountId ? 'Edit' : 'Add address'}
         </Button>
@@ -312,6 +372,21 @@ function LocationRow({ clientId, location }: { clientId: string; location: Clien
               className="w-28"
             />
           </Field>
+          <Field label="Appraisal district">
+            <Select
+              value={draft.jurisdictionId}
+              onChange={(e) => setDraft({ ...draft, jurisdictionId: e.target.value })}
+              className="h-8 w-64 text-xs"
+            >
+              <option value="">Take the engagement’s</option>
+              {APPRAISAL_DISTRICTS.map((district) => (
+                <option key={district.id} value={district.id}>
+                  {district.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <DistrictNote jurisdictionId={draft.jurisdictionId} />
           <Button variant="primary" type="submit" disabled={save.isPending}>
             {save.isPending ? 'Saving…' : 'Save site'}
           </Button>

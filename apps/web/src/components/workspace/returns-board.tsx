@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CalendarClock, FileText, MapPinOff } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
+import { appraisalDistrictName } from '@tangible/filing/districts';
 import type { FilingSeason, RenditionExtension, SeasonReturn } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
@@ -110,6 +111,27 @@ function heading(returns: SeasonReturn[]): string {
 }
 
 /**
+ * Which district this return goes to.
+ *
+ * Shown on every row rather than only where two of them disagree, because a
+ * reader cannot tell a checked answer from an unchecked one — and the case
+ * worth catching is a site that never named a district and quietly took the
+ * engagement's. Where the id is one we do not recognise there is no form to
+ * print for it, so the raw slug is the honest thing to show rather than a
+ * district name we invented.
+ */
+function District({ jurisdictionId }: { jurisdictionId: string | null }) {
+  if (jurisdictionId === null) {
+    return <span className="text-xs text-[var(--color-warning)]">no district</span>;
+  }
+  return (
+    <span className="text-xs text-[var(--color-ink-secondary)]">
+      {appraisalDistrictName(jurisdictionId) ?? jurisdictionId}
+    </span>
+  );
+}
+
+/**
  * The statutory calendar, and what it means today.
  *
  * Phrased against the returns still out rather than against the calendar. Once
@@ -189,6 +211,7 @@ function ReturnRow({
             <span className="text-[var(--color-warning)]">no account number</span>
           )}
         </span>
+        <District jurisdictionId={entry.jurisdictionId} />
         {entry.status === 'filed' ? null : <Due entry={entry} statutory={season.dueOn} />}
         {/* `ml-auto` belongs on the tooltip rather than the span inside it: the
             wrapper is the flex item, and a margin on the child pushes nothing. */}

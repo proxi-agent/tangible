@@ -535,6 +535,13 @@ export const SeasonReturnSchema = z.object({
   locationId: z.string(),
   label: z.string(),
   accountId: z.string().nullable(),
+  /**
+   * The district this return goes to — the site's own where it names one, else
+   * the engagement's. On the board because a season is where two of them would
+   * first be visible together, and a return filed with the wrong district is
+   * not a late return, it is a return the right district never received.
+   */
+  jurisdictionId: z.string().nullable(),
   status: SeasonReturnStatusSchema,
 
   /** Held property at this site, and what the register says it cost. */
