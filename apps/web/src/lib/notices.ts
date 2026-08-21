@@ -20,6 +20,7 @@ import type {
   RecordResolutionRequest,
   RenditionExtension,
   RenditionFiling,
+  ResolutionStage,
   UpdateNoticeRequest,
   VoidResolutionRequest,
 } from '@tangible/types';
@@ -464,7 +465,18 @@ async function decorate(
       ),
       resolution: resolved ? resolutionOf(resolved, facts, today) : null,
       correction: correctable
-        ? correctionOutlook(facts, resolutionFacts(resolved), row.appraisedValue, today)
+        ? correctionOutlook(
+            {
+              taxYear: row.taxYear,
+              rolledValue: row.appraisedValue,
+              renditionPenaltyApplied: row.renditionPenaltyApplied,
+              ending: resolved?.status === 'recorded' ? (resolved.stage as ResolutionStage) : null,
+              // This year is ours: we hold the notice, the protest date and the
+              // ending, so a route we call open is open.
+              historyKnown: true,
+            },
+            today,
+          )
         : null,
     };
   });

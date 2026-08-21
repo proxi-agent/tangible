@@ -731,6 +731,37 @@ export const CORRECTION_ROUTES = ['c', 'c-1', 'd'] as const;
 export const CorrectionRouteKeySchema = z.enum(CORRECTION_ROUTES);
 export type CorrectionRouteKey = (typeof CORRECTION_ROUTES)[number];
 
+/**
+ * The year 25.25 is being asked about, reduced to what the section turns on.
+ *
+ * Deliberately not an assessment notice. The same question gets asked of a year
+ * we ran ourselves — where the notice, the protest and the ending are all on
+ * file — and of a year reconstructed from a notice the client dug out of a
+ * drawer, where the value is all we have. Those two answers are not equally
+ * safe, and `historyKnown` is what keeps the second from pretending to be the
+ * first.
+ */
+export const CorrectionSubjectSchema = z.object({
+  taxYear: z.number().int(),
+  /** What the district has on the roll for the year. Only 25.25(d) needs it. */
+  rolledValue: z.number().nullable(),
+  /** Whether the notice for the year applied the 22.28 penalty. Null where unknown. */
+  renditionPenaltyApplied: z.boolean().nullable(),
+  /** How a protest for the year ended, where one did and we hold the record. */
+  ending: ResolutionStageSchema.nullable(),
+  /**
+   * Whether the year's protest history is ours.
+   *
+   * False for a year we were not engaged for. The client may have settled it in
+   * a phone call with the chief appraiser — a 1.111(e) agreement that closes
+   * (c-1) and (d) and leaves no mark on the notice. `ending: null` then means
+   * "nothing on file", not "nothing happened", and the two must not read alike.
+   */
+  historyKnown: z.boolean(),
+});
+
+export type CorrectionSubject = z.infer<typeof CorrectionSubjectSchema>;
+
 export const CorrectionRouteSchema = z.object({
   key: CorrectionRouteKeySchema,
   /** How the subsection is cited, e.g. "25.25(c-1)". */
@@ -770,6 +801,51 @@ export const CorrectionOutlookSchema = z.object({
 });
 
 export type CorrectionOutlook = z.infer<typeof CorrectionOutlookSchema>;
+
+/**
+ * One year of one account, and what is left of it.
+ *
+ * The grain is (account, year) rather than (site, year), because the years this
+ * answers for are mostly years we were not engaged for. Their only paper is a
+ * notice the client found in a drawer, and a notice names an account — the site
+ * it belongs to is our own bookkeeping and did not exist when the notice was
+ * printed.
+ *
+ * `source` is the honest part. A `recorded` year is one we ran: we hold the
+ * notice, the protest date and the ending, so a route called open is open. An
+ * `uploaded` year is a scan, and everything it does not print — a protest, an
+ * informal settlement — is a bar we cannot see. The outlook says so in its own
+ * words; this field is what lets the screen say it in one.
+ */
+export const OPEN_YEAR_SOURCES = ['recorded', 'uploaded'] as const;
+export const OpenYearSourceSchema = z.enum(OPEN_YEAR_SOURCES);
+export type OpenYearSource = (typeof OPEN_YEAR_SOURCES)[number];
+
+export const OpenYearSchema = z.object({
+  key: z.string(),
+  taxYear: z.number().int(),
+  source: OpenYearSourceSchema,
+  /** The site if we know it, otherwise the account, otherwise the filename. */
+  label: z.string(),
+  accountId: z.string().nullable(),
+  districtName: z.string().nullable(),
+  rolledValue: z.number().nullable(),
+  /** Set on a `recorded` year: the notice whose panel carries the detail. */
+  noticeId: z.string().nullable(),
+  /** Set on an `uploaded` year: the prior document it was read from. */
+  documentId: z.string().nullable(),
+  outlook: CorrectionOutlookSchema,
+});
+export type OpenYear = z.infer<typeof OpenYearSchema>;
+
+export const OpenYearsSchema = z.object({
+  clientId: z.string(),
+  /** Years with at least one route still open, soonest to close first. */
+  open: z.array(OpenYearSchema),
+  /** Years where 25.25 has run out. Kept, because "no" is also an answer. */
+  closed: z.array(OpenYearSchema),
+});
+export type OpenYears = z.infer<typeof OpenYearsSchema>;
 
 export const AssessmentNoticeSchema = AssessmentNoticeFactsSchema.extend({
   id: z.string(),

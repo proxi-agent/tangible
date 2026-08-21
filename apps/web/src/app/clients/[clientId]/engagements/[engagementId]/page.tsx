@@ -16,6 +16,7 @@ import { FarFileStatusBadge } from '@/components/workspace/badges';
 import { CarryForwardCard } from '@/components/workspace/carry-forward-card';
 import { ClassificationCard } from '@/components/workspace/classification-card';
 import { FindingsCard } from '@/components/workspace/findings-card';
+import { OpenYearsCard } from '@/components/workspace/open-years-card';
 import { PriorsCard } from '@/components/workspace/priors-card';
 import { ReturnsBoard } from '@/components/workspace/returns-board';
 import { SitesCard } from '@/components/workspace/sites-card';
@@ -104,6 +105,10 @@ export default function EngagementPage() {
       {/* Both halves of the intake sit together: the register says what the
           client owns, the prior filing says what they told the district. */}
       <PriorsCard clientId={clientId} engagementId={engagementId} />
+      {/* And what the paper above is still worth. The prior documents are an
+          intake; this is the question they exist to answer, which is whether
+          any of those years can still be corrected. */}
+      <OpenYearsCard clientId={clientId} engagementId={engagementId} />
       {/* What has actually been said, under the two things it was said about. */}
       <FindingsCard clientId={clientId} engagementId={engagementId} />
       {data.stats.assetCount > 0 ? <AssetsCard detail={data} engagementId={engagementId} /> : null}

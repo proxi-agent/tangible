@@ -45,6 +45,7 @@ import type {
   OwnerSortField,
   Paginated,
   PracticeSeason,
+  OpenYears,
   PlaceSiteRequest,
   PriorDocument,
   PriorDocumentKind,
@@ -439,6 +440,15 @@ export const api = {
    */
   carryForward: (engagementId: string) =>
     request<CarryForward>(`/engagements/${engagementId}/carry-forward`),
+
+  /**
+   * Every year of this client's history 25.25 can still reach.
+   *
+   * Client-wide, not engagement-wide. The years worth money are the ones before
+   * the firm was hired.
+   */
+  openYears: (engagementId: string) =>
+    request<OpenYears>(`/engagements/${engagementId}/open-years`),
 
   /** Every return recorded as filed on this engagement, newest first. */
   filings: (engagementId: string) =>

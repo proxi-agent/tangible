@@ -1,9 +1,4 @@
-import type {
-  AssessmentNoticeFacts,
-  CorrectionOutlook,
-  CorrectionRoute,
-  ProtestResolutionFacts,
-} from '@tangible/types';
+import type { CorrectionOutlook, CorrectionRoute, CorrectionSubject } from '@tangible/types';
 import { stamp } from './extensions.js';
 
 /**
@@ -64,42 +59,30 @@ const D_THRESHOLD = 1 / 3;
  * still there. A protest that settled informally is a written agreement with
  * the district under 1.111(e), and that closes (c-1) and (d) both.
  */
-export function correctionOutlook(
-  notice: AssessmentNoticeFacts,
-  resolution: ProtestResolutionFacts | null,
-  /**
-   * What the district has on the roll for this year.
-   *
-   * Passed in rather than read off the notice because only 25.25(d) needs it,
-   * and because the same question gets asked of a year whose only paper is an
-   * uploaded prior notice rather than one we typed off the envelope.
-   */
-  rolledValue: number | null,
-  today: string,
-): CorrectionOutlook {
-  const year = notice.taxYear;
-  const settled = resolution !== null && resolution.status === 'recorded' ? resolution : null;
+export function correctionOutlook(subject: CorrectionSubject, today: string): CorrectionOutlook {
+  const { taxYear: year, rolledValue, historyKnown } = subject;
 
   // 25.25(c-1)(4) and (d-1)(2): the value was established by written agreement
   // between the owner's agent and the district. That is what a 1.111(e)
   // settlement is, which is why the ending with the least paperwork is also the
   // one that closes the most doors.
-  const agreed = settled?.stage === 'informal';
+  const agreed = subject.ending === 'informal';
 
   // 25.25(c-1)(2) and (d-1)(1): a protest was brought, a hearing was held in
   // which the owner offered evidence or argument, and the board determined it
   // on the merits. A recorded ARB order is all three.
-  const determined = settled?.stage === 'arb';
+  const determined = subject.ending === 'arb';
 
   // 25.25(c-1)(1). 22.28 is the penalty for a *delinquent* report, so a notice
   // that applied one is the district's own statement that both limbs of this
   // bar are met — the rendition was not filed on time, and a penalty followed.
-  const penalised = notice.renditionPenaltyApplied === true;
+  const penalised = subject.renditionPenaltyApplied === true;
 
+  const bars = { agreed, determined, penalised, historyKnown };
   const routes = [
     routeC(year, today),
-    routeC1(year, today, { agreed, determined, penalised }),
-    routeD(year, today, rolledValue, { agreed, determined }),
+    routeC1(year, today, bars),
+    routeD(year, today, rolledValue, bars),
   ];
 
   const open = routes.filter((route) => route.open);
@@ -108,9 +91,25 @@ export function correctionOutlook(
     taxYear: year,
     open: open.length > 0,
     routes,
-    standing: describe(year, routes, open, { agreed, determined, penalised }),
+    standing: describe(year, routes, open, bars),
   };
 }
+
+/**
+ * The sentence appended to a route that turns on history we do not hold.
+ *
+ * A year reconstructed from an uploaded notice tells us what the district
+ * concluded and nothing about what happened next. If the client settled it on
+ * the phone with the chief appraiser, that is a 1.111(e) agreement and it
+ * closed this route — and it left no mark on any paper we have. Saying the
+ * route is open is right; saying it is open *and confirmed* would not be.
+ */
+const UNCONFIRMED =
+  ' No protest history is on file for this year, so this rests on nothing having happened. ' +
+  'Confirm with the district before filing: a protest determined on the merits, or a value ' +
+  'agreed with the chief appraiser, closes this route and neither leaves a trace on the notice.';
+
+type Bars = { agreed: boolean; determined: boolean; penalised: boolean; historyKnown: boolean };
 
 function routeC(year: number, today: string): CorrectionRoute {
   // "Any of the five preceding years" counts back from the year the motion is
@@ -135,11 +134,7 @@ function routeC(year: number, today: string): CorrectionRoute {
   };
 }
 
-function routeC1(
-  year: number,
-  today: string,
-  bars: { agreed: boolean; determined: boolean; penalised: boolean },
-): CorrectionRoute {
+function routeC1(year: number, today: string, bars: Bars): CorrectionRoute {
   const deadline = `${year + C1_YEARS}-12-31`;
   const expired = today > deadline;
   const barred = bars.agreed
@@ -171,19 +166,15 @@ function routeC1(
       'An inaccuracy in the appraised value of tangible personal property that resulted from an ' +
       'error or omission in a rendition or property report filed under Chapter 22. It does not ' +
       'ask how far off the value was and it carries no penalty, which makes it the first route to ' +
-      'reach for on a BPP account.',
+      'reach for on a BPP account.' +
+      (!expired && barred === null && !bars.historyKnown ? UNCONFIRMED : ''),
     threshold: null,
     cost: null,
     barred,
   };
 }
 
-function routeD(
-  year: number,
-  today: string,
-  rolledValue: number | null,
-  bars: { agreed: boolean; determined: boolean },
-): CorrectionRoute {
+function routeD(year: number, today: string, rolledValue: number | null, bars: Bars): CorrectionRoute {
   // 31.02(a): taxes are delinquent if not paid before February 1 of the year
   // following the year imposed, and (d) runs to the day before that. 31.04 can
   // postpone the delinquency date where the bill went out late, which moves
@@ -219,9 +210,10 @@ function routeD(
       (ceiling === null
         ? 'No value is recorded on this notice, so how far under the roll the correct figure has ' +
           'to come cannot be worked out here.'
-        : `Against the ${dollars(rolledValue as number)} on this notice that means the defensible ` +
+        : `Against the ${dollars(rolledValue as number)} on the roll that means the defensible ` +
           `value has to be below ${dollars(ceiling)}. Above that, the route does not open however ` +
-          'wrong the number is.'),
+          'wrong the number is.') +
+      (!expired && barred === null && !bars.historyKnown ? UNCONFIRMED : ''),
     threshold: D_THRESHOLD,
     cost:
       'A late-correction penalty of 10% of the taxes calculated on the corrected value, under ' +
@@ -236,7 +228,7 @@ function describe(
   year: number,
   routes: CorrectionRoute[],
   open: CorrectionRoute[],
-  bars: { agreed: boolean; determined: boolean; penalised: boolean },
+  bars: Bars,
 ): string {
   if (open.length === 0) {
     const dates = routes
@@ -271,6 +263,13 @@ function describe(
           'larger cost of a late rendition.'
         : '';
 
+  const unconfirmed =
+    !bars.historyKnown && open.some((route) => route.key !== 'c')
+      ? ' Nothing is on file about how this year was protested, if it was — and both the routes ' +
+        'other than (c) are closed by a determination or an agreement that would not show on a ' +
+        'notice. Ask the district before filing.'
+      : '';
+
   const order =
     free.length > 0 && open.length > free.length
       ? ` Take ${list(free.map((route) => route.cite))} first — ${
@@ -278,7 +277,7 @@ function describe(
         } nothing, where (d) carries a 10% late-correction penalty.`
       : '';
 
-  return lead + closed + order;
+  return lead + closed + unconfirmed + order;
 }
 
 function list(items: string[]): string {
