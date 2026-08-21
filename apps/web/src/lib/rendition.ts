@@ -340,22 +340,36 @@ export async function formInputs(engagementId: string, options: RenditionOptions
     appointmentFiledOn: parts.appointment?.effective ? parts.appointment.filedOn : null,
   };
 
-  // What the pure builders cannot see, because it is a fact about the database
-  // rather than about the register.
-  const extra = situsOmissions(target, owed);
+  // Problems the pure builders cannot see, because they are facts about the
+  // database rather than about the register. Situs is not among them: those are
+  // already on `rendition.blockers`, and `extra` below re-words them for print.
+  const beyond: FilingBlocker[] = [];
   if (!actor) {
-    extra.push({
-      field: 'Signature',
-      missing: 'Nobody is signed in, so there is no name to sign this.',
+    beyond.push({
+      key: 'signer-none',
       severity: 'blocking',
+      message: 'Nobody is signed in, so there is no name to sign this.',
+      resolution: 'Sign in as the person who will swear to it.',
     });
   }
+
+  // The same problems as the printed form words them — situs and all. Two
+  // renderings of one list, which is why `beyond` above is what gets counted.
+  const extra: FormOmission[] = [
+    ...situsOmissions(target, owed),
+    ...beyond.map((problem) => ({
+      field: 'Signature',
+      missing: problem.message,
+      severity: problem.severity,
+    })),
+  ];
 
   return {
     rendition,
     assetIds,
     party,
     signer,
+    beyond,
     extra,
     actor,
     target,

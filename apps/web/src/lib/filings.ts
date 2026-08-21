@@ -10,11 +10,11 @@ import {
   type Form50144,
   type FormAudience,
   type FormFillPlan,
-  type FormOmission,
   type FormParty,
   type FormSigner,
 } from '@tangible/filing';
 import type {
+  FilingBlocker,
   RecordFilingRequest,
   Rendition,
   RenditionFiling,
@@ -62,19 +62,19 @@ export async function recordFiling(
     filedByAgent: body.filedByAgent,
     locationId: body.locationId,
   });
-  const { rendition, assetIds, party, signer, extra, target, actor } = inputs;
+  const { rendition, assetIds, party, signer, beyond, target, actor } = inputs;
 
   // `target` is non-null whenever a location was named and it owed a return —
   // `resolveReturn` throws otherwise — but the type does not know that.
   if (!target) notFound('That site owes no return on this engagement.');
 
-  const blocking = blockingProblems(rendition, extra);
+  const blocking = blockingProblems(rendition, beyond);
   if (blocking.length > 0) {
     throw new HttpError(
       409,
       `This rendition still has ${blocking.length} unresolved ${
         blocking.length === 1 ? 'problem' : 'problems'
-      }, so it cannot be recorded as filed: ${blocking.join(' ')}`,
+      }, so it cannot be recorded as filed: ${blocking.map((one) => one.message).join(' ')}`,
     );
   }
 
@@ -143,11 +143,20 @@ export async function recordFiling(
  * refuse is worse than no board, so both read the same expression rather than
  * two that agree today.
  */
-export function blockingProblems(rendition: Rendition, extra: FormOmission[]): string[] {
-  return [
-    ...rendition.blockers.filter((blocker) => blocker.severity === 'blocking').map((b) => b.message),
-    ...extra.filter((omission) => omission.severity === 'blocking').map((o) => o.missing),
-  ];
+export function blockingProblems(rendition: Rendition, beyond: FilingBlocker[]): FilingBlocker[] {
+  // Keyed rather than prose. The messages interpolate counts and site names, so
+  // two returns held by the same defect say it in different words — which is
+  // fine to read one at a time and useless to a season that wants to know how
+  // many returns one afternoon of work would release.
+  //
+  // `beyond` is the problems the filing package cannot see because they are
+  // facts about the database rather than the register. Situs is deliberately
+  // not among them: `renditionParts` already pushed those onto the rendition,
+  // and the form's omission list re-words the same ones for print. Unioning the
+  // two lists here counted every blocking situs problem twice.
+  const all = [...rendition.blockers, ...beyond].filter((one) => one.severity === 'blocking');
+  const seen = new Set<string>();
+  return all.filter((one) => (seen.has(one.key) ? false : seen.add(one.key)));
 }
 
 /**

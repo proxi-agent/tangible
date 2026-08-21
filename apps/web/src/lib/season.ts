@@ -91,11 +91,11 @@ export async function filingSeason(engagementId: string): Promise<FilingSeason> 
   // the same list rather than a second one that agrees today.
   const rows = await Promise.all(
     owed.returns.map(async (entry): Promise<SeasonReturn> => {
-      const { rendition, extra } = await formInputs(engagementId, {
+      const { rendition, beyond } = await formInputs(engagementId, {
         ...POSTURE,
         locationId: entry.locationId,
       });
-      const blockers = blockingProblems(rendition, extra);
+      const blockers = blockingProblems(rendition, beyond);
       const filing = standing.get(entry.locationId) ?? null;
       const deadline = deadlineFor(entry.locationId);
       return {

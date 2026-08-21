@@ -480,11 +480,11 @@ function countdown(days: number): string {
  */
 function Detail({ entry, noticeOpen }: { entry: SeasonReturn; noticeOpen: boolean }) {
   if (entry.status === 'blocked') {
-    const rest = entry.blockers.length - 1;
+    const [first, ...rest] = entry.blockers;
     return (
       <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
-        {entry.blockers[0]}
-        {rest > 0 ? ` Plus ${count(rest)} more on the draft.` : ''}
+        {first?.message}
+        {rest.length > 0 ? ` Plus ${count(rest.length)} more on the draft.` : ''}
       </p>
     );
   }

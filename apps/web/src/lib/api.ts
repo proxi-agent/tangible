@@ -44,6 +44,7 @@ import type {
   OwnerRollup,
   OwnerSortField,
   Paginated,
+  PracticeSeason,
   PlaceSiteRequest,
   PriorDocument,
   PriorDocumentKind,
@@ -402,6 +403,16 @@ export const api = {
    * part of the engagement's.
    */
   season: (engagementId: string) => request<FilingSeason>(`/engagements/${engagementId}/season`),
+
+  /**
+   * The same question across every client, for one tax year.
+   *
+   * The most expensive read in the app — a rendition per return in the whole
+   * book — and the only place the question "what is holding up the most
+   * returns" can be answered at all.
+   */
+  practiceSeason: (taxYear?: number) =>
+    request<PracticeSeason>(`/season${taxYear ? `?taxYear=${taxYear}` : ''}`),
 
   /** Every return recorded as filed on this engagement, newest first. */
   filings: (engagementId: string) =>

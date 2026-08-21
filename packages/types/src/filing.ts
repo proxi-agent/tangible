@@ -741,8 +741,15 @@ export const SeasonReturnSchema = z.object({
    */
   renderedCost: z.number(),
 
-  /** What is stopping it, in the record gate's own words. Empty when nothing is. */
-  blockers: z.array(z.string()),
+  /**
+   * What is stopping it, in the record gate's own words. Empty when nothing is.
+   *
+   * Keyed rather than prose so a season above one engagement can count them.
+   * The messages name sites and interpolate counts, so the same defect on two
+   * returns reads as two sentences — right for a row somebody is working, and
+   * useless for the question of how many returns one fix would release.
+   */
+  blockers: z.array(FilingBlockerSchema),
   /** Things worth reading before signing, but which do not stop a filing. */
   warnings: z.number().int().nonnegative(),
 
@@ -826,3 +833,91 @@ export const FilingSeasonSchema = z.object({
 });
 
 export type FilingSeason = z.infer<typeof FilingSeasonSchema>;
+
+/**
+ * One return on the practice board, carrying who it is for.
+ *
+ * The same row the engagement board renders, plus the client. Above one
+ * engagement the site label stops identifying anything — half the firms in
+ * Texas have a "Main Office" — so the client has to travel with it.
+ */
+export const PracticeReturnSchema = SeasonReturnSchema.extend({
+  clientId: z.string(),
+  clientName: z.string(),
+  engagementId: z.string(),
+  taxYear: z.number().int(),
+
+  /**
+   * Other returns in the book covering this same site and year. Zero normally.
+   *
+   * Sites hang off the client rather than the engagement, so opening a second
+   * engagement for a client mid-season gives both of them the same sites — and
+   * both then owe a return for each. Under 22.01 a taxpayer renders an account
+   * once for a year, so two drafts for one site is not two returns; it is one
+   * return with a second draft of it, and only a view above the engagement can
+   * see that, because the two drafts live under different engagements.
+   */
+  alsoOn: z.number().int().nonnegative(),
+});
+
+export type PracticeReturn = z.infer<typeof PracticeReturnSchema>;
+
+/**
+ * One defect, and every return it is holding.
+ *
+ * The thing a practice knows that no engagement page can. A return blocked on
+ * "no Form 50-162 on file with this district" is one client's problem; the same
+ * key standing against fourteen returns is an afternoon that releases fourteen
+ * returns, and it is invisible from inside any one of them. Ranked by what it
+ * holds rather than by severity, because everything here is blocking already.
+ */
+export const SeasonHoldSchema = z.object({
+  key: z.string(),
+  /**
+   * One return's wording of it, as an example rather than a summary.
+   *
+   * The messages interpolate counts and site names, so there is no single true
+   * sentence for a defect standing against fourteen returns. Showing one real
+   * one is honest; synthesising a general one would invent a sentence the
+   * record gate never says.
+   */
+  message: z.string(),
+  resolution: z.string(),
+  returns: z.number().int().positive(),
+  clients: z.number().int().positive(),
+  /** Rendered cost sitting behind it. */
+  cost: z.number(),
+});
+
+export type SeasonHold = z.infer<typeof SeasonHoldSchema>;
+
+/**
+ * The season across every client, for one tax year.
+ *
+ * The view above an engagement, which the app did not have. A firm filing the
+ * five-to-a-hundred returns this is built for cannot work a season by opening
+ * clients one at a time, and the two questions it actually has — what crosses a
+ * deadline next, and what is holding the rest up — are both questions about the
+ * whole book rather than any one engagement.
+ */
+export const PracticeSeasonSchema = z.object({
+  taxYear: z.number().int(),
+  dueOn: z.string(),
+  extendedDueOn: z.string(),
+  daysToDue: z.number().int(),
+
+  /** Tax years with an engagement on them, newest first, for the year picker. */
+  years: z.array(z.number().int()),
+
+  clientCount: z.number().int().nonnegative(),
+  engagementCount: z.number().int().nonnegative(),
+
+  returns: z.array(PracticeReturnSchema),
+  holds: z.array(SeasonHoldSchema),
+
+  /** Held property on no return at all, summed across the book. */
+  unplacedCount: z.number().int().nonnegative(),
+  unplacedCost: z.number(),
+});
+
+export type PracticeSeason = z.infer<typeof PracticeSeasonSchema>;

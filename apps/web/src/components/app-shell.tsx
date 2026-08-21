@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { BarChart3, Briefcase, Building2, Database, LogOut, Table2 } from 'lucide-react';
+import { BarChart3, Briefcase, Building2, CalendarRange, Database, LogOut, Table2 } from 'lucide-react';
 import Link from 'next/link';
 import { usePathname, useSearchParams } from 'next/navigation';
 import type { ReactNode } from 'react';
@@ -20,7 +20,13 @@ import { CoverageGuideButton } from '@/components/coverage-guide';
  * therefore live with the Market group alone: showing them over a client page
  * would imply the numbers on screen change with the county, and they do not.
  */
-const WORKSPACE_NAV = [{ href: '/clients', label: 'Clients', icon: Briefcase }];
+const WORKSPACE_NAV = [
+  { href: '/clients', label: 'Clients', icon: Briefcase },
+  // Above the client list rather than under it. The season is the one workspace
+  // question that is not about a client — it is about which return crosses a
+  // deadline next, and the answer spans all of them.
+  { href: '/season', label: 'Season', icon: CalendarRange },
+];
 
 const MARKET_NAV = [
   { href: '/', label: 'Overview', icon: BarChart3 },
