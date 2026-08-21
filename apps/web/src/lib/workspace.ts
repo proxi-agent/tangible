@@ -66,7 +66,6 @@ export function filingProfileDto(row: ClientFilingProfileRow): ClientFilingProfi
     mailingStateCode: row.mailingStateCode,
     mailingZip: row.mailingZip,
     businessDescription: row.businessDescription,
-    agentAppointmentDate: row.agentAppointmentDate,
     signerTitle: row.signerTitle,
   };
 }

@@ -7,6 +7,7 @@ import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import type { ClientLocation } from '@tangible/types';
 import { api } from '@/lib/api';
+import { AgentAppointmentCard } from '@/components/workspace/agent-appointment-card';
 import { ClientStatusBadge } from '@/components/workspace/badges';
 import { FilingProfileCard } from '@/components/workspace/filing-profile-card';
 import { Button, Field, TextInput } from '@/components/ui/controls';
@@ -181,6 +182,8 @@ export default function ClientPage() {
       </div>
 
       <FilingProfileCard clientId={clientId} clientName={client.name} profile={filingProfile} />
+
+      <AgentAppointmentCard clientId={clientId} locations={locations} />
     </div>
   );
 }

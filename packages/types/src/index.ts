@@ -13,3 +13,4 @@ export * from './filing.js';
 export * from './priors.js';
 export * from './client.js';
 export * from './graph.js';
+export * from './appointment.js';

@@ -15,6 +15,7 @@ import {
 } from '@tangible/filing';
 import type { ClientFilingProfileRow } from '@tangible/db';
 import type {
+  AgentAppointment,
   ClassificationStatus,
   EngagementReturn,
   EngagementReturns,
@@ -24,6 +25,7 @@ import type {
 } from '@tangible/types';
 import { scheduleFor } from '@tangible/valuation';
 import { currentActor } from '@/lib/actor';
+import { appointmentAt } from '@/lib/appointments';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { renditionPositions } from '@/lib/findings';
 import { HttpError } from '@/lib/route';
@@ -84,6 +86,33 @@ async function resolveReturn(
 }
 
 /**
+ * The appointment answer for a set of sites, worst first.
+ *
+ * One site is the ordinary call and returns that site's answer. Several is the
+ * whole-register draft, and the honest answer there is the weakest one: a form
+ * covering the plant and not the office does not let us sign a document
+ * covering both, and the sentence that comes back names what is wrong with it.
+ *
+ * A site with nothing on file at all outranks a site with something unfiled,
+ * because it is the further from being fixed.
+ */
+async function weakestAppointment(
+  clientId: string,
+  jurisdictionId: string,
+  returns: readonly EngagementReturn[],
+): Promise<AgentAppointment | null> {
+  const on = new Date().toISOString().slice(0, 10);
+  const answers = await Promise.all(
+    returns.map((entry) =>
+      appointmentAt(clientId, { jurisdictionId, locationId: entry.locationId, on }),
+    ),
+  );
+  if (answers.length === 0) return null;
+  if (answers.some((answer) => answer === null)) return null;
+  return answers.find((answer) => !answer?.effective) ?? answers[0] ?? null;
+}
+
+/**
  * The rows on one return.
  *
  * The subtle case is property the register placed nowhere. With a single site
@@ -136,6 +165,8 @@ async function renditionParts(
   assetIds: string[];
   target: EngagementReturn | null;
   owed: EngagementReturns;
+  /** The Form 50-162 this return would be signed under, standing or not. */
+  appointment: AgentAppointment | null;
 }> {
   const { engagement, client } = await fetchEngagement(engagementId);
   const db = requireDb();
@@ -177,6 +208,21 @@ async function renditionParts(
   // are the ones published where it stood, not where the engagement was opened.
   const jurisdictionId = target?.jurisdictionId ?? engagement.jurisdictionId;
 
+  // Whether a Form 50-162 filed with *this* district reaches *this* site. Both
+  // halves matter: an appointment filed in Harris does nothing in Fort Bend,
+  // and one listing the plant does nothing for the office across town.
+  //
+  // On the whole-register draft, where no one site has been picked yet, the
+  // question is asked of every site the engagement owes and the worst answer
+  // wins. Saying "get a Form 50-162 signed" about a client whose form is signed
+  // and filed is the kind of wrong advice this card exists to stop, and it is
+  // wrong exactly when the appointment covers every site — which is the
+  // ordinary case.
+  const asked = target ? [target] : owed.returns;
+  const appointment = jurisdictionId
+    ? await weakestAppointment(client.id, jurisdictionId, asked)
+    : null;
+
   const rendition = buildRendition({
     engagementId,
     clientName: client.name,
@@ -190,9 +236,10 @@ async function renditionParts(
     basis: options.basis,
     filedByAgent: options.filedByAgent,
     // The draft screen and the printed form both ask whether an agent may sign
-    // this. They have to give the same answer, and the answer lives in the
-    // filing profile, so the draft reads it too rather than assuming the worst.
-    agentAppointmentDate: profile?.agentAppointmentDate ?? null,
+    // this, and they have to give the same answer. It is asked as of today
+    // because that is when a draft would go out; a return already recorded
+    // froze its own answer at the time.
+    appointment,
     generatedAt: new Date().toISOString(),
   });
 
@@ -201,7 +248,7 @@ async function renditionParts(
   // way to raise it. The draft would otherwise show a register spanning two
   // sites under a heading that says one form.
   rendition.blockers.push(...situsProblems(target, owed));
-  return { rendition, assetIds: assets.map((asset) => asset.id), target, owed };
+  return { rendition, assetIds: assets.map((asset) => asset.id), target, owed, appointment };
 }
 
 export async function buildEngagementRendition(
@@ -287,7 +334,10 @@ export async function formInputs(engagementId: string, options: RenditionOptions
     name: actor ?? '',
     title: profile?.signerTitle ?? null,
     capacity: options.filedByAgent ? 'agent' : 'owner',
-    agentAppointmentDate: profile?.agentAppointmentDate ?? null,
+    // The date the district received it, and only where it still stands. An
+    // expired appointment has a filed date too, and printing it on a rendition
+    // would be the form asserting an authority that ended.
+    appointmentFiledOn: parts.appointment?.effective ? parts.appointment.filedOn : null,
   };
 
   // What the pure builders cannot see, because it is a fact about the database

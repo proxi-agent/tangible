@@ -1,6 +1,7 @@
 import type {
   AccountQuery,
   AccountSeries,
+  AgentAppointment,
   AnswerExtensionRequest,
   Asset,
   AssetQuery,
@@ -25,6 +26,7 @@ import type {
   EngagementValuation,
   FarFile,
   FarMapping,
+  FilingAgent,
   FilingSeason,
   FilterFacets,
   FindingDecisionResult,
@@ -44,6 +46,7 @@ import type {
   PlaceSiteRequest,
   PriorDocument,
   PriorDocumentKind,
+  RecordAppointmentRequest,
   RecordExtensionRequest,
   RecordFilingRequest,
   Rendition,
@@ -55,8 +58,10 @@ import type {
   SegmentDefinition,
   SortDirection,
   StartIngestRequest,
+  UpdateAppointmentRequest,
   UpdateClassificationRequest,
   UpdateClientRequest,
+  UpdateFilingAgentRequest,
   UpdateFilingProfileRequest,
   UpdateFindingDispositionRequest,
   UpdateLineMappingRequest,
@@ -234,6 +239,40 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify(body),
     }),
+
+  // -------------------------------------------------------------------------
+  // Agent appointments — Form 50-162
+  // -------------------------------------------------------------------------
+
+  /** Us, as Step 3 names us. One record for the firm, not one per client. */
+  filingAgent: () => request<FilingAgent>('/filing-agent'),
+
+  /** A patch: a field left out keeps its value, an empty string clears it. */
+  updateFilingAgent: (body: UpdateFilingAgentRequest) =>
+    request<FilingAgent>('/filing-agent', { method: 'PATCH', body: JSON.stringify(body) }),
+
+  appointments: (clientId: string) =>
+    request<AgentAppointment[]>(`/clients/${clientId}/appointments`),
+
+  recordAppointment: (clientId: string, body: RecordAppointmentRequest) =>
+    request<AgentAppointment>(`/clients/${clientId}/appointments`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** The two things that happen to a signed form: it is filed, or it ends. */
+  updateAppointment: (appointmentId: string, body: UpdateAppointmentRequest) =>
+    request<AgentAppointment>(`/appointments/${appointmentId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  /**
+   * The filled Form 50-162, as a normal navigation for the same reason the CSV
+   * export is one. A 409 body carries the form's own refusal to print.
+   */
+  appointmentPdfUrl: (appointmentId: string) =>
+    `${BASE_URL}/api/appointments/${appointmentId}/pdf`,
 
   createLocation: (clientId: string, body: CreateLocationRequest) =>
     request<ClientLocation>(`/clients/${clientId}/locations`, {

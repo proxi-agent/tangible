@@ -13,7 +13,6 @@ const filled = {
   mailingStateCode: 'TX',
   mailingZip: '77002',
   businessDescription: 'Machine shop, precision parts',
-  agentAppointmentDate: '2026-01-15',
   signerTitle: 'Agent',
 };
 
@@ -38,15 +37,6 @@ describe('the filing profile a client saves', () => {
     expect(parse({ mailingStateCode: '' }).mailingStateCode).toBeNull();
     expect(parse({ mailingStateCode: 'tx' }).mailingStateCode).toBe('TX');
     expect(() => parse({ mailingStateCode: 'Texas' })).toThrow();
-  });
-
-  it('refuses an appointment date it cannot read back onto the form', () => {
-    // 50-162's date is transcribed off a signed page and printed onto another.
-    // 01/02/2026 is January in Houston and February in most of the world, and
-    // this box ends up on a sworn document.
-    expect(() => parse({ agentAppointmentDate: '15/01/2026' })).toThrow(/ISO date/);
-    expect(() => parse({ agentAppointmentDate: 'January 15, 2026' })).toThrow(/ISO date/);
-    expect(parse({ agentAppointmentDate: '' }).agentAppointmentDate).toBeNull();
   });
 
   it('wants every box present, so a save clears what the screen cleared', () => {

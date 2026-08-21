@@ -1,5 +1,16 @@
 export { buildRendition, type RenditionAsset, type RenditionInput } from './rendition.js';
 export { deadlinesFor } from './deadlines.js';
+export { APPRAISAL_DISTRICTS, appraisalDistrictName } from './districts.js';
+export {
+  appointmentFor,
+  nearestAppointment,
+  appointmentStanding,
+  coversLocation,
+  effectiveAppointments,
+  type AppointmentFacts,
+  type AppointmentQuery,
+  type AppointmentStanding,
+} from './appointment.js';
 export {
   addDays,
   extensionStanding,
@@ -37,6 +48,18 @@ export {
   type FormFillText,
   type FormOverflow,
 } from './fill-50-144.js';
+export {
+  FORM_50162_REVISION,
+  FORM_50162_SHA256,
+  planAppointmentFill,
+  renderForm50162,
+  type AppointmentFillInput,
+  type AppointmentFillPlan,
+  type AppointmentOverflow,
+  type AppointmentParty,
+  type AppointmentProperty,
+  type AppointmentTerms,
+} from './fill-50-162.js';
 export {
   describePositions,
   planPositions,

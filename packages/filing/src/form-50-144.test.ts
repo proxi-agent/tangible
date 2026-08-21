@@ -49,7 +49,7 @@ const signer = (over: Partial<FormSigner> = {}): FormSigner => ({
   name: 'Dana Ruiz',
   title: 'Agent',
   capacity: 'agent',
-  agentAppointmentDate: '2026-01-15',
+  appointmentFiledOn: '2026-01-15',
   ...over,
 });
 
@@ -90,7 +90,7 @@ describe('what goes in the boxes', () => {
   });
 
   it('will not let an agent sign without an appointment on file', () => {
-    const f = form({ signer: signer({ agentAppointmentDate: null }) });
+    const f = form({ signer: signer({ appointmentFiledOn: null }) });
     expect(omission(f, 'Agent appointment')?.severity).toBe('blocking');
   });
 
@@ -98,7 +98,7 @@ describe('what goes in the boxes', () => {
     // `buildRendition` raises a generic agent reminder because it cannot see an
     // appointment. This module can, so it answers specifically — and saying it
     // both ways is how an omissions list stops being read.
-    const f = form({ signer: signer({ agentAppointmentDate: null }) });
+    const f = form({ signer: signer({ appointmentFiledOn: null }) });
     expect(f.omissions.filter((o) => /agent/i.test(o.field))).toHaveLength(1);
     expect(omission(f, 'agent-appointment')).toBeUndefined();
   });

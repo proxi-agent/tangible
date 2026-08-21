@@ -336,7 +336,7 @@ export function planFormFill(input: FormFillInput): FormFillPlan {
     put("Representation's Mailing Address, City, State, ZIP Code0", mailing);
   }
 
-  if (signer.capacity === 'agent' && signer.agentAppointmentDate === null) {
+  if (signer.capacity === 'agent' && signer.appointmentFiledOn === null) {
     omissions.push({
       field: 'Agent appointment',
       missing:

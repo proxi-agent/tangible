@@ -158,8 +158,6 @@ export const ClientFilingProfileSchema = z.object({
   mailingZip: z.string().nullable(),
   /** What the business does, in the owner's words. Not the SIC code restated. */
   businessDescription: z.string().nullable(),
-  /** ISO date of the Form 50-162 appointment. Without one an agent cannot sign. */
-  agentAppointmentDate: z.string().nullable(),
   signerTitle: z.string().nullable(),
 });
 
@@ -299,9 +297,6 @@ export const UpdateFilingProfileRequestSchema = z.object({
   mailingStateCode: box(z.string().trim().length(2).toUpperCase()),
   mailingZip: box(z.string().trim().max(10)),
   businessDescription: box(z.string().trim().max(2000)),
-  agentAppointmentDate: box(
-    z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use an ISO date, like 2026-01-15.'),
-  ),
   signerTitle: box(z.string().trim().max(120)),
 });
 

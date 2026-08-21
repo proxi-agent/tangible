@@ -182,9 +182,34 @@ describe('what blocks a signature', () => {
     expect(blocker(rendition, 'agent-appointment')?.severity).toBe('blocking');
   });
 
-  it('drops the agent reminder once an appointment is on file', () => {
-    const rendition = build([asset()], { agentAppointmentDate: '2026-01-15' });
+  it('drops the agent reminder once an appointment stands', () => {
+    const rendition = build([asset()], {
+      appointment: { effective: true, standing: 'Filed January 15 2026.', receivesConfidential: true },
+    });
     expect(blocker(rendition, 'agent-appointment')).toBeUndefined();
+  });
+
+  it('keeps blocking on an appointment that exists and does not stand, and says which', () => {
+    // The common case by far: signed, and still sitting in somebody's outbox.
+    const rendition = build([asset()], {
+      appointment: {
+        effective: false,
+        standing: 'Signed February 2 2027 and not yet filed with the district.',
+        receivesConfidential: true,
+      },
+    });
+    const blocked = blocker(rendition, 'agent-appointment');
+    expect(blocked?.severity).toBe('blocking');
+    expect(blocked?.message).toContain('not yet filed');
+    expect(blocked?.resolution).toContain('Record the appointment as filed');
+  });
+
+  it('warns where we may file for a client and may not be sent their file back', () => {
+    const rendition = build([asset()], {
+      appointment: { effective: true, standing: 'Filed.', receivesConfidential: false },
+    });
+    expect(blocker(rendition, 'agent-appointment')).toBeUndefined();
+    expect(blocker(rendition, 'agent-not-confidential')?.severity).toBe('warning');
   });
 
   it('warns rather than blocks on things that only make it worse', () => {

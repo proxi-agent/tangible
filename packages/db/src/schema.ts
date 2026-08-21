@@ -276,12 +276,6 @@ export const clientFilingProfiles = pgTable('client_filing_profiles', {
    * is generic.
    */
   businessDescription: text('business_description'),
-  /**
-   * Date of the Form 50-162 appointment. Stored as text in ISO form rather than
-   * a date column because it is transcribed off a signed piece of paper and
-   * printed back onto another one; it is never arithmetic.
-   */
-  agentAppointmentDate: text('agent_appointment_date'),
   /** The title the signature is made in — 'Agent' for us, an officer's title otherwise. */
   signerTitle: text('signer_title'),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -862,7 +856,6 @@ export const priorReturnLines = pgTable(
   ],
 ).enableRLS();
 
-
 /**
  * A rendition that was actually filed, frozen as it went out.
  *
@@ -1202,6 +1195,104 @@ export const findingDispositions = pgTable(
   ],
 ).enableRLS();
 
+/**
+ * Us, as Form 50-162 names us. One row, id `agent`.
+ *
+ * A singleton table rather than environment config, because it is printed onto
+ * a legal document an operator has to be able to read back and correct — and
+ * because Step 4 has the owner direct the district to deliver every notice
+ * "only to the agent at the agent's address indicated above". A stale address
+ * in a `.env` file is a protest deadline missed silently.
+ */
+export const filingAgent = pgTable('filing_agent', {
+  id: text('id').primaryKey().default('agent'),
+  name: text('name'),
+  phone: text('phone'),
+  addressLine1: text('address_line1'),
+  city: text('city'),
+  stateCode: text('state_code'),
+  zip: text('zip'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}).enableRLS();
+
+/**
+ * A Form 50-162 appointment, per client per appraisal district.
+ *
+ * Per district because the form's first field is the district's name and
+ * districts keep their own agent records: one filed with Harris is invisible
+ * to Fort Bend, so a client with sites in two counties signs two forms. That is
+ * the fact the old single `agent_appointment_date` on the filing profile could
+ * not carry, and getting it wrong means signing a rendition for a district that
+ * has never heard of us.
+ */
+export const agentAppointments = pgTable(
+  'agent_appointments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    /** Warehouse jurisdiction slug, e.g. `tx-harris`. */
+    jurisdictionId: text('jurisdiction_id').notNull(),
+
+    /** 'all-at-address' | 'listed' — Step 2's check-one. */
+    scope: text('scope').notNull().default('listed'),
+    /**
+     * The sites Step 2 lists, by our id rather than by account number.
+     *
+     * An account is a fact about a site that arrives late and gets corrected;
+     * an appointment that stopped covering a site because somebody fixed a
+     * typo would be a bad surprise. Kept as jsonb rather than a join table
+     * because it is a frozen copy of what one signed page said, not a
+     * relationship that evolves.
+     */
+    locationIds: jsonb('location_ids').$type<string[]>().notNull().default([]),
+    /** 'all' | 'specific' — Step 4's check-one. */
+    matters: text('matters').notNull().default('all'),
+    specificMatters: text('specific_matters'),
+    /**
+     * Step 4's 22.27(b)(2) radio.
+     *
+     * Its own column because it is its own permission: an appointment can be
+     * perfectly valid, let us protest and sign, and still leave the district
+     * unable to send us the client's own rendition back.
+     */
+    receivesConfidential: boolean('receives_confidential').notNull().default(true),
+    /** Subset of 'chief-appraiser' | 'arb' | 'taxing-units'. */
+    deliveries: jsonb('deliveries').$type<string[]>().notNull().default([]),
+
+    /** Plain dates: transcribed off a signed page, compared, never summed. */
+    signedOn: date('signed_on').notNull(),
+    /**
+     * The day it reached the district.
+     *
+     * Nullable and load-bearing. The form says the designation "will not take
+     * effect until filed with the appropriate appraisal district", so a row
+     * with no date here is a signed page that authorises nothing — which is a
+     * different thing from having no appointment, and the difference is a
+     * phone call rather than a client meeting.
+     */
+    filedOn: date('filed_on'),
+    /** Step 5's expiry, where one was given. Null runs until revoked. */
+    endsOn: date('ends_on'),
+
+    revokedOn: date('revoked_on'),
+    revokedReason: text('revoked_reason'),
+
+    signerName: text('signer_name').notNull(),
+    signerTitle: text('signer_title'),
+    /** 'owner' | 'property-manager' | 'other-authorized' — Step 6's check-one. */
+    signerCapacity: text('signer_capacity').notNull().default('owner'),
+    note: text('note'),
+
+    recordedBy: text('recorded_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    /** The question every rendition asks: may we sign for this client, here? */
+    index('agent_appointments_client_district_idx').on(table.clientId, table.jurisdictionId),
+  ],
+).enableRLS();
 
 export type Jurisdiction = typeof jurisdictions.$inferSelect;
 export type NewJurisdiction = typeof jurisdictions.$inferInsert;
@@ -1245,3 +1336,7 @@ export type FindingRow = typeof findings.$inferSelect;
 export type NewFindingRow = typeof findings.$inferInsert;
 export type FindingDispositionRow = typeof findingDispositions.$inferSelect;
 export type NewFindingDispositionRow = typeof findingDispositions.$inferInsert;
+export type FilingAgentRow = typeof filingAgent.$inferSelect;
+export type NewFilingAgentRow = typeof filingAgent.$inferInsert;
+export type AgentAppointmentRow = typeof agentAppointments.$inferSelect;
+export type NewAgentAppointmentRow = typeof agentAppointments.$inferInsert;

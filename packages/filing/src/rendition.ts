@@ -38,6 +38,23 @@ export interface RenditionAsset {
   status: ClassificationStatus | null;
 }
 
+/**
+ * What a resolved Form 50-162 appointment tells a rendition.
+ *
+ * Deliberately three fields and no dates. The rendition does not re-decide
+ * whether an appointment stands — `appointmentStanding` did that against the
+ * filing date — it only reports the consequence, and reports the caller's own
+ * sentence rather than composing a worse one from parts.
+ */
+export interface RenditionAppointment {
+  /** Whether it authorises this return on the day it would be signed. */
+  effective: boolean;
+  /** Why it does or does not, in one sentence somebody can act on. */
+  standing: string;
+  /** Step 4's 22.27(b)(2) answer: may the district show us the client's file. */
+  receivesConfidential: boolean;
+}
+
 export interface RenditionInput {
   engagementId: string;
   clientName: string;
@@ -50,15 +67,19 @@ export interface RenditionInput {
   basis: RenditionBasis;
   filedByAgent: boolean;
   /**
-   * The date of the Form 50-162 appointment, where one is on file.
+   * The Form 50-162 appointment this return would be signed under.
    *
-   * Optional because a caller with no filing profile to read has nothing to
-   * say here, and `undefined` and `null` mean the same thing: no appointment
-   * we know of. A date turns the agent reminder below into a question already
-   * answered, which is the difference between a draft that reads as blocked
-   * and one that reads as ready.
+   * The caller resolves it, because the question is not "is there a form
+   * somewhere" but "does an appointment filed with *this* district, covering
+   * *this* site, still stand on the day we sign" — and only a caller holding
+   * the client's appointments and the return's site can answer that.
+   *
+   * Optional, and `undefined` and `null` both mean we hold nothing. A
+   * non-effective appointment is passed down rather than swallowed: it carries
+   * the sentence saying what is wrong with it, and "signed and not yet filed"
+   * is a different morning's work from "never asked for".
    */
-  agentAppointmentDate?: string | null;
+  appointment?: RenditionAppointment | null;
   generatedAt: string;
   /**
    * Committed findings and the decisions standing against them. Optional, and
@@ -541,16 +562,36 @@ function blockersFor(context: {
       resolution: 'Check the register’s disposal dates against the assessment date.',
     });
   }
-  // Only where we have no appointment to point at. Filing as agent is not the
-  // problem — filing as agent unappointed is, and a caller that has read the
-  // client's filing profile says so by handing over the date.
-  if (input.filedByAgent && !input.agentAppointmentDate) {
+  // Filing as agent is not the problem — filing as agent unappointed is. The
+  // caller has already asked whether an appointment filed with this district
+  // reaches this site today; all that is left here is to say what its answer
+  // costs.
+  const appointment = input.appointment ?? null;
+  if (input.filedByAgent && !appointment?.effective) {
     blockers.push({
       key: 'agent-appointment',
       severity: 'blocking',
       message:
-        'Filing as the client’s agent requires an appointment on file. Tax Code 22.27 also limits who may receive rendition contents to the owner and their appointed agent.',
-      resolution: 'Have the client sign Form 50-162 and record it with the district.',
+        appointment === null
+          ? 'Filing as the client’s agent requires an appointment on file with this district. Tax Code 22.27 also limits who may receive rendition contents to the owner and their appointed agent.'
+          : `The appointment on file does not authorise this return. ${appointment.standing}`,
+      resolution:
+        appointment === null
+          ? 'Have the client sign Form 50-162 for this district and record it once the district has it.'
+          : 'Record the appointment as filed once the district has it, or send a new Form 50-162 out for signature.',
+    });
+  }
+  // A live appointment that answered No to Step 4's 22.27(b)(2) radio. Valid,
+  // and a trap: we may sign and file the rendition, and the district may not
+  // send us back the client's own return, the notice of appraised value, or
+  // anything else 22.27 makes confidential.
+  if (input.filedByAgent && appointment?.effective && !appointment.receivesConfidential) {
+    blockers.push({
+      key: 'agent-not-confidential',
+      severity: 'warning',
+      message:
+        'The appointment on file says the district may not disclose confidential information to us, so nothing filed under it can be requested back — 22.27 covers rendition contents.',
+      resolution: 'Confirm that is intended, or have Step 4 re-signed with the box answered Yes.',
     });
   }
 

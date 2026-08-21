@@ -50,8 +50,15 @@ export interface FormSigner {
   title: string | null;
   /** 'owner' | 'employee' | 'agent' | 'secured-party' | 'fiduciary'. */
   capacity: FormCapacity;
-  /** Date of the appointment on file, for an agent. Null where none is held. */
-  agentAppointmentDate: string | null;
+  /**
+   * The date the Form 50-162 appointment reached the appraisal district, for an
+   * agent. Null where no effective appointment is held.
+   *
+   * The filed date rather than the signed one, because that is the day the
+   * designation took effect — the form says so in as many words, and a district
+   * asking when we were appointed means the date on its own stamp.
+   */
+  appointmentFiledOn: string | null;
 }
 
 export const FORM_CAPACITIES = [
@@ -261,17 +268,17 @@ export function buildForm50144(input: Form50144Input): Form50144 {
     checked: signer.capacity === capacity,
     basis:
       capacity === 'agent' && signer.capacity === 'agent'
-        ? signer.agentAppointmentDate
-          ? `Appointment on file dated ${signer.agentAppointmentDate}.`
-          : 'No Form 50-162 appointment date recorded.'
+        ? signer.appointmentFiledOn
+          ? `Form 50-162 on file with the district since ${signer.appointmentFiledOn}.`
+          : 'No effective Form 50-162 appointment for this district.'
         : undefined,
   }));
 
-  if (signer.capacity === 'agent' && !signer.agentAppointmentDate) {
+  if (signer.capacity === 'agent' && !signer.appointmentFiledOn) {
     omissions.push({
       field: 'Agent appointment',
       missing:
-        'The date of the Form 50-162 appointment. An agent filing without an appointment on file is not authorised to make this statement.',
+        'The date the Form 50-162 appointment was filed with the district. An agent filing without an appointment in force is not authorised to make this statement.',
       severity: 'blocking',
     });
   }

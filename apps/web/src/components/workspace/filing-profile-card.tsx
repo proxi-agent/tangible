@@ -13,13 +13,16 @@ import { api } from '@/lib/api';
  *
  * Every box here answers a question on the return, so the labels are the
  * form's questions rather than column names, and the help text says what goes
- * wrong when the box is empty. Three of them are the difference between a
- * rendition that can be filed and one that cannot: without a mailing address
- * the district has nowhere to send the notice, and without a 50-162 date an
- * agent is not authorised to swear to any of it.
+ * wrong when the box is empty. The mailing address is the one that decides
+ * whether a rendition can be filed at all: it is where the district sends the
+ * notice of appraised value, and the protest clock runs from that notice
+ * whether or not it reached anybody.
+ *
+ * Whether we may sign as agent is *not* here any more. That is Form 50-162, it
+ * is per appraisal district, and it expires — see the agent appointments card.
  */
 
-/** The nine boxes, as strings — an empty one means unknown, not the empty string. */
+/** The eight boxes, as strings — an empty one means unknown, not the empty string. */
 type Draft = Record<keyof UpdateFilingProfileRequest, string>;
 
 const EMPTY: Draft = {
@@ -30,7 +33,6 @@ const EMPTY: Draft = {
   mailingStateCode: '',
   mailingZip: '',
   businessDescription: '',
-  agentAppointmentDate: '',
   signerTitle: '',
 };
 
@@ -45,7 +47,6 @@ const draftOf = (profile: ClientFilingProfile | null): Draft =>
         mailingStateCode: profile.mailingStateCode ?? '',
         mailingZip: profile.mailingZip ?? '',
         businessDescription: profile.businessDescription ?? '',
-        agentAppointmentDate: profile.agentAppointmentDate ?? '',
         signerTitle: profile.signerTitle ?? '',
       };
 
@@ -178,27 +179,14 @@ export function FilingProfileCard({
           />
         </Field>
 
-        <div className="flex gap-3">
-          <Field
-            label="Form 50-162 appointment"
-            help="The date of the signed agent appointment. Without one on file an agent is not authorised to make this statement, and the rendition cannot be filed by us."
-          >
-            <TextInput
-              type="date"
-              value={draft.agentAppointmentDate}
-              onChange={(e) => set('agentAppointmentDate')(e.target.value)}
-              className="w-44"
-            />
-          </Field>
-          <Field label="Signing title" help="The title the signature is made in — “Agent” where we file, an officer’s title where the owner does.">
-            <TextInput
-              placeholder="Agent"
-              value={draft.signerTitle}
-              onChange={(e) => set('signerTitle')(e.target.value)}
-              className="w-40"
-            />
-          </Field>
-        </div>
+        <Field label="Signing title" help="The title the signature is made in — “Agent” where we file, an officer’s title where the owner does.">
+          <TextInput
+            placeholder="Agent"
+            value={draft.signerTitle}
+            onChange={(e) => set('signerTitle')(e.target.value)}
+            className="w-40"
+          />
+        </Field>
 
         {save.error ? (
           <p className="text-xs text-[var(--color-critical)]">
