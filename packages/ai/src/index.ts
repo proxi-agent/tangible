@@ -8,7 +8,12 @@ export {
   type AiProvider,
 } from './client.js';
 export { parseStructured, type StructuredDocument, type StructuredResult } from './structured.js';
-export { proposeMapping, type MappingProposalResult } from './mapping.js';
+export {
+  proposeMapping,
+  proposeVerifiedMapping,
+  type MappingProposalResult,
+  type VerifiedMappingResult,
+} from './mapping.js';
 export {
   classifyBatch,
   CLASSIFY_BATCH_SIZE,

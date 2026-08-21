@@ -23,7 +23,8 @@
     "@tangible/types": "workspace:*",
     "@tangible/valuation": "workspace:*",
     "openai": "^7.5.0",
-    "zod": "catalog:"
+    "zod": "catalog:",
+    "@tangible/far": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "catalog:",

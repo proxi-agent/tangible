@@ -223,6 +223,9 @@ importers:
       '@tangible/classification':
         specifier: workspace:*
         version: link:../classification
+      '@tangible/far':
+        specifier: workspace:*
+        version: link:../far
       '@tangible/types':
         specifier: workspace:*
         version: link:../types

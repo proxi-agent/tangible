@@ -1,13 +1,20 @@
 import { eq, sql } from 'drizzle-orm';
-import { aiUnavailableReason, isAiConfigured, proposeMapping } from '@tangible/ai';
+import {
+  aiUnavailableReason,
+  isAiConfigured,
+  proposeMapping,
+  proposeVerifiedMapping,
+} from '@tangible/ai';
+import { parseWorkbook, type ParsedWorkbook } from '@tangible/far';
 import type { SheetSummary } from '@tangible/types';
+import { downloadFarFile } from '@/lib/far-storage';
 import { HttpError, handle } from '@/lib/route';
 import { farFileDto, fetchFarFile } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export function POST(
   request: Request,
@@ -28,9 +35,23 @@ export function POST(
       );
     }
 
+    // The verified loop needs the actual rows, not the preview: it applies the
+    // proposal and foots the result. If the stored bytes cannot be re-read —
+    // storage hiccup, stale path — fall back to the single-shot proposal
+    // rather than failing a request the preview alone could still serve.
+    let workbook: ParsedWorkbook | null = null;
+    try {
+      const bytes = await downloadFarFile(row.storagePath);
+      workbook = parseWorkbook(bytes);
+    } catch {
+      workbook = null;
+    }
+
     let result;
     try {
-      result = await proposeMapping(summaries, { filename: row.originalFilename });
+      result = workbook
+        ? await proposeVerifiedMapping(workbook, summaries, { filename: row.originalFilename })
+        : await proposeMapping(summaries, { filename: row.originalFilename });
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       throw new HttpError(502, `The mapping proposal failed: ${message}`);

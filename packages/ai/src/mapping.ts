@@ -3,8 +3,10 @@ import {
   CANONICAL_ASSET_FIELDS,
   CANONICAL_FIELD_INFO,
   type FarMappingProposal,
+  type MappingVerification,
   type SheetSummary,
 } from '@tangible/types';
+import { verifyMapping, type ParsedWorkbook, type VerifyResult } from '@tangible/far';
 import { parseStructured } from './structured.js';
 
 /**
@@ -135,4 +137,96 @@ function sanitize(
     confidence: Math.min(1, Math.max(0, raw.confidence)),
     rationale: raw.rationale,
   };
+}
+
+/**
+ * Propose a mapping, then check it against what it actually produces.
+ *
+ * The single-shot proposal reads a preview and never sees the rows its mapping
+ * makes — which is exactly where it fails: a header row one off, a cost column
+ * that is really net book value, a rollforward read as assets. This closes the
+ * loop. The proposal is applied in memory by the same deterministic
+ * `applyMapping` a confirm would run, measured by `verifyMapping`, and where a
+ * check fails the model sees the evidence — the counts, the raw skipped rows,
+ * the printed total its costs did not foot against — and revises.
+ *
+ * Deliberately not a tool-using agent. Every "tool" here is deterministic and
+ * cheap, so the harness runs them all every round and the model's only job is
+ * the one it is good at: reading the evidence and re-deciding the mapping.
+ * That also keeps the loop provider-agnostic — it is the same `parseStructured`
+ * seam as everything else, just called more than once.
+ *
+ * Bounded hard: at most {@link MAX_ROUNDS} proposals, and the loop also stops
+ * when the model stands by its mapping unchanged — some registers genuinely
+ * are the mess the checks describe, and a model that has seen the evidence and
+ * kept its answer is giving information, not failing. Whatever round it ends
+ * on, the final proposal ships with its verification attached, so the reviewer
+ * sees the same evidence the loop saw. Nothing here writes: the human-confirm
+ * gate downstream is untouched.
+ */
+const MAX_ROUNDS = 3;
+
+const REVISE = `A proposed mapping was applied to the full workbook — not the preview, the whole file — and measured. Some checks failed; the results and the raw rows behind them are below.
+
+Revise the mapping to fix what the evidence shows. If a check failed because the register genuinely is like that — a file with no printed totals, a legitimately costless listing — keep the mapping unchanged and say why in the rationale; an honest stand-by ends the revision loop. Never bend a mapping just to make a number pass: a wrong cost column that happens to foot is worse than a right one that does not.
+
+Return the complete mapping again, every sheet, in the same form as before.`;
+
+export interface VerifiedMappingResult extends MappingProposalResult {
+  verification: MappingVerification;
+}
+
+export async function proposeVerifiedMapping(
+  workbook: ParsedWorkbook,
+  summaries: SheetSummary[],
+  context: { filename: string },
+): Promise<VerifiedMappingResult> {
+  const workbookText = summaries.map(renderSheet).join('\n\n');
+
+  let { proposal, model } = await proposeMapping(summaries, context);
+  let result = verifyMapping(workbook, proposal);
+  let rounds = 1;
+
+  while (!result.ok && rounds < MAX_ROUNDS) {
+    const { parsed, model: revisedBy } = await parseStructured({
+      system: SYSTEM,
+      user: [
+        `Workbook: ${JSON.stringify(context.filename)}`,
+        workbookText,
+        REVISE,
+        `Your previous mapping:\n${JSON.stringify({ sheets: proposal.sheets })}`,
+        `What it produced:\n${describe(result)}`,
+      ].join('\n\n'),
+      schema: ProposalOutputSchema,
+      schemaName: 'far_mapping_proposal',
+      maxTokens: 16000,
+      task: 'mapping',
+    });
+    const revised = sanitize(parsed, summaries);
+    rounds += 1;
+
+    // The model stood by its mapping: the checks describe the register, not a
+    // mistake. Take the (possibly updated) rationale and stop asking.
+    const unchanged = JSON.stringify(revised.sheets) === JSON.stringify(proposal.sheets);
+    proposal = revised;
+    model = revisedBy;
+    if (unchanged) break;
+
+    result = verifyMapping(workbook, proposal);
+  }
+
+  const verification: MappingVerification = { rounds, checks: result.checks };
+  return { proposal: { ...proposal, verification }, model, verification };
+}
+
+/** The verification, in the words the reviewer will also see. */
+function describe(result: VerifyResult): string {
+  const lines = result.checks.map(
+    (check) => `- [${check.ok ? 'pass' : 'FAIL'}] ${check.check}: ${check.detail}`,
+  );
+  if (result.evidence.length > 0) {
+    lines.push('', 'Raw rows behind the failures (cells pipe-separated):');
+    lines.push(...result.evidence.map((line) => `  ${line}`));
+  }
+  return lines.join('\n');
 }

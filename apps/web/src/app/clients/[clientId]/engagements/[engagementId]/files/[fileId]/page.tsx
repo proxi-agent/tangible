@@ -9,6 +9,7 @@ import type {
   CanonicalAssetField,
   FarFile,
   FarMapping,
+  MappingVerification,
   NormalizationResult,
   SheetMapping,
   SheetSummary,
@@ -175,6 +176,9 @@ export default function MappingReviewPage() {
               <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
                 {file.proposal.rationale}
               </p>
+              {file.proposal.verification ? (
+                <Verification verification={file.proposal.verification} />
+              ) : null}
             </div>
             <Button onClick={() => propose.mutate({ auto: false })} disabled={proposePending}>
               {proposePending ? 'Proposing…' : 'Re-propose'}
@@ -530,4 +534,53 @@ function mappingChecklist(mapping: FarMapping): { label: string; ok: boolean }[]
       ok: mapped.has('acquisitionDate') || mapped.has('acquisitionYear'),
     },
   ];
+}
+
+/**
+ * What the proposal survived before it reached this screen.
+ *
+ * These are the measurements the propose–verify–revise loop ran against the
+ * full workbook — the proposal was applied in memory and its output footed
+ * against the file's own printed totals. Shown check by check rather than as
+ * one verdict, because a failed check is not "reject": some registers really
+ * have no total row, and the reviewer deciding whether to trust the mapping
+ * should see exactly which measurement the doubt comes from. Older proposals
+ * carry no verification and render without this block.
+ */
+function Verification({ verification }: { verification: MappingVerification }) {
+  const failed = verification.checks.filter((check) => !check.ok);
+  return (
+    <div className="mt-2 space-y-1">
+      <p className="text-[11px] font-medium text-[var(--color-ink-muted)]">
+        {verification.rounds === 1
+          ? 'Checked against the full workbook — survived the first proposal.'
+          : `Checked against the full workbook — took ${verification.rounds} rounds.`}
+        {failed.length > 0
+          ? ` ${failed.length} ${plural(failed.length, 'check')} still ${plural(failed.length, 'fails', 'fail')}:`
+          : ''}
+      </p>
+      <ul className="space-y-0.5">
+        {verification.checks.map((check) => (
+          <li key={check.check} className="flex items-start gap-1.5 text-[11px] leading-relaxed">
+            {check.ok ? (
+              <Check
+                size={12}
+                strokeWidth={2.5}
+                className="mt-0.5 shrink-0 text-[var(--color-good)]"
+              />
+            ) : (
+              <span className="mt-0.5 shrink-0 font-semibold text-[var(--color-critical)]">!</span>
+            )}
+            <span
+              className={
+                check.ok ? 'text-[var(--color-ink-muted)]' : 'text-[var(--color-ink-secondary)]'
+              }
+            >
+              {check.detail}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
 }

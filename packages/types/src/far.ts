@@ -195,11 +195,41 @@ export const FarMappingSchema = z.object({
 
 export type FarMapping = z.infer<typeof FarMappingSchema>;
 
+/**
+ * One deterministic check run against what a proposed mapping actually
+ * produced. The model proposes; plain code applies the proposal in memory and
+ * measures the result — row counts, skip reasons, whether the mapped costs
+ * foot against the totals printed on the sheet. Kept on the proposal so the
+ * reviewer sees the same evidence the revision loop saw.
+ */
+export const MappingCheckSchema = z.object({
+  /** Stable key: 'produced-assets', 'foots', 'skip-rate', 'cost-mapped', 'header-row', 'warning-rate'. */
+  check: z.string(),
+  ok: z.boolean(),
+  /** What was measured, in words a reviewer can act on. */
+  detail: z.string(),
+});
+
+export type MappingCheck = z.infer<typeof MappingCheckSchema>;
+
+export const MappingVerificationSchema = z.object({
+  /** How many proposals it took — 1 means the first mapping survived the checks. */
+  rounds: z.number().int().positive(),
+  checks: z.array(MappingCheckSchema),
+});
+
+export type MappingVerification = z.infer<typeof MappingVerificationSchema>;
+
 export const FarMappingProposalSchema = FarMappingSchema.extend({
   /** The model's own read on how safe this mapping is to trust unreviewed. */
   confidence: z.number().min(0).max(1),
   /** What the model noticed — ambiguous columns, sheets it excluded and why. */
   rationale: z.string(),
+  /**
+   * What the proposal measurably produced, when the verification loop ran.
+   * Optional because proposals recorded before the loop existed have none.
+   */
+  verification: MappingVerificationSchema.optional(),
 });
 
 export type FarMappingProposal = z.infer<typeof FarMappingProposalSchema>;

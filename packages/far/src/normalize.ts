@@ -63,7 +63,7 @@ const TOTAL_LABELS = [
   /\S\s+(sub)?totals?\s*[:.]?\s*$/i,
 ];
 
-function isTotalLabel(value: unknown): boolean {
+export function isTotalLabel(value: unknown): boolean {
   if (typeof value !== 'string') return false;
   return TOTAL_LABELS.some((pattern) => pattern.test(value));
 }
