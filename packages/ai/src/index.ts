@@ -37,3 +37,4 @@ export {
   type TriageFileInput,
   type TriageResult,
 } from './triage.js';
+export { draftProtestBrief } from './brief.js';

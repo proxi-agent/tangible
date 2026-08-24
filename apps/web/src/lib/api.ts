@@ -6,6 +6,7 @@ import type {
   AgentAppointment,
   AnswerExtensionRequest,
   AssessmentNotice,
+  ProtestBriefRecord,
   Asset,
   AssetQuery,
   ClassificationDecisionResult,
@@ -600,6 +601,14 @@ export const api = {
    */
   noticeProposal: (documentId: string) =>
     request<NoticeRecordProposal>(`/priors/${documentId}/notice-proposal`),
+
+  /** The newest drafted protest brief for a notice, or null. */
+  noticeBrief: (noticeId: string) =>
+    request<{ brief: ProtestBriefRecord | null }>(`/notices/${noticeId}/brief`),
+
+  /** Draft a brief from the record as it stands — a new row, never an edit. */
+  draftNoticeBrief: (noticeId: string) =>
+    request<{ brief: ProtestBriefRecord }>(`/notices/${noticeId}/brief`, { method: 'POST' }),
 
   /** That a protest went in, or that a notice was recorded in error. */
   updateNotice: (noticeId: string, body: UpdateNoticeRequest) =>

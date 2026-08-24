@@ -83,3 +83,4 @@ export * from './compare-register.js';
 export * from './carry-forward.js';
 export { siteOutcome } from './outcome.js';
 export type { OutcomeInput, OutcomeMotion, OutcomeNotice, OutcomeResolution } from './outcome.js';
+export { assembleBriefFacts, briefBlocker } from './brief.js';

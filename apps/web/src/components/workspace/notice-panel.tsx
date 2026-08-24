@@ -1,11 +1,12 @@
 'use client';
 
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import type {
   AssessmentNotice,
   NoticeCheck,
   PenaltyOutcome,
+  ProtestBriefRecord,
   ProtestResolution,
   ResolutionStage,
 } from '@tangible/types';
@@ -156,6 +157,10 @@ function Recorded({ notice, engagementId }: { notice: AssessmentNotice; engageme
         <p className="text-[11px] text-[var(--color-ink-muted)]">{notice.note}</p>
       ) : null}
 
+      {notice.status === 'active' && notice.appraisedValue !== null && !notice.resolution ? (
+        <BriefSection notice={notice} />
+      ) : null}
+
       {notice.resolution ? (
         <Resolved resolution={notice.resolution} engagementId={engagementId} />
       ) : null}
@@ -168,6 +173,123 @@ function Recorded({ notice, engagementId }: { notice: AssessmentNotice; engageme
       ) : null}
 
       {notice.correction ? <CorrectionRoutes outlook={notice.correction} /> : null}
+    </div>
+  );
+}
+
+/**
+ * The protest brief: drafted from the record, read by the person who files.
+ *
+ * The facts under the draft are frozen on the row, so the sentence naming the
+ * over-assessment always agrees with the argument beneath it — even after the
+ * record has moved. When it has, the answer is the Redraft button: a new row,
+ * never an edit, same as every other record in the season.
+ */
+function BriefSection({ notice }: { notice: AssessmentNotice }) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ['notice-brief', notice.id],
+    queryFn: () => api.noticeBrief(notice.id),
+  });
+  const draft = useMutation({
+    mutationFn: () => api.draftNoticeBrief(notice.id),
+    onSuccess: (result) => {
+      queryClient.setQueryData(['notice-brief', notice.id], result);
+    },
+  });
+
+  const record = query.data?.brief ?? null;
+
+  return (
+    <div className="space-y-2 rounded-md border border-[var(--color-hairline)] p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-medium text-[var(--color-ink)]">Protest brief</span>
+        <Button variant="ghost" onClick={() => draft.mutate()} disabled={draft.isPending}>
+          {draft.isPending ? 'Drafting…' : record ? 'Redraft from the record' : 'Draft from the record'}
+        </Button>
+      </div>
+
+      {draft.isError ? (
+        <p className="text-[11px] text-[var(--color-critical)]">
+          {draft.error instanceof Error ? draft.error.message : 'The draft failed.'}
+        </p>
+      ) : null}
+
+      {record ? (
+        <BriefBody record={record} />
+      ) : query.isLoading ? null : (
+        <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+          Every fact the argument needs is already on file — the rendered value, the noticed value,
+          the findings behind our number. Drafting assembles them and writes the argument; filing
+          the protest stays yours.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function BriefBody({ record }: { record: ProtestBriefRecord }) {
+  const { facts, brief } = record;
+  return (
+    <div className="space-y-2 text-[11px] leading-relaxed">
+      <p className="text-[var(--color-ink-muted)]">
+        Drafted {dayShort(record.createdAt.slice(0, 10))} from the record as it stood then
+        {facts.overAssessment !== null ? (
+          <>
+            {' — '}
+            <span
+              className={
+                facts.overAssessment > 0
+                  ? 'font-medium text-[var(--color-ink)]'
+                  : 'text-[var(--color-ink-secondary)]'
+              }
+            >
+              {facts.overAssessment > 0
+                ? `${moneyExact(facts.overAssessment)} over the rendered value`
+                : 'noticed at or under the rendered value'}
+            </span>
+          </>
+        ) : (
+          ' — no filed return to measure against'
+        )}
+        .
+      </p>
+
+      <p className="text-[var(--color-ink-secondary)]">{brief.summary}</p>
+
+      {brief.grounds.map((ground) => (
+        <div key={ground.heading} className="rounded border border-[var(--color-hairline)] p-2">
+          <p className="font-medium text-[var(--color-ink)]">{ground.heading}</p>
+          <p className="mt-0.5 text-[var(--color-ink-secondary)]">{ground.argument}</p>
+          <p className="mt-0.5 text-[var(--color-ink-muted)]">Rests on: {ground.support}</p>
+        </div>
+      ))}
+
+      <div className="flex flex-wrap gap-x-5 gap-y-1">
+        {brief.valueRequested !== null ? (
+          <span className="text-[var(--color-ink-secondary)]">
+            value requested{' '}
+            <span className="tabular font-medium text-[var(--color-ink)]">
+              {moneyExact(brief.valueRequested)}
+            </span>
+          </span>
+        ) : null}
+      </div>
+
+      {brief.penaltyRequest ? (
+        <p className="text-[var(--color-warning)]">{brief.penaltyRequest}</p>
+      ) : null}
+
+      {brief.gaps.length > 0 ? (
+        <div>
+          <p className="font-medium text-[var(--color-ink)]">Before the hearing</p>
+          <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[var(--color-ink-secondary)]">
+            {brief.gaps.map((gap) => (
+              <li key={gap}>{gap}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
     </div>
   );
 }

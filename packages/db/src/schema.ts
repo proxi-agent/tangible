@@ -1322,6 +1322,37 @@ export const protestResolutions = pgTable(
 ).enableRLS();
 
 /**
+ * A drafted protest brief: the argument for one notice, frozen at draft time.
+ *
+ * Two jsonb columns doing two different jobs. `facts` is the deterministic
+ * record the draft was allowed to argue from — assembled by code, no model —
+ * and `brief` is what the model made of it. Kept together so a brief read
+ * months later is a statement about what the record said then, not a claim
+ * that recomputes itself. Rows are never edited; redrafting inserts a new row
+ * and the newest wins on read.
+ */
+export const protestBriefs = pgTable(
+  'protest_briefs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    noticeId: uuid('notice_id')
+      .notNull()
+      .references(() => assessmentNotices.id, { onDelete: 'cascade' }),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** The assembled inputs, frozen. See ProtestBriefFactsSchema. */
+    facts: jsonb('facts').notNull(),
+    /** The drafted argument. See ProtestBriefSchema. */
+    brief: jsonb('brief').notNull(),
+    model: text('model'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('protest_briefs_notice_idx').on(table.noticeId, table.createdAt)],
+).enableRLS();
+
+
+/**
  * A motion filed under 25.25 to correct an appraisal roll after the fact.
  *
  * The open-years board asks whether a year can still be reopened. This is the
