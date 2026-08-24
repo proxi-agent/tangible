@@ -70,9 +70,31 @@ export default function EngagementPage() {
     queryKey: ['engagement', engagementId],
     queryFn: () => api.engagement(engagementId),
   });
+  // The overview's returns board and pipeline both read this key, but they
+  // mount only after the detail query above resolves — which turns two
+  // independent fetches into a waterfall and doubles the skeleton time.
+  // Asking here starts both in parallel; the board finds its data warm.
+  useQuery({
+    queryKey: ['engagement-season', engagementId],
+    queryFn: () => api.season(engagementId),
+    enabled: tab === 'overview',
+  });
 
   if (error) return <ErrorState error={error} />;
-  if (isLoading || !data) return <Skeleton className="h-48 w-full" />;
+  if (isLoading || !data)
+    return (
+      // Shaped like the page it becomes — header line, tab bar, then the two
+      // overview cards — so the load reads as the page forming, not a slab.
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-6 w-40" />
+          <Skeleton className="h-6 w-56" />
+        </div>
+        <Skeleton className="h-8 w-full max-w-xl" />
+        <Skeleton className="h-16 w-full" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    );
 
   return (
     <div className="space-y-6">
