@@ -1098,6 +1098,74 @@ export const RecordNoticeRequestSchema = z.object({
 
 export type RecordNoticeRequest = z.infer<typeof RecordNoticeRequestSchema>;
 
+// ---------------------------------------------------------------------------
+// A notice read by the intake, proposed as a record
+// ---------------------------------------------------------------------------
+
+/**
+ * One thing the matcher checked before proposing. Same shape of honesty as a
+ * mapping verification check: ok says whether it held, detail says what was
+ * actually compared, and a failed check is information the reviewer needs, not
+ * an error that hides the proposal.
+ */
+export const NoticeProposalCheckSchema = z.object({
+  check: z.string(),
+  ok: z.boolean(),
+  detail: z.string(),
+});
+export type NoticeProposalCheck = z.infer<typeof NoticeProposalCheckSchema>;
+
+/**
+ * How an extracted notice landed on a site, or failed to.
+ *
+ * `basis` says why the match holds: 'account' means the account number printed
+ * on the notice matched the site's roll account — the district's own join key,
+ * as strong as this gets. 'only-site' means the engagement files one return,
+ * so an unmatched notice has exactly one place it could belong — plausible,
+ * and flagged as the assumption it is.
+ */
+export const NoticeMatchSchema = z.object({
+  locationId: z.string(),
+  label: z.string(),
+  accountId: z.string().nullable(),
+  basis: z.enum(['account', 'only-site']),
+});
+export type NoticeMatch = z.infer<typeof NoticeMatchSchema>;
+
+/**
+ * A recordable draft built from an extracted notice.
+ *
+ * The same fields as {@link RecordNoticeRequestSchema} minus the site (that is
+ * the match's job), with `noticedOn` nullable because a scan whose date could
+ * not be read still yields everything else — and the missing date is itself a
+ * check, since the date is what starts the clock.
+ */
+export const NoticeDraftSchema = z.object({
+  noticedOn: z.string().nullable(),
+  printedDeadline: z.string().nullable(),
+  districtName: z.string().nullable(),
+  appraisedValue: z.number().nullable(),
+  assessedValue: z.number().nullable(),
+  priorYearValue: z.number().nullable(),
+  renditionPenaltyApplied: z.boolean().nullable(),
+});
+export type NoticeDraft = z.infer<typeof NoticeDraftSchema>;
+
+/**
+ * The whole proposal, as the review screen receives it. Advice only: nothing
+ * is recorded until a person confirms, through the same recordNotice path a
+ * hand-typed notice takes.
+ */
+export const NoticeRecordProposalSchema = z.object({
+  documentId: z.string(),
+  match: NoticeMatchSchema.nullable(),
+  draft: NoticeDraftSchema,
+  checks: z.array(NoticeProposalCheckSchema),
+  /** An active notice already stands for the matched site and year. */
+  alreadyRecorded: z.boolean(),
+});
+export type NoticeRecordProposal = z.infer<typeof NoticeRecordProposalSchema>;
+
 /**
  * Write down that a protest went in, or take back a row recorded in error.
  *

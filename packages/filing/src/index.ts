@@ -61,6 +61,12 @@ export {
   type AppointmentTerms,
 } from './fill-50-162.js';
 export { checkNotice, protestStanding, type FiledReturnFacts } from './protest.js';
+export {
+  parsePrintedDate,
+  proposeNoticeRecord,
+  type NoticeProposalContext,
+  type NoticeSiteCandidate,
+} from './notice-intake.js';
 export { checkResolution, resolutionStanding } from './resolution.js';
 export { correctionOutlook, routeDeadline } from './correction.js';
 export { checkMotion, motionStanding } from './motion.js';

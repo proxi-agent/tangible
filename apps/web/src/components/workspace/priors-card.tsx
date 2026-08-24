@@ -1,14 +1,14 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FileText, ScrollText, UploadCloud } from 'lucide-react';
+import { Check, FileText, ScrollText, UploadCloud } from 'lucide-react';
 import Link from 'next/link';
 import { useRef, useState } from 'react';
-import type { PriorDocument, PriorDocumentKind } from '@tangible/types';
+import type { NoticeRecordProposal, PriorDocument, PriorDocumentKind } from '@tangible/types';
 import { PRIOR_UPLOAD_EXTENSIONS } from '@tangible/types';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
-import { count, moneyExact, plural } from '@/lib/format';
+import { count, dayShort, moneyExact, plural } from '@/lib/format';
 import { PriorDocumentStatusBadge } from '@/components/workspace/badges';
 import { Button } from '@/components/ui/controls';
 import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
@@ -215,6 +215,110 @@ function DocumentRow({
           <Button>Review</Button>
         </Link>
       )}
+      {document.kind === 'notice' && document.extracted ? (
+        <NoticeProposal document={document} engagementId={engagementId} />
+      ) : null}
     </li>
+  );
+}
+
+/**
+ * The intake's offer to record this notice.
+ *
+ * The extraction read the scan; the matcher put it on a site by the account
+ * number the district printed. This is the confirm gate: everything shown here
+ * is advice until the button is pressed, and the button goes through the same
+ * recordNotice path a notice typed from the envelope takes — same validation,
+ * same one-active-row rule, same clocks. Where the match or the date is
+ * missing, the checks say what is missing and the button never appears; the
+ * site's own notice panel remains the way to record it by hand.
+ */
+function NoticeProposal({
+  document,
+  engagementId,
+}: {
+  document: PriorDocument;
+  engagementId: string;
+}) {
+  const queryClient = useQueryClient();
+  const { data: proposal, error } = useQuery({
+    queryKey: ['notice-proposal', document.id],
+    queryFn: () => api.noticeProposal(document.id),
+  });
+
+  const record = useMutation({
+    mutationFn: (p: NoticeRecordProposal) =>
+      api.recordNotice(engagementId, {
+        locationId: p.match!.locationId,
+        noticedOn: p.draft.noticedOn!,
+        deliveredOn: null,
+        printedDeadline: p.draft.printedDeadline,
+        districtName: p.draft.districtName,
+        appraisedValue: p.draft.appraisedValue,
+        assessedValue: p.draft.assessedValue,
+        priorYearValue: p.draft.priorYearValue,
+        renditionPenaltyApplied: p.draft.renditionPenaltyApplied,
+        note: `Recorded from ${document.originalFilename}.`,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['engagement-notices', engagementId] });
+      void queryClient.invalidateQueries({ queryKey: ['notice-proposal', document.id] });
+    },
+  });
+
+  if (error || !proposal) return null;
+
+  const failed = proposal.checks.filter((c) => !c.ok);
+  const yearOk = proposal.checks.every((c) => c.check !== 'tax-year' || c.ok);
+  const recordable =
+    proposal.match !== null && proposal.draft.noticedOn !== null && yearOk && !proposal.alreadyRecorded;
+
+  return (
+    <div className="w-full rounded-lg border border-[var(--color-hairline)] bg-[var(--color-plane)] px-3 py-2.5">
+      {proposal.match ? (
+        <p className="text-xs">
+          <span className="font-medium">{proposal.match.label}</span>
+          <span className="text-[var(--color-ink-secondary)]">
+            {proposal.match.basis === 'account'
+              ? ` — matched on account ${proposal.match.accountId}`
+              : ' — the only site owing a return'}
+            {proposal.draft.noticedOn ? `, noticed ${dayShort(proposal.draft.noticedOn)}` : ''}
+            {proposal.draft.appraisedValue !== null
+              ? `, appraised at ${moneyExact(proposal.draft.appraisedValue)}`
+              : ''}
+          </span>
+        </p>
+      ) : (
+        <p className="text-xs text-[var(--color-ink-secondary)]">
+          No site matched — record it from the site's own panel below.
+        </p>
+      )}
+      {failed.length > 0 ? (
+        <ul className="mt-1 space-y-0.5">
+          {failed.map((check) => (
+            <li key={check.check} className="text-xs text-[var(--color-warning)]">
+              {check.detail}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {record.error ? (
+        <p className="mt-1 text-xs text-[var(--color-critical)]">{(record.error as Error).message}</p>
+      ) : null}
+      <div className="mt-1.5 flex items-center gap-2">
+        {record.isSuccess || proposal.alreadyRecorded ? (
+          <p className="flex items-center gap-1 text-xs text-[var(--color-good)]">
+            <Check size={13} strokeWidth={2.2} />
+            {record.isSuccess
+              ? 'Recorded — the clocks are running on the sites board.'
+              : 'A notice is already on record for this site and year.'}
+          </p>
+        ) : recordable ? (
+          <Button onClick={() => record.mutate(proposal)} disabled={record.isPending}>
+            {record.isPending ? 'Recording…' : `Record against ${proposal.match!.label}`}
+          </Button>
+        ) : null}
+      </div>
+    </div>
   );
 }

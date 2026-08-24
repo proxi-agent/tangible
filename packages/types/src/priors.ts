@@ -189,6 +189,8 @@ export const ExtractedNoticeSchema = z.object({
   ownerName: z.string().nullable(),
   accountId: z.string().nullable(),
   taxYear: z.number().int().nullable(),
+  /** The date printed on the notice itself — the day the 41.44 clock starts. As printed. */
+  noticeDate: z.string().nullable(),
   districtName: z.string().nullable(),
   appraisedValue: z.number().nullable(),
   assessedValue: z.number().nullable(),

@@ -58,6 +58,7 @@ import type {
   RecordFilingRequest,
   RecordMotionRequest,
   RecordNoticeRequest,
+  NoticeRecordProposal,
   RecordResolutionRequest,
   Rendition,
   RenditionBasis,
@@ -583,6 +584,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  /**
+   * What the intake would record for an uploaded notice. Advice, freshly
+   * computed; confirming goes through recordNotice like a hand-typed one.
+   */
+  noticeProposal: (documentId: string) =>
+    request<NoticeRecordProposal>(`/priors/${documentId}/notice-proposal`),
 
   /** That a protest went in, or that a notice was recorded in error. */
   updateNotice: (noticeId: string, body: UpdateNoticeRequest) =>

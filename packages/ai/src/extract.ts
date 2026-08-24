@@ -51,6 +51,8 @@ const NOTICE_SYSTEM = `You read Texas appraisal district notices of appraised va
 
 Report figures as printed. If a figure is illegible, cut off, or absent, return null and describe what you could not read in "unreadable" — never estimate or infer a value from other figures on the page.
 
+The notice date: report the date the notice itself is dated (usually printed near the header or the mailing block), exactly as printed. It is not the protest deadline and not the appraisal date of the property — it is the date on the document.
+
 The protest deadline: report the date PRINTED on the notice, not the statutory date you might calculate. Districts print a specific date and that is what binds the taxpayer.
 
 Notices often print both the current year's value and the prior year's for comparison; keep them straight and do not swap them. Some notices state that the value was set without a rendition on file, or that a rendition penalty was applied — record that if the document says it, and leave it null if the document is silent rather than inferring it from anything else.`;
