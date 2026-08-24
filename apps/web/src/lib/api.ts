@@ -7,6 +7,7 @@ import type {
   AnswerExtensionRequest,
   AssessmentNotice,
   ProtestBriefRecord,
+  UnblockPlanRecord,
   Asset,
   AssetQuery,
   ClassificationDecisionResult,
@@ -459,6 +460,16 @@ export const api = {
    * part of the engagement's.
    */
   season: (engagementId: string) => request<FilingSeason>(`/engagements/${engagementId}/season`),
+
+  /** The newest drafted unblock plan for an engagement, or null. */
+  unblockPlan: (engagementId: string) =>
+    request<{ plan: UnblockPlanRecord | null }>(`/engagements/${engagementId}/unblock`),
+
+  /** Draft a plan from the season as it stands — a new row, never an edit. */
+  draftUnblockPlan: (engagementId: string) =>
+    request<{ plan: UnblockPlanRecord }>(`/engagements/${engagementId}/unblock`, {
+      method: 'POST',
+    }),
 
   /**
    * The same question across every client, for one tax year.

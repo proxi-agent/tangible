@@ -1,6 +1,6 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, FileText, Gavel, MapPinOff } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -10,9 +10,11 @@ import type {
   FilingSeason,
   RenditionExtension,
   SeasonReturn,
+  UnblockPlanRecord,
 } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
+import { Button } from '@/components/ui/controls';
 import { ExtensionPanel } from '@/components/workspace/extension-panel';
 import { NoticePanel } from '@/components/workspace/notice-panel';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
@@ -104,7 +106,119 @@ export function ReturnsBoard({
         {unplacedCount > 0 ? <Unplaced n={unplacedCount} cost={unplacedCost} /> : null}
       </ul>
       {returns.length > 1 ? <Footer returns={returns} /> : null}
+      {returns.some((entry) => entry.status === 'blocked') ? (
+        <UnblockPlanSection engagementId={engagementId} />
+      ) : null}
     </Card>
+  );
+}
+
+/**
+ * The unblock plan: the work that releases the blocked returns, and the one
+ * client email it requires — drafted from the board's own blockers.
+ *
+ * Facts frozen at draft time, same as the protest brief, so a plan read after
+ * the season moved still says what was blocked then. When it has moved, the
+ * answer is Redraft: a new row, never an edit. The email is a draft to copy;
+ * nothing here sends anything.
+ */
+function UnblockPlanSection({ engagementId }: { engagementId: string }) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ['unblock-plan', engagementId],
+    queryFn: () => api.unblockPlan(engagementId),
+  });
+  const draft = useMutation({
+    mutationFn: () => api.draftUnblockPlan(engagementId),
+    onSuccess: (result) => {
+      queryClient.setQueryData(['unblock-plan', engagementId], result);
+    },
+  });
+
+  const record = query.data?.plan ?? null;
+
+  return (
+    <div className="mt-3 space-y-2 rounded-lg border border-[var(--color-hairline)] bg-[var(--color-plane)] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-[var(--color-ink)]">Unblock plan</span>
+        <Button variant="ghost" onClick={() => draft.mutate()} disabled={draft.isPending}>
+          {draft.isPending
+            ? 'Drafting…'
+            : record
+              ? 'Redraft from the board'
+              : 'Draft from the board'}
+        </Button>
+      </div>
+
+      {draft.isError ? (
+        <p className="text-[11px] text-[var(--color-critical)]">
+          {draft.error instanceof Error ? draft.error.message : 'The draft failed.'}
+        </p>
+      ) : null}
+
+      {record ? (
+        <UnblockPlanBody record={record} />
+      ) : query.isLoading ? null : (
+        <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+          Each blocker above says what clears it. Drafting turns the whole list into a worked plan —
+          what the firm does here, what needs the client, and the one email that asks for all of it.
+          Sending it stays yours.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function UnblockPlanBody({ record }: { record: UnblockPlanRecord }) {
+  const { plan } = record;
+  const firm = plan.steps.filter((step) => step.owner === 'firm');
+  const client = plan.steps.filter((step) => step.owner === 'client');
+  return (
+    <div className="space-y-2 text-[11px] leading-relaxed">
+      <p className="text-[var(--color-ink-muted)]">
+        Drafted {dayShort(record.createdAt.slice(0, 10))} from the board as it stood then — redraft
+        after clearing anything.
+      </p>
+      <p className="text-[var(--color-ink-secondary)]">{plan.summary}</p>
+
+      {firm.length > 0 ? <StepList label="For the firm" steps={firm} /> : null}
+      {client.length > 0 ? <StepList label="Needs the client" steps={client} /> : null}
+
+      {plan.clientEmail ? (
+        <div className="rounded border border-[var(--color-hairline)] p-2">
+          <p className="font-medium text-[var(--color-ink)]">
+            Draft email — {plan.clientEmail.subject}
+          </p>
+          <p className="mt-1 whitespace-pre-wrap text-[var(--color-ink-secondary)]">
+            {plan.clientEmail.body}
+          </p>
+        </div>
+      ) : null}
+
+      {plan.notes.length > 0 ? (
+        <ul className="list-disc space-y-0.5 pl-4 text-[var(--color-ink-muted)]">
+          {plan.notes.map((note) => (
+            <li key={note}>{note}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+function StepList({ label, steps }: { label: string; steps: UnblockPlanRecord['plan']['steps'] }) {
+  return (
+    <div>
+      <p className="font-medium text-[var(--color-ink)]">{label}</p>
+      <ul className="mt-0.5 space-y-0.5">
+        {steps.map((step) => (
+          <li key={`${step.returnLabel}:${step.blockerKey}`} className="flex gap-1.5">
+            <span className="text-[var(--color-ink-muted)]">{step.returnLabel}:</span>
+            <span className="text-[var(--color-ink-secondary)]">{step.action}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 

@@ -16,3 +16,4 @@ export * from './graph.js';
 export * from './appointment.js';
 export * from './intake.js';
 export * from './protest-brief.js';
+export * from './unblock.js';

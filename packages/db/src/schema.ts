@@ -1351,6 +1351,32 @@ export const protestBriefs = pgTable(
   (table) => [index('protest_briefs_notice_idx').on(table.noticeId, table.createdAt)],
 ).enableRLS();
 
+/**
+ * A drafted unblock plan: the work that releases an engagement's blocked
+ * returns, and the client outreach it requires — frozen at draft time.
+ *
+ * Same shape and same discipline as `protestBriefs`: `facts` is what the
+ * assembler selected (blocked returns, blocking problems, operative
+ * deadlines), `plan` is what the model made of it, rows are never edited,
+ * and redrafting after the season moves inserts a new row.
+ */
+export const unblockPlans = pgTable(
+  'unblock_plans',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** The assembled inputs, frozen. See UnblockFactsSchema. */
+    facts: jsonb('facts').notNull(),
+    /** The drafted plan. See UnblockPlanSchema. */
+    plan: jsonb('plan').notNull(),
+    model: text('model'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('unblock_plans_engagement_idx').on(table.engagementId, table.createdAt)],
+).enableRLS();
+
 
 /**
  * A motion filed under 25.25 to correct an appraisal roll after the fact.
