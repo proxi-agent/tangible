@@ -1,7 +1,9 @@
 'use client';
 
 import { Check } from 'lucide-react';
+import Link from 'next/link';
 import { cloneElement, isValidElement, useId, type ReactElement, type ReactNode, type SelectHTMLAttributes } from 'react';
+import type { ComponentProps } from 'react';
 import { cn } from '@/lib/cn';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
 
@@ -129,6 +131,33 @@ export function Button({
         'active:scale-[0.98]',
         'disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100 disabled:hover:bg-[var(--color-surface)]',
         variants[variant],
+        className,
+      )}
+      {...props}
+    />
+  );
+}
+
+/**
+ * A destination dressed as a compact button, for the action a row carries.
+ *
+ * "Open it" and "The form as filed" are the most consequential clicks on their
+ * boards, and as bare prose fragments at the far right they read as labels. An
+ * action the eye cannot find is an action that does not exist — but a full
+ * form-height Button on every row would shout. This is the middle: real button
+ * affordance at row scale, still a link underneath so it can be opened in a
+ * new tab like any destination.
+ */
+export function LinkButton({ className, ...props }: ComponentProps<typeof Link>) {
+  return (
+    <Link
+      className={cn(
+        'inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--color-hairline)]',
+        'bg-[var(--color-surface)] px-2.5 text-xs font-medium text-[var(--color-ink)]',
+        'transition-all outline-none hover:bg-[var(--color-plane)]',
+        'hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)]',
+        'focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
+        'active:scale-[0.98]',
         className,
       )}
       {...props}

@@ -14,7 +14,7 @@ import type {
 } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
-import { Button } from '@/components/ui/controls';
+import { Button, LinkButton } from '@/components/ui/controls';
 import { ExtensionPanel } from '@/components/workspace/extension-panel';
 import { NoticePanel } from '@/components/workspace/notice-panel';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
@@ -86,11 +86,7 @@ export function ReturnsBoard({
       <CardHeader
         title={heading(returns)}
         description={<Calendar season={season.data} outstanding={outstanding} />}
-        action={
-          <Link href={draft} className="text-xs font-medium hover:underline">
-            The draft
-          </Link>
-        }
+        action={<LinkButton href={draft}>The draft</LinkButton>}
       />
       <ul className="divide-y divide-[var(--color-hairline)]">
         {returns.map((entry) => (
@@ -373,14 +369,12 @@ function ReturnRow({
           </span>
         </Tooltip>
         {entry.status === 'filed' ? (
-          <Link href={`/filings/${entry.filing!.id}`} className="text-xs font-medium hover:underline">
-            The form as filed
-          </Link>
+          <LinkButton href={`/filings/${entry.filing!.id}`}>The form as filed</LinkButton>
         ) : (
-          <Link href={site} className="inline-flex items-center gap-1 text-xs font-medium hover:underline">
+          <LinkButton href={site}>
             <FileText size={12} strokeWidth={2} />
             {entry.status === 'blocked' ? 'Open it' : 'File it'}
-          </Link>
+          </LinkButton>
         )}
       </div>
       <Detail entry={entry} noticeOpen={panel === 'notice'} />

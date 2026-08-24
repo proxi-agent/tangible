@@ -83,13 +83,43 @@ function FilingDraft() {
       .map((filing) => filing.locationId),
   );
 
+  // A multi-site engagement with no site chosen has no draft to show — one
+  // account per site means one form per site, and a screen that opened on a
+  // whole-register draft its own gate calls unfileable taught every visitor to
+  // scroll past a blocker. The picker comes first; the draft is not even
+  // fetched until there is a return to draft.
+  const unchosen = (returns.data?.returns.length ?? 0) > 1 && locationId === null;
+
   const { data, error, isLoading } = useQuery({
     queryKey: ['engagement-rendition', engagementId, basis, filedByAgent, locationId],
     queryFn: () => api.rendition(engagementId, { basis, filedByAgent, locationId }),
     placeholderData: (previous) => previous,
+    enabled: returns.data !== undefined && !unchosen,
   });
 
+  if (returns.error) return <ErrorState error={returns.error} />;
   if (error) return <ErrorState error={error} />;
+  if (!returns.data) return <Skeleton className="h-96 w-full" />;
+
+  const back = (
+    <Link
+      href={`/clients/${clientId}/engagements/${engagementId}`}
+      className="inline-flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
+    >
+      <ArrowLeft size={13} strokeWidth={2} />
+      Back to the engagement
+    </Link>
+  );
+
+  if (unchosen) {
+    return (
+      <div className="space-y-5">
+        <div className="flex items-center gap-4">{back}</div>
+        <ReturnPicker owed={returns.data} chosen={locationId} filed={filed} onChoose={choose} />
+      </div>
+    );
+  }
+
   if (isLoading || !data) return <Skeleton className="h-96 w-full" />;
 
   const site = locationId ? `&location=${encodeURIComponent(locationId)}` : '';
@@ -97,13 +127,7 @@ function FilingDraft() {
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-4">
-        <Link
-          href={`/clients/${clientId}/engagements/${engagementId}`}
-          className="inline-flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-        >
-          <ArrowLeft size={13} strokeWidth={2} />
-          Back to the engagement
-        </Link>
+        {back}
         <Link
           href={`/clients/${clientId}/engagements/${engagementId}/filing/form?basis=${basis}&agent=${filedByAgent}${site}`}
           className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-[var(--color-ink)] hover:underline"
@@ -113,7 +137,7 @@ function FilingDraft() {
         </Link>
       </div>
 
-      {returns.data && returns.data.returns.length > 1 ? (
+      {returns.data.returns.length > 1 ? (
         <ReturnPicker owed={returns.data} chosen={locationId} filed={filed} onChoose={choose} />
       ) : null}
 
@@ -165,10 +189,11 @@ function FilingDraft() {
  * not one is picked, with the property and the account behind each, so the
  * count is a fact about the engagement rather than a surprise at the printer.
  *
- * Nothing is selected to begin with, deliberately. The draft below then comes
- * back covering the whole register and blocked, which is the honest answer to a
- * screen that assumed a single form — and it is a worse outcome to quietly show
- * one site's return as if it were the filing.
+ * Nothing is selected to begin with, deliberately, and until something is the
+ * picker stands alone — no draft renders underneath it. Quietly showing one
+ * site's return as if it were the filing would be worse, and so was the old
+ * answer of a whole-register draft pre-blocked by its own gate: a page that
+ * opens on a defect teaches people to scroll past defects.
  */
 function ReturnPicker({
   owed,

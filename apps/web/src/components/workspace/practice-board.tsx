@@ -8,7 +8,7 @@ import { appraisalDistrictName } from '@tangible/filing/districts';
 import type { PracticeResult, PracticeReturn, PracticeSeason, RolloverPlan, SeasonHold } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
-import { Button } from '@/components/ui/controls';
+import { Button, LinkButton } from '@/components/ui/controls';
 import { Badge, Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
 
@@ -464,8 +464,14 @@ function ReturnRow({ entry }: { entry: PracticeReturn }) {
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
         <Badge tone={TONE[entry.status]}>{entry.status}</Badge>
         {/* The client leads. Above one engagement the site label identifies
-            nothing on its own — half the firms in Texas have a Main Office. */}
-        <Link href={`/clients/${entry.clientId}`} className="font-medium hover:underline">
+            nothing on its own — half the firms in Texas have a Main Office.
+            The name goes to the engagement rather than the client page: this
+            row is one return of one season, and the board it belongs to lives
+            on the engagement. The client page is one click further back. */}
+        <Link
+          href={`/clients/${entry.clientId}/engagements/${entry.engagementId}`}
+          className="font-medium hover:underline"
+        >
           {entry.clientName}
         </Link>
         <span className="text-xs text-[var(--color-ink-secondary)]">{entry.label}</span>
@@ -506,9 +512,9 @@ function ReturnRow({ entry }: { entry: PracticeReturn }) {
               : money(entry.renderedCost)}
           </span>
         </Tooltip>
-        <Link href={href} className="text-xs font-medium hover:underline">
+        <LinkButton href={href}>
           {entry.status === 'filed' ? 'The form' : entry.status === 'blocked' ? 'Open it' : 'File it'}
-        </Link>
+        </LinkButton>
       </div>
       <Detail entry={entry} />
     </li>
