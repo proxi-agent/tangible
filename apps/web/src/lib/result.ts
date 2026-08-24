@@ -6,9 +6,11 @@ import type {
   SeasonReturn,
   SiteOutcome,
 } from '@tangible/types';
+import { DEFAULT_BLENDED_TAX_RATE } from '@tangible/types';
 import { clientMotions } from '@/lib/motions';
 import { filingSeason } from '@/lib/season';
 import { fetchEngagement } from '@/lib/workspace';
+import { requireDb, schema } from '@/lib/workspace-db';
 
 /**
  * What the engagement's year came to, assembled from records already kept.
@@ -24,14 +26,31 @@ import { fetchEngagement } from '@/lib/workspace';
  */
 export async function engagementResult(engagementId: string): Promise<EngagementResult> {
   const { engagement } = await fetchEngagement(engagementId);
-  const [season, motions] = await Promise.all([
+  const [season, motions, rates] = await Promise.all([
     filingSeason(engagementId),
     clientMotions(engagement.clientId),
+    jurisdictionRates(),
   ]);
 
-  const sites = seasonOutcomes(engagement.taxYear, season.returns, motions);
+  const sites = seasonOutcomes(engagement.taxYear, season.returns, motions, rates);
 
   return summed(engagement.taxYear, sites);
+}
+
+/**
+ * Every jurisdiction's blended rate, keyed by id.
+ *
+ * The whole table, because it is a handful of rows and both the engagement
+ * and the practice roll-up want the same map. The blend is the same rate the
+ * savings proposal dollarized with — the promise and the answer must convert
+ * value to dollars the same way, or the difference between them reads as a
+ * result when it is only arithmetic.
+ */
+export async function jurisdictionRates(): Promise<Map<string, number>> {
+  const rows = await requireDb()
+    .select({ id: schema.jurisdictions.id, rate: schema.jurisdictions.blendedTaxRate })
+    .from(schema.jurisdictions);
+  return new Map(rows.map((row) => [row.id, row.rate]));
 }
 
 /**
@@ -46,9 +65,18 @@ export function seasonOutcomes(
   taxYear: number,
   returns: readonly SeasonReturn[],
   motions: CorrectionMotion[],
+  rates: ReadonlyMap<string, number>,
 ): SiteOutcome[] {
   return returns.map((entry) =>
     siteOutcome({
+      // The proposal's lookupRate falls back to the default blend when the
+      // jurisdictions table has no row; the answer must convert the same way
+      // the promise did, so the same fallback applies here. Only a return
+      // with no jurisdiction at all gets no estimate.
+      blendedTaxRate:
+        entry.jurisdictionId !== null
+          ? (rates.get(entry.jurisdictionId) ?? DEFAULT_BLENDED_TAX_RATE)
+          : null,
       locationId: entry.locationId,
       label: entry.label,
       accountId: entry.accountId,
@@ -121,6 +149,7 @@ function summed(taxYear: number, sites: SiteOutcome[]): EngagementResult {
   const noticed = sites.filter((site) => site.noticedValue !== null);
   const standing = sites.filter((site) => site.standingValue !== null);
   const reduced = sites.filter((site) => site.reduction !== null);
+  const estimated = sites.filter((site) => site.estimatedTaxReduction !== null);
   const settled = sites.filter((site) => site.final).length;
 
   const sum = (rows: SiteOutcome[], pick: (site: SiteOutcome) => number | null) =>
@@ -139,6 +168,8 @@ function summed(taxYear: number, sites: SiteOutcome[]): EngagementResult {
     standingCount: standing.length,
     reductionTotal: sum(reduced, (site) => site.reduction),
     reductionCount: reduced.length,
+    estimatedTaxTotal: sum(estimated, (site) => site.estimatedTaxReduction),
+    estimatedTaxCount: estimated.length,
     standing: headline(taxYear, sites, settled),
   };
 }
@@ -152,8 +183,17 @@ function headline(taxYear: number, sites: SiteOutcome[], settled: number): strin
       ? `${taxYear} is finished at every site.`
       : `${settled} of ${sites.length} sites ${settled === 1 ? 'has' : 'have'} finished ${taxYear}; the rest are still moving.`;
   if (saved <= 0) return head;
+  // Dollarized only over the winning rows that have a rate, and said as an
+  // estimate — the blend flattens per-unit rates, and the bill is the bill.
+  const estimated = reduced
+    .filter((site) => site.estimatedTaxReduction !== null)
+    .reduce((total, site) => total + (site.estimatedTaxReduction as number), 0);
+  const dollars =
+    estimated > 0
+      ? ` — roughly $${Math.round(estimated).toLocaleString('en-US')} of tax at the blended rates on file, an estimate to check against the bill`
+      : ' — assessed value, not tax dollars';
   return (
     `${head} The season has taken $${Math.round(saved).toLocaleString('en-US')} of appraised ` +
-    `value off the roll so far — assessed value, not tax dollars.`
+    `value off the roll so far${dollars}.`
   );
 }

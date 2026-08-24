@@ -61,6 +61,11 @@ export function ResultCard({ engagementId }: { engagementId: string }) {
                   <span>Taken off</span>
                 </Tooltip>
               </th>
+              <th className="px-3 py-2 text-right">
+                <Tooltip content="Taken off × the jurisdiction's blended tax rate — the same rate the proposal used. An estimate: the blend flattens per-unit rates, so check it against the actual bill.">
+                  <span>Est. tax</span>
+                </Tooltip>
+              </th>
               <th className="px-5 py-2 text-right">Where it stands</th>
             </tr>
           </thead>
@@ -197,6 +202,7 @@ function Row({ site }: { site: SiteOutcome }) {
         }
       />
       <Reduction site={site} />
+      <Estimate value={site.estimatedTaxReduction} />
       <td className="px-5 py-2 text-right">
         <Tooltip content={site.standing}>
           <span className="inline-flex items-center gap-1.5">
@@ -253,6 +259,23 @@ function Reduction({ site }: { site: SiteOutcome }) {
 }
 
 /**
+ * The estimate, styled as one: muted and approximate, never the confident
+ * green of the value column beside it. A dash where there is no reduction to
+ * dollarize or no rate on file to dollarize it with.
+ */
+function Estimate({ value }: { value: number | null }) {
+  if (value === null || value === 0) {
+    return <td className="tabular px-3 py-2 text-right text-[var(--color-ink-muted)]">—</td>;
+  }
+  return (
+    <td className="tabular px-3 py-2 text-right whitespace-nowrap text-[var(--color-ink-secondary)]">
+      {value > 0 ? '~−' : '~+'}
+      {moneyExact(Math.abs(value))}
+    </td>
+  );
+}
+
+/**
  * Summed only over rows where the figure exists, and the footnote says how
  * many that was. A total over three of five sites offered as the engagement's
  * number is a figure that gets repeated to a client and then corrected.
@@ -281,6 +304,11 @@ function Totals({ data }: { data: EngagementResult }) {
           {data.reductionTotal === null || data.reductionTotal === 0
             ? '—'
             : `−${moneyExact(data.reductionTotal)}`}
+        </td>
+        <td className="tabular px-3 py-2 text-right whitespace-nowrap font-normal text-[var(--color-ink-secondary)]">
+          {data.estimatedTaxTotal === null || data.estimatedTaxTotal === 0
+            ? '—'
+            : `${data.estimatedTaxTotal > 0 ? '~−' : '~+'}${moneyExact(Math.abs(data.estimatedTaxTotal))}`}
         </td>
         <td className="px-5 py-2 text-right text-[10px] font-normal text-[var(--color-ink-muted)]">
           {partial ? 'sums cover only the rows with a figure' : null}

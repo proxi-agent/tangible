@@ -11,7 +11,7 @@ import type {
 } from '@tangible/types';
 import { OUTCOME_PHASES } from '@tangible/types';
 import { clientMotions } from '@/lib/motions';
-import { seasonOutcomes } from '@/lib/result';
+import { jurisdictionRates, seasonOutcomes } from '@/lib/result';
 import { filingSeason } from '@/lib/season';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -123,6 +123,7 @@ async function resultAcross(
   }[],
 ): Promise<PracticeResult> {
   const clientIds = [...new Set(seasons.map(({ row }) => row.clientId))];
+  const rates = await jurisdictionRates();
   const motionsByClient = new Map(
     await Promise.all(
       clientIds.map(async (clientId) => [clientId, await clientMotions(clientId)] as const),
@@ -131,7 +132,7 @@ async function resultAcross(
 
   // Every outcome row, still with duplicates across engagements.
   const rows = seasons.flatMap(({ row, season }) =>
-    seasonOutcomes(taxYear, season.returns, motionsByClient.get(row.clientId) ?? []).map(
+    seasonOutcomes(taxYear, season.returns, motionsByClient.get(row.clientId) ?? [], rates).map(
       (outcome) => ({ row, outcome }),
     ),
   );

@@ -29,6 +29,8 @@ export const LetterSiteSchema = z.object({
   settledVia: SettledViaSchema.nullable(),
   /** Noticed minus standing — appraised value, never tax dollars. */
   reduction: z.number().nullable(),
+  /** The reduction dollarized at the blended rate — an estimate, never the bill. */
+  estimatedTaxReduction: z.number().nullable(),
   nextDeadline: z.string().nullable(),
   /** The row in prose, computed by code. The drafter's authority per site. */
   standing: z.string(),
@@ -50,6 +52,9 @@ export const LetterFactsSchema = z.object({
   /** Summed only where both sides are known; the count says how many that was. */
   reductionTotal: z.number().nullable(),
   reductionCount: z.number().int().nonnegative(),
+  /** The reductions dollarized, over rows that also have a rate on file. */
+  estimatedTaxTotal: z.number().nullable(),
+  estimatedTaxCount: z.number().int().nonnegative(),
 
   /** The season in a sentence or two, computed by code. */
   standing: z.string(),

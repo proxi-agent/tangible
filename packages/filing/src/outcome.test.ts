@@ -178,6 +178,40 @@ describe('a 25.25 motion, the one route back in', () => {
   });
 });
 
+describe('dollarizing the reduction', () => {
+  const settled = (rate: number | null) =>
+    siteOutcome(
+      input({
+        blendedTaxRate: rate,
+        notice: { ...NOTICE, protestFiledOn: '2027-05-20' },
+        resolution: {
+          stage: 'informal',
+          resolvedOn: '2027-06-15',
+          finalValue: 640_000,
+          appealOpen: false,
+          appealDeadline: null,
+        },
+      }),
+    );
+
+  it('estimates tax at the blended rate, sign kept', () => {
+    const out = settled(0.025);
+    expect(out.blendedTaxRate).toBe(0.025);
+    expect(out.estimatedTaxReduction).toBeCloseTo(4_300);
+  });
+
+  it('makes no estimate without a rate, and none without a reduction', () => {
+    expect(settled(null).estimatedTaxReduction).toBeNull();
+    const moving = siteOutcome(input({ blendedTaxRate: 0.025 }));
+    expect(moving.reduction).toBeNull();
+    expect(moving.estimatedTaxReduction).toBeNull();
+  });
+
+  it('keeps the estimate out of the prose', () => {
+    expect(settled(0.025).standing).not.toContain('4,300');
+  });
+});
+
 describe('cost and value stay apart', () => {
   it('never subtracts rendered cost from an appraised value', () => {
     const out = siteOutcome(input({ renderedCost: 713_550, notice: NOTICE }));

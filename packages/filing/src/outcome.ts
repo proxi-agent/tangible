@@ -61,6 +61,12 @@ export interface OutcomeInput {
   notice: OutcomeNotice | null;
   resolution: OutcomeResolution | null;
   motion: OutcomeMotion | null;
+  /**
+   * The jurisdiction's blended total tax rate, where one is on file — the
+   * same rate the savings proposal dollarized with, so the promise and the
+   * answer convert value the same way. Omitted or null, no estimate is made.
+   */
+  blendedTaxRate?: number | null;
 }
 
 export function siteOutcome(input: OutcomeInput): SiteOutcome {
@@ -89,6 +95,13 @@ export function siteOutcome(input: OutcomeInput): SiteOutcome {
   const reduction =
     base.noticedValue !== null && value !== null ? base.noticedValue - value : null;
 
+  // Dollarized at the blended rate, sign kept — a value that went up costs
+  // estimated dollars the same way one that came down saves them. The prose
+  // below never states this figure: the standing sentence speaks in the
+  // district's units, and the estimate is presented as one wherever it shows.
+  const rate = input.blendedTaxRate ?? null;
+  const estimatedTaxReduction = reduction !== null && rate !== null ? reduction * rate : null;
+
   return {
     ...base,
     phase,
@@ -96,6 +109,8 @@ export function siteOutcome(input: OutcomeInput): SiteOutcome {
     settledVia: via,
     final: phase === 'settled',
     reduction,
+    blendedTaxRate: rate,
+    estimatedTaxReduction,
     nextDeadline,
     standing: prose(input, phase, via, value, reduction, nextDeadline),
   };

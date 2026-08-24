@@ -1669,6 +1669,19 @@ export const SiteOutcomeSchema = z.object({
   /** Appraised value taken off: noticed minus standing. Null until both exist. */
   reduction: z.number().nullable(),
 
+  /**
+   * The jurisdiction's blended total tax rate, where one is on file. The same
+   * rate the savings proposal used, so the promise and the answer dollarize
+   * the same way.
+   */
+  blendedTaxRate: z.number().nullable(),
+  /**
+   * The reduction × the blended rate: roughly what the season's work is worth
+   * in tax dollars. An estimate by construction — the blend flattens per-unit
+   * rates — and always presented as one, never as the bill.
+   */
+  estimatedTaxReduction: z.number().nullable(),
+
   /** The next date that matters for this site, where one is still running. */
   nextDeadline: z.string().nullable(),
 
@@ -1704,6 +1717,9 @@ export const EngagementResultSchema = z.object({
   /** Appraised value the season took off, over rows where both sides are known. */
   reductionTotal: z.number().nullable(),
   reductionCount: z.number().int().nonnegative(),
+  /** The reductions dollarized, over rows that also have a rate on file. */
+  estimatedTaxTotal: z.number().nullable(),
+  estimatedTaxCount: z.number().int().nonnegative(),
 
   /** The season in a sentence or two. */
   standing: z.string(),

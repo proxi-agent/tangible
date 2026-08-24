@@ -37,6 +37,7 @@ export function assembleLetterFacts(clientName: string, result: EngagementResult
       standingValue: site.standingValue,
       settledVia: site.settledVia,
       reduction: site.reduction,
+      estimatedTaxReduction: site.estimatedTaxReduction,
       nextDeadline: site.nextDeadline,
       standing: site.standing,
     })),
@@ -47,6 +48,8 @@ export function assembleLetterFacts(clientName: string, result: EngagementResult
     standingTotal: result.standingTotal,
     reductionTotal: result.reductionTotal,
     reductionCount: result.reductionCount,
+    estimatedTaxTotal: result.estimatedTaxTotal,
+    estimatedTaxCount: result.estimatedTaxCount,
     standing: result.standing,
   };
 }

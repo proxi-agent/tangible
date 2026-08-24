@@ -15,6 +15,8 @@ const site = (over: Partial<SiteOutcome> = {}): SiteOutcome => ({
   settledVia: 'agreement',
   final: true,
   reduction: 172_000,
+  blendedTaxRate: 0.025,
+  estimatedTaxReduction: 4_300,
   nextDeadline: null,
   standing: 'Settled by agreement at $640,000.',
   ...over,
@@ -33,6 +35,8 @@ const result = (sites: SiteOutcome[], over: Partial<EngagementResult> = {}): Eng
   standingCount: 1,
   reductionTotal: 172_000,
   reductionCount: 1,
+  estimatedTaxTotal: 4_300,
+  estimatedTaxCount: 1,
   standing: 'The season took $172,000 off.',
   ...over,
 });
@@ -61,6 +65,8 @@ describe('assembleLetterFacts', () => {
     expect(facts.taxYear).toBe(2027);
     expect(facts.reductionTotal).toBe(172_000);
     expect(facts.reductionCount).toBe(1);
+    expect(facts.estimatedTaxTotal).toBe(4_300);
+    expect(facts.sites[0]!.estimatedTaxReduction).toBe(4_300);
     expect(facts.standing).toBe('The season took $172,000 off.');
   });
 
