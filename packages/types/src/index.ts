@@ -19,3 +19,4 @@ export * from './protest-brief.js';
 export * from './unblock.js';
 export * from './letter.js';
 export * from './motion-draft.js';
+export * from './rollover.js';

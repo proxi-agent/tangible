@@ -1,13 +1,14 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, CalendarClock, Copy, Gavel, MapPinOff } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
 import { appraisalDistrictName } from '@tangible/filing/districts';
-import type { PracticeResult, PracticeReturn, PracticeSeason, SeasonHold } from '@tangible/types';
+import type { PracticeResult, PracticeReturn, PracticeSeason, RolloverPlan, SeasonHold } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
+import { Button } from '@/components/ui/controls';
 import { Badge, Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
 
@@ -73,6 +74,7 @@ export function PracticeBoard() {
       </Card>
       {data.holds.length > 0 ? <Holds holds={data.holds} /> : null}
       <Scoreboard result={data.result} taxYear={data.taxYear} />
+      <NextSeason taxYear={data.taxYear} />
     </div>
   );
 }
@@ -714,4 +716,90 @@ function countdownDays(iso: string): number {
   const now = new Date();
   const from = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return Math.round((Date.parse(`${iso}T00:00:00Z`) - from) / 86_400_000);
+}
+
+/**
+ * Opening the next season, from the board that just finished this one.
+ *
+ * January's first job, done as one action instead of one typed year per
+ * client. The plan is the card: who rolls, who already has next year open,
+ * who is archived and stays behind — computed before anything is created,
+ * and recomputed inside the run, so a stale screen cannot duplicate an
+ * engagement somebody else already opened. The county default and the SIC
+ * code travel; everything durable is already the client's and needs no
+ * copying.
+ */
+function NextSeason({ taxYear }: { taxYear: number }) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ['rollover-plan', taxYear],
+    queryFn: () => api.rolloverPlan(taxYear),
+  });
+  const run = useMutation({
+    mutationFn: () => api.runRollover(taxYear),
+    onSuccess: (result) => {
+      queryClient.setQueryData(['rollover-plan', taxYear], result.plan);
+      // The year picker and the board itself both gain the new season.
+      void queryClient.invalidateQueries({ queryKey: ['practice-season'] });
+    },
+  });
+
+  const plan = query.data;
+  if (!plan || plan.clients.length === 0) return null;
+
+  const ready = plan.clients.filter((entry) => entry.standing === 'ready');
+
+  return (
+    <Card>
+      <CardHeader
+        title={`Opening ${plan.toYear}`}
+        description={rolloverSummary(plan)}
+        action={
+          ready.length > 0 ? (
+            <Button variant="primary" disabled={run.isPending} onClick={() => run.mutate()}>
+              {run.isPending
+                ? 'Opening…'
+                : `Open ${plan.toYear} for ${ready.length} ${plural(ready.length, 'client')}`}
+            </Button>
+          ) : undefined
+        }
+      />
+      {ready.length > 0 ? (
+        <ul className="flex flex-wrap gap-x-3 gap-y-1 px-5 pb-4 text-[11px] text-[var(--color-ink-secondary)]">
+          {ready.map((entry) => (
+            <li key={entry.clientId} className="flex items-baseline gap-1.5">
+              <span>{entry.clientName}</span>
+              {entry.sicCode === null ? (
+                <Tooltip content="The season being left has no SIC code on it, so the new engagement starts without one too — the machinery schedule will fall back to the roll account's business code.">
+                  <span className="text-[var(--color-warning)]">no SIC</span>
+                </Tooltip>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {run.error ? (
+        <p className="px-5 pb-4 text-[11px] text-[var(--color-critical)]">
+          {run.error instanceof Error ? run.error.message : String(run.error)}
+        </p>
+      ) : null}
+    </Card>
+  );
+}
+
+function rolloverSummary(plan: RolloverPlan): string {
+  const worked = plan.clients.length;
+  const parts: string[] = [];
+  if (plan.readyCount > 0) {
+    parts.push(
+      `${plan.readyCount} ${plural(plan.readyCount, 'is', 'are')} ready to open ${plan.toYear} — the county and SIC code carry over, and sites, assets, and the filed record are already the client's`,
+    );
+  }
+  if (plan.alreadyOpenCount > 0) {
+    parts.push(`${plan.alreadyOpenCount} already ${plural(plan.alreadyOpenCount, 'has', 'have')} it open`);
+  }
+  if (plan.archivedCount > 0) {
+    parts.push(`${plan.archivedCount} archived ${plural(plan.archivedCount, 'stays', 'stay')} behind`);
+  }
+  return `${worked} ${plural(worked, 'client was', 'clients were')} worked in ${plan.fromYear}. ${parts.join('; ')}.`;
 }

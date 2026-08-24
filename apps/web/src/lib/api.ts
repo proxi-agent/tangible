@@ -10,6 +10,8 @@ import type {
   UnblockPlanRecord,
   ResultLetterRecord,
   MotionDraftRecord,
+  RolloverPlan,
+  RolloverResult,
   DraftMotionRequest,
   Asset,
   AssetQuery,
@@ -504,6 +506,16 @@ export const api = {
    * book — and the only place the question "what is holding up the most
    * returns" can be answered at all.
    */
+  /** Who would roll from a season into the next. Creates nothing. */
+  rolloverPlan: (fromYear: number) => request<RolloverPlan>(`/season/rollover?year=${fromYear}`),
+
+  /** Open the next season for every ready client. Safe to run twice. */
+  runRollover: (fromYear: number) =>
+    request<RolloverResult>('/season/rollover', {
+      method: 'POST',
+      body: JSON.stringify({ fromYear }),
+    }),
+
   practiceSeason: (taxYear?: number) =>
     request<PracticeSeason>(`/season${taxYear ? `?taxYear=${taxYear}` : ''}`),
 
