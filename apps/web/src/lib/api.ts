@@ -1,4 +1,6 @@
 import type {
+  IntakeFile,
+  IntakeRoute,
   AccountQuery,
   AccountSeries,
   AgentAppointment,
@@ -361,6 +363,34 @@ export const api = {
   },
 
   farFile: (fileId: string) => request<FarFile>(`/files/${fileId}`),
+
+  // -------------------------------------------------------------------------
+  // Multi-file intake
+  // -------------------------------------------------------------------------
+
+  intakeFiles: (engagementId: string) =>
+    request<{ items: IntakeFile[] }>(`/engagements/${engagementId}/intake`),
+
+  /** Multipart for the same boundary reason as `uploadFar`. */
+  uploadIntake: async (engagementId: string, files: File[]): Promise<{ items: IntakeFile[] }> => {
+    const form = new FormData();
+    for (const file of files) form.append('files', file);
+    const response = await fetch(`${BASE_URL}/api/engagements/${engagementId}/intake`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      throw new ApiError(errorMessage(body) || response.statusText, response.status);
+    }
+    return response.json() as Promise<{ items: IntakeFile[] }>;
+  },
+
+  routeIntake: (intakeId: string, route: IntakeRoute | 'dismiss') =>
+    request<IntakeFile>(`/intake/${intakeId}/route`, {
+      method: 'POST',
+      body: JSON.stringify({ route }),
+    }),
 
   proposeMapping: (fileId: string) =>
     request<FarFile>(`/files/${fileId}/propose`, { method: 'POST' }),

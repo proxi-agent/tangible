@@ -21,6 +21,7 @@ import { PriorsCard } from '@/components/workspace/priors-card';
 import { ResultCard } from '@/components/workspace/result-card';
 import { ReturnsBoard } from '@/components/workspace/returns-board';
 import { SitesCard } from '@/components/workspace/sites-card';
+import { IntakeCard } from '@/components/workspace/intake-card';
 import { ValuationCard } from '@/components/workspace/valuation-card';
 import { Button, ChipGroup, Select, TextInput } from '@/components/ui/controls';
 import { DataTable } from '@/components/ui/data-table';
@@ -107,6 +108,7 @@ export default function EngagementPage() {
       {data.stats.assetCount > 0 ? (
         <SitesCard clientId={clientId} engagementId={engagementId} />
       ) : null}
+      <IntakeCard clientId={clientId} engagementId={engagementId} />
       <FilesCard detail={data} clientId={clientId} engagementId={engagementId} />
       {/* Both halves of the intake sit together: the register says what the
           client owns, the prior filing says what they told the district. */}

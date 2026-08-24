@@ -1,4 +1,3 @@
-import { createHash, randomUUID } from 'node:crypto';
 import { count, desc, eq, inArray } from 'drizzle-orm';
 import {
   PRIOR_DOCUMENT_KINDS,
@@ -7,27 +6,19 @@ import {
   type PriorDocumentKind,
 } from '@tangible/types';
 import { HttpError, handle } from '@/lib/route';
-import { uploadFarFile } from '@/lib/far-storage';
-import { mediaTypeFor, priorDocumentDto, runExtraction } from '@/lib/priors';
+import { ingestPrior } from '@/lib/ingest';
+import { mediaTypeFor, priorDocumentDto } from '@/lib/priors';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
-import { engagementAccounts } from '@/lib/sites';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 300;
 
 /**
- * Upload last year's rendition or an assessment notice.
- *
- * Stores the original in the private bucket first and extracts second, the same
- * order the register intake uses and for the same reason: a document the model
- * chokes on is still preserved and visible as `failed` with the reason on it,
- * rather than vanishing along with the attempt to read it.
- *
- * Extraction runs inline. It is one call on one document a couple of times a
- * season, which does not justify a job queue — but it is a slow call on a
- * scanned form, hence the raised duration.
+ * Upload last year's rendition or an assessment notice. The pipeline itself —
+ * store first, extract second — lives in {@link ingestPrior}, shared with
+ * multi-file intake routing; this route is the HTTP validation in front.
  */
 export function POST(
   request: Request,
@@ -35,7 +26,7 @@ export function POST(
 ): Promise<Response> {
   return handle(async () => {
     const { engagementId } = await params;
-    const { engagement, client } = await fetchEngagement(engagementId);
+    await fetchEngagement(engagementId);
 
     const form = await request.formData();
     const file = form.get('file');
@@ -65,34 +56,11 @@ export function POST(
     }
 
     const bytes = new Uint8Array(await file.arrayBuffer());
-    const id = randomUUID();
-    const safeName = file.name.replace(/[^\w.-]+/g, '_');
-    const storagePath = `${engagementId}/priors/${id}/${safeName}`;
-    await uploadFarFile(storagePath, bytes, file.type || null);
-
-    const db = requireDb();
-    const [row] = await db
-      .insert(schema.priorDocuments)
-      .values({
-        id,
-        engagementId,
-        kind,
-        originalFilename: file.name,
-        storagePath,
-        byteSize: file.size,
-        checksum: createHash('sha256').update(bytes).digest('hex'),
-        contentType: file.type || null,
-        status: 'uploaded',
-      })
-      .returning();
-    if (!row) throw new Error('Failed to record the uploaded document.');
-
-    return runExtraction({
-      documentId: row.id,
-      clientName: client.name,
-      expectedTaxYear: engagement.taxYear,
-      expectedAccountIds: await engagementAccounts(engagement.id),
-    });
+    return ingestPrior(
+      engagementId,
+      { filename: file.name, bytes, contentType: file.type || null },
+      kind,
+    );
   });
 }
 

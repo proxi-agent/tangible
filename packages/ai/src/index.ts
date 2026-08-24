@@ -29,3 +29,9 @@ export {
   type LineTypeBatchResult,
   type LineTypeRequest,
 } from './map-line-types.js';
+export {
+  triageFiles,
+  type TriageDecision,
+  type TriageFileInput,
+  type TriageResult,
+} from './triage.js';

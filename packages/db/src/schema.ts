@@ -7,6 +7,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  real,
   text,
   timestamp,
   uniqueIndex,
@@ -318,6 +319,48 @@ export const engagements = pgTable(
  * stages are jsonb because their shapes are owned by Zod in @tangible/types —
  * the DB stores them, it does not interpret them.
  */
+/**
+ * One file from a client drop, before anybody has decided what it is.
+ *
+ * The staging ground for multi-file intake: everything the client sent lands
+ * here first, the triage model proposes where each file belongs — the register
+ * pipeline, the priors pipeline, or nowhere — and a person confirms. Routing
+ * copies the file into its pipeline's own table; this row keeps the record of
+ * the drop and the decision, because "why is there no 2025 rendition on file"
+ * is answered by the row that says somebody dismissed it.
+ */
+export const intakeFiles = pgTable(
+  'intake_files',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    originalFilename: text('original_filename').notNull(),
+    /** Path inside the private far-uploads bucket, under intake/. */
+    storagePath: text('storage_path').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    checksum: text('checksum'),
+    contentType: text('content_type'),
+    /** Sheet names when the file opened as a workbook — triage evidence. */
+    sheetNames: jsonb('sheet_names'),
+    /** 'register' | 'rendition' | 'notice' | 'other', when triage ran. */
+    proposedRoute: text('proposed_route'),
+    proposedConfidence: real('proposed_confidence'),
+    proposedReason: text('proposed_reason'),
+    triageModel: text('triage_model'),
+    /** 'triaged' | 'routed' | 'dismissed' | 'failed'. */
+    status: text('status').notNull().default('triaged'),
+    /** Which pipeline the human sent it down, and the row it became there. */
+    routedKind: text('routed_kind'),
+    routedId: uuid('routed_id'),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('intake_files_engagement_idx').on(table.engagementId)],
+).enableRLS();
+
 export const farFiles = pgTable(
   'far_files',
   {
