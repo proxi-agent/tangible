@@ -8,6 +8,7 @@ import type {
   AssessmentNotice,
   ProtestBriefRecord,
   UnblockPlanRecord,
+  ResultLetterRecord,
   Asset,
   AssetQuery,
   ClassificationDecisionResult,
@@ -468,6 +469,16 @@ export const api = {
   /** Draft a plan from the season as it stands — a new row, never an edit. */
   draftUnblockPlan: (engagementId: string) =>
     request<{ plan: UnblockPlanRecord }>(`/engagements/${engagementId}/unblock`, {
+      method: 'POST',
+    }),
+
+  /** The newest drafted result letter for an engagement, or null. */
+  resultLetter: (engagementId: string) =>
+    request<{ letter: ResultLetterRecord | null }>(`/engagements/${engagementId}/letter`),
+
+  /** Draft a letter from the scoreboard as it stands — a new row, never an edit. */
+  draftResultLetter: (engagementId: string) =>
+    request<{ letter: ResultLetterRecord }>(`/engagements/${engagementId}/letter`, {
       method: 'POST',
     }),
 

@@ -85,3 +85,4 @@ export { siteOutcome } from './outcome.js';
 export type { OutcomeInput, OutcomeMotion, OutcomeNotice, OutcomeResolution } from './outcome.js';
 export { assembleBriefFacts, briefBlocker } from './brief.js';
 export { assembleUnblockFacts, unblockBlocker, type UnblockSource } from './unblock.js';
+export { assembleLetterFacts, letterBlocker } from './letter.js';

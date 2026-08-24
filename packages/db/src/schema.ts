@@ -1377,6 +1377,28 @@ export const unblockPlans = pgTable(
   (table) => [index('unblock_plans_engagement_idx').on(table.engagementId, table.createdAt)],
 ).enableRLS();
 
+/**
+ * A drafted season result letter: the scoreboard's facts and the client-facing
+ * telling of them, frozen together. Rows are never edited — redrafting after
+ * the season moves inserts a new row, and reads take the newest.
+ */
+export const resultLetters = pgTable(
+  'result_letters',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** The assembled scoreboard, frozen. See LetterFactsSchema. */
+    facts: jsonb('facts').notNull(),
+    /** The drafted letter. See ResultLetterSchema. */
+    letter: jsonb('letter').notNull(),
+    model: text('model'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('result_letters_engagement_idx').on(table.engagementId, table.createdAt)],
+).enableRLS();
+
 
 /**
  * A motion filed under 25.25 to correct an appraisal roll after the fact.

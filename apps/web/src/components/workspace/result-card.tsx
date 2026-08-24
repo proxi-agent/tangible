@@ -1,10 +1,11 @@
 'use client';
 
-import { useQuery } from '@tanstack/react-query';
-import type { EngagementResult, OutcomePhase, SiteOutcome } from '@tangible/types';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { EngagementResult, OutcomePhase, ResultLetterRecord, SiteOutcome } from '@tangible/types';
 import { api } from '@/lib/api';
 import { dayShort, moneyExact, plural } from '@/lib/format';
 import { Tooltip } from '@/components/ui/tooltip';
+import { Button } from '@/components/ui/controls';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 
 /**
@@ -71,7 +72,94 @@ export function ResultCard({ engagementId }: { engagementId: string }) {
           {data.sites.length > 1 ? <Totals data={data} /> : null}
         </table>
       </div>
+      <div className="px-3 pt-1 pb-3">
+        <LetterSection engagementId={engagementId} />
+      </div>
     </Card>
+  );
+}
+
+/**
+ * The result letter: the scoreboard above, told to the client — drafted from
+ * the card's own computation, so letter and table cannot disagree.
+ *
+ * Facts frozen at draft time, same as the protest brief and the unblock plan.
+ * A settlement lands and the answer is Redraft: a new row, never an edit, and
+ * the older draft stays readable as what the season said then. The letter is
+ * a draft to copy; nothing here sends anything.
+ */
+function LetterSection({ engagementId }: { engagementId: string }) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ['result-letter', engagementId],
+    queryFn: () => api.resultLetter(engagementId),
+  });
+  const draft = useMutation({
+    mutationFn: () => api.draftResultLetter(engagementId),
+    onSuccess: (result) => {
+      queryClient.setQueryData(['result-letter', engagementId], result);
+    },
+  });
+
+  const record = query.data?.letter ?? null;
+
+  return (
+    <div className="space-y-2 rounded-lg border border-[var(--color-hairline)] bg-[var(--color-plane)] p-3">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-[var(--color-ink)]">Result letter</span>
+        <Button variant="ghost" onClick={() => draft.mutate()} disabled={draft.isPending}>
+          {draft.isPending
+            ? 'Drafting…'
+            : record
+              ? 'Redraft from the scoreboard'
+              : 'Draft from the scoreboard'}
+        </Button>
+      </div>
+
+      {draft.isError ? (
+        <p className="text-[11px] text-[var(--color-critical)]">
+          {draft.error instanceof Error ? draft.error.message : 'The draft failed.'}
+        </p>
+      ) : null}
+
+      {record ? (
+        <LetterBody record={record} />
+      ) : query.isLoading ? null : (
+        <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+          The table above is the firm&apos;s view. Drafting turns it into the letter the client
+          reads — every figure from the scoreboard, nothing invented, still-moving sites said
+          plainly. Sending it stays yours.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function LetterBody({ record }: { record: ResultLetterRecord }) {
+  const { letter } = record;
+  return (
+    <div className="space-y-2 text-[11px] leading-relaxed">
+      <p className="text-[var(--color-ink-muted)]">
+        Drafted {dayShort(record.createdAt.slice(0, 10))} from the scoreboard as it stood then —
+        redraft after anything settles.
+      </p>
+
+      <div className="rounded border border-[var(--color-hairline)] p-2">
+        <p className="font-medium text-[var(--color-ink)]">{letter.subject}</p>
+        <p className="mt-1 whitespace-pre-wrap text-[var(--color-ink-secondary)]">{letter.body}</p>
+      </div>
+
+      {letter.cautions.length > 0 ? (
+        <div>
+          <p className="font-medium text-[var(--color-warning)]">Before sending</p>
+          <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[var(--color-ink-muted)]">
+            {letter.cautions.map((caution) => (
+              <li key={caution}>{caution}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
   );
 }
 
