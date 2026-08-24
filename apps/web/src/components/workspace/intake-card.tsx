@@ -169,6 +169,18 @@ function TriagedRow({ item, engagementId }: { item: IntakeFile; engagementId: st
             {item.sheetNames.join(', ')}
           </span>
         ) : null}
+        {item.peek ? (
+          <span className="text-[11px] text-[var(--color-ink-muted)]">
+            {[
+              item.peek.title,
+              item.peek.formNumber ? `Form ${item.peek.formNumber}` : null,
+              item.peek.accountId ? `account ${item.peek.accountId}` : null,
+              item.peek.taxYear ? `${item.peek.taxYear}` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ') || item.peek.summary}
+          </span>
+        ) : null}
         <div className="ml-auto flex items-center gap-2">
           <Select
             value={route}

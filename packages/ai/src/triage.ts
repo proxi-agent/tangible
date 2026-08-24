@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { IntakeRouteSchema, type IntakeRoute } from '@tangible/types';
+import { IntakeRouteSchema, type DocumentPeek, type IntakeRoute } from '@tangible/types';
 import { parseStructured } from './structured.js';
 
 /**
@@ -20,6 +20,8 @@ export interface TriageFileInput {
   byteSize: number;
   /** Per-sheet evidence when the file opened as a workbook; null otherwise. */
   sheets: { name: string; rowCount: number; headerCells: string[] }[] | null;
+  /** What a first look at a PDF or image read off the document; null when nothing was peeked. */
+  peek: DocumentPeek | null;
 }
 
 export interface TriageDecision {
@@ -54,7 +56,8 @@ The routes:
 
 Rules:
 - For spreadsheets you see sheet names and header cells; judge from them. A workbook of rollforwards or GL exports is other, not register.
-- For PDFs you see only the filename and size. Filenames are often honest ("2025 Notice of Value.pdf") but the confidence must reflect that you have not seen inside.
+- For PDFs and images you may also see a first look read off the document itself — its printed title, form number, account, year. Trust what the document says over what its filename says; a form number 50-144 is a rendition and a "notice of appraised value" heading is a notice, whatever the file is called.
+- A PDF with no first look is judged by filename and size alone. Filenames are often honest ("2025 Notice of Value.pdf") but the confidence must reflect that you have not seen inside.
 - Answer for every file by its index. confidence is 0 to 1.`;
 
 export async function triageFiles(files: TriageFileInput[]): Promise<TriageResult> {
@@ -64,7 +67,19 @@ export async function triageFiles(files: TriageFileInput[]): Promise<TriageResul
         `### File ${index}: ${JSON.stringify(file.filename)} (${file.byteSize} bytes)`,
       ];
       if (file.sheets === null) {
-        lines.push('Did not open as a workbook — judge from the name.');
+        if (file.peek !== null) {
+          const facts = [
+            file.peek.title ? `title ${JSON.stringify(file.peek.title)}` : null,
+            file.peek.formNumber ? `form ${file.peek.formNumber}` : null,
+            file.peek.issuer ? `issuer ${JSON.stringify(file.peek.issuer)}` : null,
+            file.peek.accountId ? `account ${file.peek.accountId}` : null,
+            file.peek.taxYear ? `tax year ${file.peek.taxYear}` : null,
+          ].filter(Boolean);
+          lines.push(`First look at the document: ${file.peek.summary}`);
+          if (facts.length > 0) lines.push(`Printed on it: ${facts.join('; ')}.`);
+        } else {
+          lines.push('Did not open as a workbook and was not read — judge from the name.');
+        }
       } else {
         for (const sheet of file.sheets) {
           lines.push(

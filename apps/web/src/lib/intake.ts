@@ -1,6 +1,6 @@
 import 'server-only';
 import { eq } from 'drizzle-orm';
-import type { IntakeFile } from '@tangible/types';
+import type { DocumentPeek, IntakeFile } from '@tangible/types';
 import { HttpError } from '@/lib/route';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -18,6 +18,7 @@ export function intakeFileDto(row: IntakeRow): IntakeFile {
     proposedConfidence: row.proposedConfidence,
     proposedReason: row.proposedReason,
     triageModel: row.triageModel,
+    peek: (row.peek as DocumentPeek | null) ?? null,
     status: row.status as IntakeFile['status'],
     routedKind: (row.routedKind as IntakeFile['routedKind']) ?? null,
     routedId: row.routedId,

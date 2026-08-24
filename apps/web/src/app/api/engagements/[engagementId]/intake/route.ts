@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { desc, eq } from 'drizzle-orm';
-import { isAiConfigured, triageFiles, type TriageFileInput } from '@tangible/ai';
+import { isAiConfigured, peekDocument, triageFiles, type TriageFileInput } from '@tangible/ai';
 import { parseWorkbook, summarizeWorkbook } from '@tangible/far';
 import { FAR_UPLOAD_MAX_BYTES } from '@tangible/types';
+import { mediaTypeFor } from '@/lib/priors';
 import { HttpError, handle } from '@/lib/route';
 import { uploadFarFile } from '@/lib/far-storage';
 import { intakeFileDto } from '@/lib/intake';
@@ -82,7 +83,27 @@ export function POST(
           sheets = null;
         }
 
-        return { id, file, bytes, storagePath, sheets };
+        // The first look: a PDF or image gets read once so triage can judge
+        // it by its own first page instead of its filename. Failure is fine —
+        // a peek that errors leaves the file exactly where it was before
+        // peeks existed, judged by name with confidence told to say so.
+        let peek: TriageFileInput['peek'] = null;
+        const mediaType = sheets === null ? mediaTypeFor(file.name) : null;
+        if (mediaType !== null && isAiConfigured()) {
+          try {
+            peek = (
+              await peekDocument({
+                filename: file.name,
+                mediaType,
+                data: Buffer.from(bytes).toString('base64'),
+              })
+            ).parsed;
+          } catch {
+            peek = null;
+          }
+        }
+
+        return { id, file, bytes, storagePath, sheets, peek };
       }),
     );
 
@@ -95,6 +116,7 @@ export function POST(
             filename: entry.file.name,
             byteSize: entry.file.size,
             sheets: entry.sheets,
+            peek: entry.peek,
           })),
         );
         decisions = result.decisions;
@@ -118,6 +140,7 @@ export function POST(
           checksum: createHash('sha256').update(entry.bytes).digest('hex'),
           contentType: entry.file.type || null,
           sheetNames: entry.sheets ? entry.sheets.map((sheet) => sheet.name) : null,
+          peek: entry.peek,
           proposedRoute: decisions[index]?.route ?? null,
           proposedConfidence: decisions[index]?.confidence ?? null,
           proposedReason: decisions[index]?.reason ?? null,

@@ -349,6 +349,8 @@ export const intakeFiles = pgTable(
     proposedConfidence: real('proposed_confidence'),
     proposedReason: text('proposed_reason'),
     triageModel: text('triage_model'),
+    /** DocumentPeek — what a first look read off a PDF or image; null for workbooks. */
+    peek: jsonb('peek'),
     /** 'triaged' | 'routed' | 'dismissed' | 'failed'. */
     status: text('status').notNull().default('triaged'),
     /** Which pipeline the human sent it down, and the row it became there. */

@@ -23,6 +23,7 @@ export {
   type ClassificationRequest,
 } from './classify.js';
 export { extractNotice, extractRendition } from './extract.js';
+export { peekDocument } from './peek.js';
 export {
   mapLineTypes,
   LINE_TYPE_BATCH_SIZE,

@@ -16,6 +16,30 @@ export type IntakeRoute = z.infer<typeof IntakeRouteSchema>;
 
 export const INTAKE_STATUSES = ['triaged', 'routed', 'dismissed', 'failed'] as const;
 
+/**
+ * What a quick read of a PDF or image actually says about itself.
+ *
+ * Triage used to judge scans by filename alone — honest, but blind: a
+ * scanner's "SKM_C368.pdf" is unroutable even when its first page says
+ * "Notice of Appraised Value" over an account number. The peek is the model
+ * reading the document once, cheaply, and reporting only what is printed;
+ * routing stays a separate judgment, made over the whole batch, and the human
+ * still confirms it.
+ */
+export const DocumentPeekSchema = z.object({
+  /** What the document calls itself — its printed title or heading. */
+  title: z.string().nullable(),
+  /** A form number where one is printed (e.g. "50-144"). */
+  formNumber: z.string().nullable(),
+  /** Who issued or filed it, as printed. */
+  issuer: z.string().nullable(),
+  accountId: z.string().nullable(),
+  taxYear: z.number().int().nullable(),
+  /** One sentence on what the document is. */
+  summary: z.string(),
+});
+export type DocumentPeek = z.infer<typeof DocumentPeekSchema>;
+
 export const IntakeFileSchema = z.object({
   id: z.string().uuid(),
   engagementId: z.string().uuid(),
@@ -28,6 +52,8 @@ export const IntakeFileSchema = z.object({
   proposedConfidence: z.number().nullable(),
   proposedReason: z.string().nullable(),
   triageModel: z.string().nullable(),
+  /** What the document said about itself, when it was peeked; null for workbooks and failed reads. */
+  peek: DocumentPeekSchema.nullable(),
   status: z.enum(INTAKE_STATUSES),
   /** Set once routed: which pipeline, and the id of the row it became there. */
   routedKind: z.enum(['register', 'rendition', 'notice']).nullable(),
