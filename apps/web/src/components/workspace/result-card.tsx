@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { EngagementResult, OutcomePhase, ResultLetterRecord, SiteOutcome } from '@tangible/types';
 import { api } from '@/lib/api';
 import { dayShort, moneyExact, plural } from '@/lib/format';
-import { Tooltip } from '@/components/ui/tooltip';
+import { InfoTip, Tooltip } from '@/components/ui/tooltip';
 import { Button } from '@/components/ui/controls';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 
@@ -118,7 +118,14 @@ function LetterSection({ engagementId }: { engagementId: string }) {
   return (
     <div className="space-y-2 rounded-lg border border-[var(--color-hairline)] bg-[var(--color-plane)] p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-[var(--color-ink)]">Result letter</span>
+        <span className="text-xs font-medium text-[var(--color-ink)]">
+          Result letter{' '}
+          <InfoTip
+            size={12}
+            className="align-text-bottom"
+            content="Drafting turns the scoreboard into the letter the client reads — every figure from the table above, nothing invented, still-moving sites said plainly. Nothing is sent; the letter is yours to copy."
+          />
+        </span>
         <Button variant="ghost" onClick={() => draft.mutate()} disabled={draft.isPending}>
           {draft.isPending
             ? 'Drafting…'
@@ -138,9 +145,8 @@ function LetterSection({ engagementId }: { engagementId: string }) {
         <LetterBody record={record} />
       ) : query.isLoading ? null : (
         <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
-          The table above is the firm&apos;s view. Drafting turns it into the letter the client
-          reads — every figure from the scoreboard, nothing invented, still-moving sites said
-          plainly. Sending it stays yours.
+          The table above is the firm&apos;s view; drafting turns it into the letter the client
+          reads.
         </p>
       )}
     </div>

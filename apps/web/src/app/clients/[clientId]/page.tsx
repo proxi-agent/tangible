@@ -132,7 +132,8 @@ export default function ClientPage() {
         <Card>
           <CardHeader
             title="Locations"
-            description="Where the property sits on January 1. Each situs is its own account and rendition, so a multi-site client is several filings."
+            description="Where the property sits on January 1."
+            help="Each situs is its own account and its own rendition, so a multi-site client is several filings — the sites here are what the filing page turns into forms."
             action={
               <form
                 className="flex items-end gap-2"

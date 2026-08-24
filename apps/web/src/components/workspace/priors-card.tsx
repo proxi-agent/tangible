@@ -58,7 +58,7 @@ export function PriorsCard({
       <CardHeader
         title="Prior filings"
         description="Upload the rendition the client filed last year and the notice the district sent back."
-        help="Extraction reads the schedules, checks that they foot against the totals printed on the form, and reads the filer’s own wording into our categories — nothing is trusted as a baseline until it adds up."
+        help="Extraction reads the schedules, checks that they add up to the totals printed on the form, and reads the filer’s own wording into our categories — nothing is trusted as a baseline until it does."
       />
 
       <div className="px-5 pt-4">

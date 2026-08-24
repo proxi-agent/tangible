@@ -29,7 +29,7 @@ const WORKSPACE_NAV = [
 ];
 
 const MARKET_NAV = [
-  { href: '/', label: 'Overview', icon: BarChart3 },
+  { href: '/market', label: 'Overview', icon: BarChart3 },
   { href: '/accounts', label: 'Accounts', icon: Table2 },
   { href: '/owners', label: 'Owners', icon: Building2 },
   { href: '/data', label: 'Data sources', icon: Database },
@@ -37,7 +37,7 @@ const MARKET_NAV = [
 
 function isMarketPath(pathname: string): boolean {
   return (
-    pathname === '/' ||
+    pathname.startsWith('/market') ||
     pathname.startsWith('/accounts') ||
     pathname.startsWith('/owners') ||
     pathname.startsWith('/data')
@@ -79,7 +79,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <span className="text-sm font-semibold tracking-tight">Tangible</span>
           </Link>
 
-          <nav className="flex items-center gap-1">
+          {/* On a phone the two wings do not fit; the nav scrolls sideways on
+              its own row rather than pushing the theme and user controls off
+              screen. A partner opening a deadline question from a phone needs
+              Season reachable, not a perfect hamburger. */}
+          <nav className="flex items-center gap-1 max-md:order-last max-md:basis-full max-md:overflow-x-auto">
             <NavGroup label="Workspace">
               {WORKSPACE_NAV.map((item) => (
                 <NavLink
@@ -97,7 +101,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                   key={item.href}
                   {...item}
                   href={`${item.href}${suffix}`}
-                  active={item.href === '/' ? pathname === '/' : pathname.startsWith(item.href)}
+                  active={pathname.startsWith(item.href)}
                 />
               ))}
             </NavGroup>
@@ -206,7 +210,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 function NavGroup({ label, children }: { label: string; children: ReactNode }) {
   return (
     <div className="flex items-center gap-1">
-      <span className="mr-0.5 hidden text-[10px] font-medium tracking-wider text-[var(--color-ink-muted)] uppercase xl:inline">
+      <span className="mr-0.5 hidden text-[10px] font-medium tracking-wider text-[var(--color-ink-muted)] uppercase lg:inline">
         {label}
       </span>
       {children}

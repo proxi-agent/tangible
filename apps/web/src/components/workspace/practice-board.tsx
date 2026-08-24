@@ -8,7 +8,7 @@ import { appraisalDistrictName } from '@tangible/filing/districts';
 import type { PracticeResult, PracticeReturn, PracticeSeason, RolloverPlan, SeasonHold } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
-import { Button, LinkButton } from '@/components/ui/controls';
+import { Button, ChipGroup, LinkButton, type ChipOption } from '@/components/ui/controls';
 import { Badge, Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
 
@@ -28,6 +28,9 @@ import { InfoTip, Tooltip } from '@/components/ui/tooltip';
  */
 export function PracticeBoard() {
   const [year, setYear] = useState<number | null>(null);
+  // Which statuses the worklist shows. Empty means everything — the filter is
+  // for finding the blocked rows in a long season, not a view that hides work.
+  const [statuses, setStatuses] = useState<readonly PracticeReturn['status'][]>([]);
   const season = useQuery({
     queryKey: ['practice-season', year],
     queryFn: () => api.practiceSeason(year ?? undefined),
@@ -45,6 +48,10 @@ export function PracticeBoard() {
     data.returns.filter((entry) => entry.status === 'filed').map((entry) => entry.locationId),
   );
   const outstanding = data.returns.filter((entry) => !done.has(entry.locationId));
+  const shown =
+    statuses.length === 0
+      ? data.returns
+      : data.returns.filter((entry) => statuses.includes(entry.status));
 
   return (
     <div className="space-y-6">
@@ -63,11 +70,40 @@ export function PracticeBoard() {
           </div>
         ) : (
           <>
-            <ul className="divide-y divide-[var(--color-hairline)]">
-              {data.returns.map((entry) => (
-                <ReturnRow key={`${entry.engagementId}:${entry.locationId}`} entry={entry} />
-              ))}
-            </ul>
+            {/* Only once the list is long enough to lose a row in — the same
+                rule as the clients search. The heading, calendar, and footer
+                keep counting the whole season; the chips narrow only what is
+                listed, so the numbers stay honest while the filter is on. */}
+            {data.returns.length > 5 ? (
+              <div className="border-b border-[var(--color-hairline)] px-5 py-3">
+                <ChipGroup
+                  options={STATUS_CHIPS}
+                  selected={statuses}
+                  onToggle={(value) =>
+                    setStatuses((current) =>
+                      current.includes(value)
+                        ? current.filter((one) => one !== value)
+                        : [...current, value],
+                    )
+                  }
+                />
+              </div>
+            ) : null}
+            {shown.length === 0 ? (
+              <div className="px-5 py-5">
+                <EmptyState title="Nothing in this slice">
+                  No return on the {data.taxYear} board is{' '}
+                  {statuses.map((status) => status).join(' or ')} right now. The counts above still
+                  describe the whole season.
+                </EmptyState>
+              </div>
+            ) : (
+              <ul className="divide-y divide-[var(--color-hairline)]">
+                {shown.map((entry) => (
+                  <ReturnRow key={`${entry.engagementId}:${entry.locationId}`} entry={entry} />
+                ))}
+              </ul>
+            )}
             <Footer season={data} />
           </>
         )}
@@ -451,6 +487,25 @@ function Holds({ holds }: { holds: SeasonHold[] }) {
 }
 
 const TONE = { blocked: 'critical', ready: 'accent', filed: 'good' } as const;
+
+/** The worklist filter — the question it exists for is "show me what is stuck". */
+const STATUS_CHIPS: ChipOption<PracticeReturn['status']>[] = [
+  {
+    value: 'blocked',
+    label: 'Blocked',
+    description: 'Returns the record gate refuses to file — each row names its first blocker.',
+  },
+  {
+    value: 'ready',
+    label: 'Ready to file',
+    description: 'Drafts with nothing standing against them; filing is the only step left.',
+  },
+  {
+    value: 'filed',
+    label: 'Filed',
+    description: 'Returns already out the door, with wherever they stand with the district.',
+  },
+];
 
 function ReturnRow({ entry }: { entry: PracticeReturn }) {
   const draft = `/clients/${entry.clientId}/engagements/${entry.engagementId}/filing`;

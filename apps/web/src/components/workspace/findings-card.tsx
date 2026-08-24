@@ -70,9 +70,12 @@ export function FindingsCard({
                   </span>
                   <Badge tone="neutral">{set.taxYear}</Badge>
                   {set.isStale ? (
+                    // Not "behind the workspace" — that phrase is house
+                    // vocabulary. The badge has to tell a first-time reader
+                    // what happened: the work moved after this was committed.
                     <Badge tone="warning">
                       <AlertTriangle size={11} strokeWidth={2} className="mr-1" />
-                      behind the workspace
+                      workspace has changed since
                     </Badge>
                   ) : null}
                 </div>

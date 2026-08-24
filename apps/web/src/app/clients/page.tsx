@@ -56,6 +56,7 @@ export default function ClientsPage() {
   const { data, isLoading, error } = useQuery({ queryKey: ['clients'], queryFn: api.clients });
 
   const [name, setName] = useState('');
+  const [needle, setNeedle] = useState('');
   const create = useMutation({
     mutationFn: () => api.createClient({ name: name.trim(), status: 'prospect' }),
     onSuccess: () => {
@@ -96,6 +97,18 @@ export default function ClientsPage() {
             {create.error instanceof Error ? create.error.message : String(create.error)}
           </p>
         ) : null}
+        {/* Only once the list is long enough to lose a name in. A search box
+            over four rows is furniture; over forty it is how the page works. */}
+        {(data?.length ?? 0) > 5 ? (
+          <div className="border-b border-[var(--color-hairline)] px-5 py-3">
+            <TextInput
+              placeholder="Find a client…"
+              value={needle}
+              onChange={(e) => setNeedle(e.target.value)}
+              className="h-8 w-64"
+            />
+          </div>
+        ) : null}
         {error ? (
           <ErrorState error={error} />
         ) : isLoading ? (
@@ -107,13 +120,19 @@ export default function ClientsPage() {
         ) : (
           <DataTable
             columns={COLUMNS}
-            data={data ?? []}
+            data={(data ?? []).filter((row) =>
+              row.name.toLowerCase().includes(needle.trim().toLowerCase()),
+            )}
             getRowId={(row) => row.id}
-            empty={{
-              title: 'No clients yet',
-              children:
-                'Add the first prospect above. A client starts as a name; locations and engagements come next.',
-            }}
+            empty={
+              needle.trim()
+                ? { title: 'No client matches', children: `Nothing on the book matches “${needle.trim()}”.` }
+                : {
+                    title: 'No clients yet',
+                    children:
+                      'Add the first prospect above. A client starts as a name; locations and engagements come next.',
+                  }
+            }
           />
         )}
       </Card>

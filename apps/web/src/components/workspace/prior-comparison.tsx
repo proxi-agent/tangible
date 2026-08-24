@@ -586,7 +586,7 @@ function OutOfScope({ comparison }: { comparison: RegisterComparison }) {
       <CardHeader
         title="What this comparison did not touch"
         description="Held out rather than netted."
-        help="Cost on either side that is not in the columns above is here, with the reason it is here — folding it into the totals would make the comparison foot by accident."
+        help="Cost on either side that is not in the columns above is here, with the reason it is here — folding it into the totals would make the comparison balance by accident."
       />
 
       {registerAside === 0 && reportedAside === 0 ? (

@@ -248,7 +248,7 @@ function IdentityCard({
     <Card>
       <CardHeader
         title="What the document says it is"
-        description="Read off the form itself and shown against the engagement, because a return that extracts and foots perfectly can still be the wrong year or the wrong location."
+        description="Read off the form itself and shown against the engagement, because a return whose figures all add up can still be the wrong year or the wrong location."
       />
       <div className="grid grid-cols-1 gap-px bg-[var(--color-hairline)] sm:grid-cols-4">
         {rows.map((row) => {
@@ -307,7 +307,7 @@ function FootingCard({ document }: { document: PriorDocument }) {
   if (!footing) {
     return (
       <Card>
-        <CardHeader title="Whether it foots" />
+        <CardHeader title="Whether it adds up" />
         <EmptyState title="Nothing was read from this document">
           {document.error ?? 'Extraction produced no schedules to check.'}
         </EmptyState>
@@ -322,8 +322,9 @@ function FootingCard({ document }: { document: PriorDocument }) {
   return (
     <Card>
       <CardHeader
-        title="Whether it foots"
-        description="The schedules were read line by line and the printed totals were read separately. Comparing the two is a real test — a total derived by summing our own lines would agree by construction and prove nothing."
+        title="Whether it adds up"
+        description="The schedules were read line by line and the printed totals were read separately."
+        help="Comparing the two is a real test — a total derived by summing our own lines would agree by construction and prove nothing."
       />
 
       <div className="grid grid-cols-2 gap-px border-y border-[var(--color-hairline)] bg-[var(--color-hairline)] sm:grid-cols-4">
@@ -360,7 +361,7 @@ function FootingCard({ document }: { document: PriorDocument }) {
           and one in a filed return may be worth more than the register. */}
       {errors.length > 0 ? (
         <p className="border-t border-[var(--color-hairline)] px-5 py-3 text-xs text-[var(--color-ink-secondary)]">
-          A return that does not foot is kept as filed, discrepancies and all — the error may be the
+          A return whose totals do not add up is kept as filed, discrepancies and all — the error may be the
           client&rsquo;s rather than ours, and that is a finding. What it withholds is the right to
           be treated as a settled baseline until someone has looked at the page.
         </p>
@@ -566,7 +567,8 @@ function WordingCard({ documentId, lines }: { documentId: string; lines: MappedP
     <Card>
       <CardHeader
         title="What the wording means"
-        description="A rendition is filed in the taxpayer's own words — “Mach & Equip”, “F F & E”. Reading those back into our categories is the join that makes the return comparable with the register, so it is a separate, visible, arguable step rather than something extraction quietly decided."
+        description="A rendition is filed in the taxpayer's own words — “Mach & Equip”, “F F & E” — read back into our categories here."
+        help="This join is what makes the return comparable with the register, so it is a separate, visible, arguable step rather than something extraction quietly decided."
         action={
           <div className="flex items-center gap-2">
             <Tooltip
@@ -932,7 +934,8 @@ function ReconciliationCard({ basis, document }: { basis: MappedBasis; document:
     <Card>
       <CardHeader
         title="What was reported, in our categories"
-        description="The basis every comparison against the register starts from. Cost that could not be placed is carried here with the reason it could not, never dropped — a gap of ours would otherwise read as an under-report of theirs."
+        description="The basis every comparison against the register starts from."
+        help="Cost that could not be placed is carried here with the reason it could not, never dropped — a gap of ours would otherwise read as an under-report of theirs."
       />
 
       {basis.reportedTotal === 0 ? (
@@ -1070,7 +1073,8 @@ function NoticeCard({ extracted }: { extracted: ExtractedNotice | null }) {
     <Card>
       <CardHeader
         title="What the district concluded"
-        description="The roll carries assessed values for the four Texas counties we hold. A notice carries two things the roll does not: the protest deadline actually printed on it, and whether the value was set without a rendition on file."
+        description="The value the district put on this account, read from the notice itself."
+        help="The roll carries assessed values for the four Texas counties we hold, but a notice carries two things the roll does not: the protest deadline actually printed on it, and whether the value was set without a rendition on file."
       />
 
       <div className="grid grid-cols-2 gap-px border-y border-[var(--color-hairline)] bg-[var(--color-hairline)] sm:grid-cols-4">

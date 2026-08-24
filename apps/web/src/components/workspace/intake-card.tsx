@@ -54,7 +54,8 @@ export function IntakeCard({
     <Card>
       <CardHeader
         title="Client drop"
-        description="Drop everything the client sent — the AI proposes which file is the register, which is a prior filing or notice, and which is noise. Nothing enters a pipeline until you confirm each route."
+        description="Drop everything the client sent — the AI proposes which file is the register, which is a prior filing or notice, and which is noise."
+        help="Nothing enters a pipeline until you confirm each route — the proposal is triage, not a decision."
       />
       <div className="px-5 pt-4">
         <button

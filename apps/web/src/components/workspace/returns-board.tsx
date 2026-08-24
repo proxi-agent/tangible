@@ -136,7 +136,14 @@ function UnblockPlanSection({ engagementId }: { engagementId: string }) {
   return (
     <div className="mt-3 space-y-2 rounded-lg border border-[var(--color-hairline)] bg-[var(--color-plane)] p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-medium text-[var(--color-ink)]">Unblock plan</span>
+        <span className="text-xs font-medium text-[var(--color-ink)]">
+          Unblock plan{' '}
+          <InfoTip
+            size={12}
+            className="align-text-bottom"
+            content="Drafting turns the blockers above into a worked plan: what the firm does here, what needs the client, and one draft email that asks for all of it. Nothing is sent — the email is yours to copy."
+          />
+        </span>
         <Button variant="ghost" onClick={() => draft.mutate()} disabled={draft.isPending}>
           {draft.isPending
             ? 'Drafting…'
@@ -156,9 +163,7 @@ function UnblockPlanSection({ engagementId }: { engagementId: string }) {
         <UnblockPlanBody record={record} />
       ) : query.isLoading ? null : (
         <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
-          Each blocker above says what clears it. Drafting turns the whole list into a worked plan —
-          what the firm does here, what needs the client, and the one email that asks for all of it.
-          Sending it stays yours.
+          Each blocker above says what clears it; drafting turns the list into a worked plan.
         </p>
       )}
     </div>

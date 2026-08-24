@@ -211,7 +211,8 @@ function ReturnPicker({
     <Card>
       <CardHeader
         title={`${count(owed.returns.length)} returns for this engagement`}
-        description="Property is assessed where it stood on January 1 and each business location has its own account, so each site here is its own Form 50-144. Pick the one you are working on — the schedules, the totals and the findings below are all measured against that site alone."
+        description="Pick the site you are working on — the schedules, the totals and the findings below are all measured against that site alone."
+        help="Property is assessed where it stood on January 1 and each business location has its own account, so each site here is its own Form 50-144."
         action={
           owed.unplacedCount > 0 ? (
             <span className="text-xs text-[var(--color-warning)]">
@@ -415,7 +416,8 @@ function Blockers({ rendition }: { rendition: Rendition }) {
     <Card>
       <CardHeader
         title={blocking.length > 0 ? 'Not ready to file' : 'Ready to file, with notes'}
-        description="What stands between this draft and a signature. Blocking items would make the form wrong or incomplete; warnings would make it defensible but worse than it needs to be."
+        description="What stands between this draft and a signature."
+        help="Blocking items would make the form wrong or incomplete; warnings would make it defensible but worse than it needs to be."
       />
       {rendition.blockers.length === 0 ? (
         <p className="flex items-center gap-2 px-5 py-4 text-sm text-[var(--color-good)]">
@@ -599,7 +601,8 @@ function Exclusions({ rendition }: { rendition: Rendition }) {
     <Card>
       <CardHeader
         title="Deliberately not on this form"
-        description="Property in the register that does not belong on the rendition. Listed with its reason, because “why isn’t this on here” is the first question anyone reviewing it will ask."
+        description="Property in the register that does not belong on the rendition, listed with its reason."
+        help="“Why isn’t this on here” is the first question anyone reviewing the form will ask, so the answer is printed rather than reconstructed."
       />
       <ul className="divide-y divide-[var(--color-hairline)]">
         {rendition.exclusions.map((exclusion) => (

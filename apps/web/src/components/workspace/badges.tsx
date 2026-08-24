@@ -78,8 +78,10 @@ const PRIOR_TONES: Record<
   { tone: 'neutral' | 'accent' | 'warning' | 'critical' | 'good'; label: string }
 > = {
   uploaded: { tone: 'neutral', label: 'reading' },
-  verified: { tone: 'good', label: 'foots' },
-  discrepant: { tone: 'warning', label: 'does not foot' },
+  // "Foots" is accountants' shorthand a first-time user will not have; the
+  // badge says what the check found in words anyone can act on.
+  verified: { tone: 'good', label: 'adds up' },
+  discrepant: { tone: 'warning', label: 'does not add up' },
   accepted: { tone: 'accent', label: 'accepted' },
   failed: { tone: 'critical', label: 'failed' },
 };

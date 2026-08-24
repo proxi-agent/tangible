@@ -451,7 +451,8 @@ function FilesCard({
     <Card>
       <CardHeader
         title="Fixed asset registers"
-        description="Upload the client's FAR export — Sage, NetSuite, QuickBooks, or a hand-built workbook. Parsing never guesses: the AI proposes a column mapping and a person confirms it before assets exist."
+        description="Upload the client's FAR export — Sage, NetSuite, QuickBooks, or a hand-built workbook."
+        help="Parsing never guesses: the AI proposes a column mapping and a person confirms it before any assets exist."
       />
 
       <div className="px-5 pt-4">
