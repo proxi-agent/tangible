@@ -731,6 +731,10 @@ function countdownDays(iso: string): number {
  */
 function NextSeason({ taxYear }: { taxYear: number }) {
   const queryClient = useQueryClient();
+  // Creating a year's worth of engagements is one click doing real writes, so
+  // the button arms first and commits second. Quiet by default, too: the card
+  // is January's job, not the loudest thing on a board somebody opens in April.
+  const [armed, setArmed] = useState(false);
   const query = useQuery({
     queryKey: ['rollover-plan', taxYear],
     queryFn: () => api.rolloverPlan(taxYear),
@@ -738,6 +742,7 @@ function NextSeason({ taxYear }: { taxYear: number }) {
   const run = useMutation({
     mutationFn: () => api.runRollover(taxYear),
     onSuccess: (result) => {
+      setArmed(false);
       queryClient.setQueryData(['rollover-plan', taxYear], result.plan);
       // The year picker and the board itself both gain the new season.
       void queryClient.invalidateQueries({ queryKey: ['practice-season'] });
@@ -756,14 +761,32 @@ function NextSeason({ taxYear }: { taxYear: number }) {
         description={rolloverSummary(plan)}
         action={
           ready.length > 0 ? (
-            <Button variant="primary" disabled={run.isPending} onClick={() => run.mutate()}>
-              {run.isPending
-                ? 'Opening…'
-                : `Open ${plan.toYear} for ${ready.length} ${plural(ready.length, 'client')}`}
-            </Button>
+            armed ? (
+              <span className="flex items-center gap-2">
+                <Button variant="primary" disabled={run.isPending} onClick={() => run.mutate()}>
+                  {run.isPending
+                    ? 'Opening…'
+                    : `Create ${ready.length} ${plural(ready.length, 'engagement')}`}
+                </Button>
+                <Button disabled={run.isPending} onClick={() => setArmed(false)}>
+                  Cancel
+                </Button>
+              </span>
+            ) : (
+              <Button onClick={() => setArmed(true)}>
+                Open {plan.toYear} for {ready.length} {plural(ready.length, 'client')}…
+              </Button>
+            )
           ) : undefined
         }
       />
+      {armed ? (
+        <p className="px-5 pb-3 text-[11px] text-[var(--color-ink-secondary)]">
+          This creates a Tax year {plan.toYear} engagement for{' '}
+          {ready.length === 1 ? 'the client listed below' : `each of the ${ready.length} clients listed below`}
+          . The county and SIC code carry over; nothing about {plan.fromYear} changes.
+        </p>
+      ) : null}
       {ready.length > 0 ? (
         <ul className="flex flex-wrap gap-x-3 gap-y-1 px-5 pb-4 text-[11px] text-[var(--color-ink-secondary)]">
           {ready.map((entry) => (

@@ -25,9 +25,13 @@ const SOURCE_LABELS: Record<string, string> = {
 export function FindingsCard({
   clientId,
   engagementId,
+  empty,
 }: {
   clientId: string;
   engagementId: string;
+  /** Rendered instead of nothing where no set is committed — the card hides on
+      the crowded page and explains itself on a tab of its own. */
+  empty?: React.ReactNode;
 }) {
   const { data, error, isLoading } = useQuery({
     queryKey: ['finding-sets', engagementId],
@@ -38,7 +42,7 @@ export function FindingsCard({
   if (isLoading) return <Skeleton className="h-24 w-full" />;
 
   const sets = data?.items ?? [];
-  if (sets.length === 0) return null;
+  if (sets.length === 0) return empty ?? null;
 
   return (
     <Card>

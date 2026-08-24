@@ -48,15 +48,38 @@ export async function practiceSeason(taxYear?: number): Promise<PracticeSeason> 
     .orderBy(desc(schema.engagements.taxYear));
 
   const years = [...new Set(rows.map((row) => row.taxYear))].sort((a, b) => b - a);
-  // The newest year with anything in it, where nobody asked for one. An empty
-  // book still has to answer, and the statutory calendar is computable for any
-  // year, so it answers about the current one.
-  const year = taxYear ?? years[0] ?? new Date().getUTCFullYear();
-  const chosen = rows.filter((row) => row.taxYear === year);
-
-  const seasons = await Promise.all(
+  // Where nobody asked for a year: the newest one with returns on it, not just
+  // the newest one opened. An engagement rolled forward before any property is
+  // placed makes the newest year an empty board, and a season view that greets
+  // the firm with "nothing here" while live work sits one year back is a view
+  // that teaches people to stop trusting the default. Probing an empty year is
+  // cheap — zero engagements with returns means zero renditions built — and the
+  // seasons already built for the fallback year are reused, not rebuilt.
+  let year = taxYear ?? years[0] ?? new Date().getUTCFullYear();
+  let chosen = rows.filter((row) => row.taxYear === year);
+  let seasons = await Promise.all(
     chosen.map(async (row) => ({ row, season: await filingSeason(row.id) })),
   );
+
+  if (taxYear === undefined) {
+    for (const candidate of years) {
+      const candidateRows = rows.filter((row) => row.taxYear === candidate);
+      const built =
+        candidate === year
+          ? seasons
+          : await Promise.all(
+              candidateRows.map(async (row) => ({ row, season: await filingSeason(row.id) })),
+            );
+      if (built.some(({ season }) => season.returns.length > 0)) {
+        year = candidate;
+        chosen = candidateRows;
+        seasons = built;
+        break;
+      }
+    }
+    // No year has a return anywhere — a brand-new book. years[0] (or the
+    // current year) already stands from the initialization above.
+  }
 
   const flat = seasons.flatMap(({ row, season }) =>
     season.returns.map((entry) => ({

@@ -28,7 +28,16 @@ import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/p
  * Absent rather than empty when there is no history. A card that says "no prior
  * years on file" is a card somebody re-reads every week of a first engagement.
  */
-export function OpenYearsCard({ clientId, engagementId }: { clientId: string; engagementId: string }) {
+export function OpenYearsCard({
+  clientId,
+  engagementId,
+  empty,
+}: {
+  clientId: string;
+  engagementId: string;
+  /** Rendered instead of nothing where no history is on file. */
+  empty?: React.ReactNode;
+}) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['engagement-open-years', engagementId],
     queryFn: () => api.openYears(engagementId),
@@ -36,7 +45,7 @@ export function OpenYearsCard({ clientId, engagementId }: { clientId: string; en
 
   if (error) return <ErrorState error={error} />;
   if (isLoading || !data) return <Skeleton className="h-24 w-full" />;
-  if (data.open.length === 0 && data.closed.length === 0) return null;
+  if (data.open.length === 0 && data.closed.length === 0) return empty ?? null;
 
   return (
     <Card>

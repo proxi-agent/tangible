@@ -23,7 +23,14 @@ import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/p
  * started is a to-do list wearing the wrong clothes, and the season board
  * above is already the to-do list.
  */
-export function ResultCard({ engagementId }: { engagementId: string }) {
+export function ResultCard({
+  engagementId,
+  empty,
+}: {
+  engagementId: string;
+  /** Rendered instead of nothing before any return has gone out. */
+  empty?: React.ReactNode;
+}) {
   const { data, isLoading, error } = useQuery({
     queryKey: ['engagement-result', engagementId],
     queryFn: () => api.engagementResult(engagementId),
@@ -31,7 +38,7 @@ export function ResultCard({ engagementId }: { engagementId: string }) {
 
   if (error) return <ErrorState error={error} />;
   if (isLoading || !data) return <Skeleton className="h-24 w-full" />;
-  if (data.sites.every((site) => site.phase === 'unfiled')) return null;
+  if (data.sites.every((site) => site.phase === 'unfiled')) return empty ?? null;
 
   return (
     <Card>

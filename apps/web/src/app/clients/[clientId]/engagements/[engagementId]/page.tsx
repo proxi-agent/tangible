@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef, SortingState } from '@tanstack/react-table';
 import { ArrowLeft, FileCheck, FileSpreadsheet, FileText, UploadCloud } from 'lucide-react';
 import Link from 'next/link';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useRef, useState } from 'react';
 import type { Asset, AssetSortField, Engagement, EngagementDetail, FarFile } from '@tangible/types';
 import { FAR_UPLOAD_EXTENSIONS } from '@tangible/types';
@@ -14,6 +14,7 @@ import { cn } from '@/lib/cn';
 import { count, money, moneyExact, plural } from '@/lib/format';
 import { FarFileStatusBadge } from '@/components/workspace/badges';
 import { CarryForwardCard } from '@/components/workspace/carry-forward-card';
+import { EngagementPipeline } from '@/components/workspace/engagement-pipeline';
 import { ClassificationCard } from '@/components/workspace/classification-card';
 import { FindingsCard } from '@/components/workspace/findings-card';
 import { OpenYearsCard } from '@/components/workspace/open-years-card';
@@ -35,8 +36,36 @@ import {
 } from '@/components/ui/primitives';
 import { Tooltip } from '@/components/ui/tooltip';
 
+/**
+ * The engagement's sections, in the order the work happens.
+ *
+ * One page used to hold all of this at once — fifteen cards deep, with the
+ * result letter rendering above the upload dropzones that start the work.
+ * The tabs mirror the pipeline instead, and the overview carries the two
+ * things somebody opening a live engagement actually asks: what is next, and
+ * what still has to go out.
+ */
+const TABS = [
+  { id: 'overview', label: 'Overview' },
+  { id: 'intake', label: 'Intake' },
+  { id: 'assets', label: 'Assets' },
+  { id: 'value', label: 'Value' },
+  { id: 'sites', label: 'Sites' },
+  { id: 'findings', label: 'Findings' },
+  { id: 'results', label: 'Results' },
+  { id: 'priors', label: 'Prior years' },
+] as const;
+
+type TabId = (typeof TABS)[number]['id'];
+
 export default function EngagementPage() {
   const { clientId, engagementId } = useParams<{ clientId: string; engagementId: string }>();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const asked = searchParams.get('tab');
+  const tab: TabId = TABS.some((entry) => entry.id === asked) ? (asked as TabId) : 'overview';
+  const tabHref = (id: string) => (id === 'overview' ? pathname : `${pathname}?tab=${id}`);
+
   const { data, isLoading, error } = useQuery({
     queryKey: ['engagement', engagementId],
     queryFn: () => api.engagement(engagementId),
@@ -79,49 +108,186 @@ export default function EngagementPage() {
         ) : null}
       </div>
 
-      {/* The end of the pipeline, read first: what still has to go out, and
-          by when, is the question somebody holds about a live engagement. */}
-      <ReturnsBoard clientId={clientId} engagementId={engagementId} />
-      {/* The scoreboard under the worklist: the board says what still has to
-          happen, this says what it has all come to. Absent until a return has
-          gone out, because a scoreboard for a game that has not started is a
-          to-do list wearing the wrong clothes. */}
-      <ResultCard engagementId={engagementId} />
-      {/* Directly under the board, because it changes what goes on those
-          returns. A second season opens with a question the first did not have
-          — what moved since we last filed — and it is cheapest to answer before
-          anybody starts reviewing the register line by line. Renders nothing at
-          all where there is no prior return to compare against. */}
-      {data.stats.assetCount > 0 ? <CarryForwardCard engagementId={engagementId} /> : null}
-      {data.stats.assetCount > 0 ? <StatsRow detail={data} /> : null}
-      {/* Value before inventory: the point of the register is what it is worth,
-          and the asset list is the evidence underneath that. */}
-      {data.classification.classifiedCount > 0 ? (
-        <ValuationCard engagementId={engagementId} />
-      ) : null}
-      {data.stats.assetCount > 0 ? (
-        <ClassificationCard engagementId={engagementId} stats={data.classification} />
-      ) : null}
-      {/* Where the property sits, which is the last thing standing between a
-          finished valuation and a form somebody can sign — and the thing that
-          decides whether this engagement is one return or several. */}
-      {data.stats.assetCount > 0 ? (
-        <SitesCard clientId={clientId} engagementId={engagementId} />
-      ) : null}
-      <IntakeCard clientId={clientId} engagementId={engagementId} />
-      <FilesCard detail={data} clientId={clientId} engagementId={engagementId} />
-      {/* Both halves of the intake sit together: the register says what the
-          client owns, the prior filing says what they told the district. */}
-      <PriorsCard clientId={clientId} engagementId={engagementId} />
-      {/* And what the paper above is still worth. The prior documents are an
-          intake; this is the question they exist to answer, which is whether
-          any of those years can still be corrected. */}
-      <OpenYearsCard clientId={clientId} engagementId={engagementId} />
-      {/* What has actually been said, under the two things it was said about. */}
-      <FindingsCard clientId={clientId} engagementId={engagementId} />
-      {data.stats.assetCount > 0 ? <AssetsCard detail={data} engagementId={engagementId} /> : null}
+      <TabNav tab={tab} tabHref={tabHref} />
+      <TabBody
+        tab={tab}
+        detail={data}
+        clientId={clientId}
+        engagementId={engagementId}
+        tabHref={tabHref}
+      />
     </div>
   );
+}
+
+function TabNav({ tab, tabHref }: { tab: TabId; tabHref: (id: string) => string }) {
+  return (
+    <nav className="flex flex-wrap gap-1 border-b border-[var(--color-hairline)] pb-px" aria-label="Engagement sections">
+      {TABS.map((entry) => (
+        <Link
+          key={entry.id}
+          href={tabHref(entry.id)}
+          scroll={false}
+          aria-current={entry.id === tab ? 'page' : undefined}
+          className={cn(
+            '-mb-px rounded-t-md border-b-2 px-3 py-1.5 text-xs font-medium',
+            entry.id === tab
+              ? 'border-[var(--color-ink)] text-[var(--color-ink)]'
+              : 'border-transparent text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]',
+          )}
+        >
+          {entry.label}
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+function TabBody({
+  tab,
+  detail,
+  clientId,
+  engagementId,
+  tabHref,
+}: {
+  tab: TabId;
+  detail: EngagementDetail;
+  clientId: string;
+  engagementId: string;
+  tabHref: (id: string) => string;
+}) {
+  const hasAssets = detail.stats.assetCount > 0;
+  const intake = (
+    <>
+      No assets yet — the register is what everything downstream is built from. Upload it under{' '}
+      <Link href={tabHref('intake')} scroll={false} className="font-medium hover:underline">
+        Intake
+      </Link>
+      .
+    </>
+  );
+
+  switch (tab) {
+    case 'overview':
+      // What is next, then what still has to go out — the two questions
+      // somebody opening a live engagement is actually holding.
+      return (
+        <>
+          <EngagementPipeline
+            detail={detail}
+            tabHref={tabHref}
+            filingHref={`/clients/${clientId}/engagements/${engagementId}/filing`}
+          />
+          <ReturnsBoard clientId={clientId} engagementId={engagementId} />
+        </>
+      );
+    case 'intake':
+      // Both halves of the intake together: the register says what the client
+      // owns, the prior filing says what they told the district.
+      return (
+        <>
+          <IntakeCard clientId={clientId} engagementId={engagementId} />
+          <FilesCard detail={detail} clientId={clientId} engagementId={engagementId} />
+          <PriorsCard clientId={clientId} engagementId={engagementId} />
+        </>
+      );
+    case 'assets':
+      if (!hasAssets) {
+        return (
+          <Card>
+            <EmptyState title="No assets yet">{intake}</EmptyState>
+          </Card>
+        );
+      }
+      return (
+        <>
+          <StatsRow detail={detail} />
+          <AssetsCard detail={detail} engagementId={engagementId} />
+        </>
+      );
+    case 'value':
+      if (!hasAssets) {
+        return (
+          <Card>
+            <EmptyState title="Nothing to value yet">{intake}</EmptyState>
+          </Card>
+        );
+      }
+      // Value before inventory: the point of the register is what it is
+      // worth, and classification is the decision that number turns on.
+      return (
+        <>
+          {detail.classification.classifiedCount > 0 ? (
+            <ValuationCard engagementId={engagementId} />
+          ) : null}
+          <ClassificationCard engagementId={engagementId} stats={detail.classification} />
+        </>
+      );
+    case 'sites':
+      if (!hasAssets) {
+        return (
+          <Card>
+            <EmptyState title="Nothing to place yet">{intake}</EmptyState>
+          </Card>
+        );
+      }
+      return <SitesCard clientId={clientId} engagementId={engagementId} />;
+    case 'findings':
+      // The comparison feeds the findings, so it reads first — and stays
+      // deliberately absent on a first season, where there is nothing to
+      // compare against.
+      return (
+        <>
+          {hasAssets ? <CarryForwardCard engagementId={engagementId} /> : null}
+          <FindingsCard
+            clientId={clientId}
+            engagementId={engagementId}
+            empty={
+              <Card>
+                <EmptyState title="Nothing committed yet">
+                  Findings appear here once a savings report or a comparison against a prior return
+                  is committed — dated records of the figures that went out, with what was decided
+                  about every line.
+                </EmptyState>
+              </Card>
+            }
+          />
+        </>
+      );
+    case 'results':
+      return (
+        <ResultCard
+          engagementId={engagementId}
+          empty={
+            <Card>
+              <EmptyState title="No returns out yet">
+                The scoreboard starts once a return has gone out — what was rendered, what the
+                district noticed, and where the value stands.
+              </EmptyState>
+            </Card>
+          }
+        />
+      );
+    case 'priors':
+      return (
+        <OpenYearsCard
+          clientId={clientId}
+          engagementId={engagementId}
+          empty={
+            <Card>
+              <EmptyState title="No prior years on file">
+                Upload a prior rendition or notice under{' '}
+                <Link href={tabHref('intake')} scroll={false} className="font-medium hover:underline">
+                  Intake
+                </Link>{' '}
+                and this becomes the back catalogue: which closed years Tax Code 25.25 can still
+                reach, and the motions that reach them.
+              </EmptyState>
+            </Card>
+          }
+        />
+      );
+  }
 }
 
 const JURISDICTIONS = scheduledJurisdictions();
