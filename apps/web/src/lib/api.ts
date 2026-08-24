@@ -9,6 +9,8 @@ import type {
   ProtestBriefRecord,
   UnblockPlanRecord,
   ResultLetterRecord,
+  MotionDraftRecord,
+  DraftMotionRequest,
   Asset,
   AssetQuery,
   ClassificationDecisionResult,
@@ -480,6 +482,19 @@ export const api = {
   draftResultLetter: (engagementId: string) =>
     request<{ letter: ResultLetterRecord }>(`/engagements/${engagementId}/letter`, {
       method: 'POST',
+    }),
+
+  /** The newest drafted 25.25 motion for one open year, or null. */
+  motionDraft: (engagementId: string, yearKey: string) =>
+    request<{ draft: MotionDraftRecord | null }>(
+      `/engagements/${engagementId}/motion-draft?key=${encodeURIComponent(yearKey)}`,
+    ),
+
+  /** Draft a motion for one open year — a new row, never an edit. */
+  draftCorrectionMotion: (engagementId: string, body: DraftMotionRequest) =>
+    request<{ draft: MotionDraftRecord }>(`/engagements/${engagementId}/motion-draft`, {
+      method: 'POST',
+      body: JSON.stringify(body),
     }),
 
   /**

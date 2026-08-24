@@ -40,3 +40,4 @@ export {
 export { draftProtestBrief } from './brief.js';
 export { draftUnblockPlan } from './unblock.js';
 export { draftResultLetter } from './letter.js';
+export { draftCorrectionMotion } from './motion-draft.js';

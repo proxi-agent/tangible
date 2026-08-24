@@ -1399,6 +1399,32 @@ export const resultLetters = pgTable(
   (table) => [index('result_letters_engagement_idx').on(table.engagementId, table.createdAt)],
 ).enableRLS();
 
+/**
+ * A drafted 25.25 correction motion: the checked facts and the document,
+ * frozen together. Keyed by the open-years (account, year) key as well as the
+ * engagement, because the draft belongs to the year being corrected — several
+ * open years on one engagement each get their own drafts. Rows are never
+ * edited; redrafting inserts, and reads take the newest for the year.
+ */
+export const motionDrafts = pgTable(
+  'motion_drafts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** The open-years key of the (account, year) the motion corrects. */
+    yearKey: text('year_key').notNull(),
+    /** The assembled inputs, frozen. See MotionDraftFactsSchema. */
+    facts: jsonb('facts').notNull(),
+    /** The drafted motion. See CorrectionMotionDraftSchema. */
+    draft: jsonb('draft').notNull(),
+    model: text('model'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('motion_drafts_year_idx').on(table.engagementId, table.yearKey, table.createdAt)],
+).enableRLS();
+
 
 /**
  * A motion filed under 25.25 to correct an appraisal roll after the fact.

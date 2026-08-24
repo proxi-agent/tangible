@@ -86,3 +86,4 @@ export type { OutcomeInput, OutcomeMotion, OutcomeNotice, OutcomeResolution } fr
 export { assembleBriefFacts, briefBlocker } from './brief.js';
 export { assembleUnblockFacts, unblockBlocker, type UnblockSource } from './unblock.js';
 export { assembleLetterFacts, letterBlocker } from './letter.js';
+export { assembleMotionDraftFacts, motionDraftBlocker } from './motion-draft.js';

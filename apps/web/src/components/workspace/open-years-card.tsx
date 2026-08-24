@@ -7,6 +7,7 @@ import type { OpenYear, OpenYears } from '@tangible/types';
 import { api } from '@/lib/api';
 import { moneyExact, plural } from '@/lib/format';
 import { CorrectionRoutes } from '@/components/workspace/correction-routes';
+import { MotionDraftSection } from '@/components/workspace/motion-draft';
 import { Motions } from '@/components/workspace/correction-motions';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 
@@ -114,6 +115,7 @@ function Year({
         <Source year={year} clientId={clientId} engagementId={engagementId} />
       </div>
       <CorrectionRoutes outlook={year.outlook} heading="What 25.25 leaves" />
+      {year.outlook.open ? <MotionDraftSection year={year} engagementId={engagementId} /> : null}
       <Motions year={year} engagementId={engagementId} />
     </li>
   );
