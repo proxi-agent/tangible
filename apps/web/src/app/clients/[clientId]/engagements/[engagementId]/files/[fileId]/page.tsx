@@ -9,6 +9,7 @@ import type {
   CanonicalAssetField,
   FarFile,
   FarMapping,
+  MappingAsk,
   MappingVerification,
   NormalizationResult,
   SheetMapping,
@@ -178,6 +179,9 @@ export default function MappingReviewPage() {
               </p>
               {file.proposal.verification ? (
                 <Verification verification={file.proposal.verification} />
+              ) : null}
+              {file.proposal.asks && file.proposal.asks.length > 0 ? (
+                <Asks asks={file.proposal.asks} />
               ) : null}
             </div>
             <Button onClick={() => propose.mutate({ auto: false })} disabled={proposePending}>
@@ -578,6 +582,38 @@ function Verification({ verification }: { verification: MappingVerification }) {
             >
               {check.detail}
             </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * The questions only the client can answer.
+ *
+ * Rendered as forwardable questions, not commentary, because that is what they
+ * are: each one is a decision the mapping or the filing depends on that the
+ * file itself cannot make. They live outside the rationale so they read as
+ * work to be done rather than caveats to be skimmed — the failure mode this
+ * exists to prevent is "is this fiscal year or calendar year?" being read once
+ * at intake and never put to anybody.
+ */
+function Asks({ asks }: { asks: readonly MappingAsk[] }) {
+  return (
+    <div className="mt-2.5 space-y-1.5 rounded-md border border-[color-mix(in_oklab,var(--color-series-1)_30%,transparent)] bg-[color-mix(in_oklab,var(--color-series-1)_6%,transparent)] px-3 py-2.5">
+      <p className="text-[11px] font-medium">
+        {asks.length === 1 ? 'One question' : `${asks.length} questions`} for the client — the file
+        cannot answer {asks.length === 1 ? 'it' : 'these'}:
+      </p>
+      <ul className="space-y-1.5">
+        {asks.map((ask, i) => (
+          <li key={i} className="text-[11px] leading-relaxed">
+            <span className="font-medium">{ask.question}</span>
+            {ask.sheetName ? (
+              <span className="text-[var(--color-ink-muted)]"> ({ask.sheetName})</span>
+            ) : null}
+            <span className="block text-[var(--color-ink-secondary)]">{ask.why}</span>
           </li>
         ))}
       </ul>

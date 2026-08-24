@@ -3,6 +3,7 @@ import {
   CANONICAL_ASSET_FIELDS,
   CANONICAL_FIELD_INFO,
   type FarMappingProposal,
+  type MappingAsk,
   type MappingVerification,
   type SheetSummary,
 } from '@tangible/types';
@@ -39,6 +40,14 @@ const ProposalOutputSchema = z.object({
   ),
   confidence: z.number(),
   rationale: z.string(),
+  asks: z.array(
+    z.object({
+      question: z.string(),
+      why: z.string(),
+      field: z.enum(CANONICAL_ASSET_FIELDS).nullable(),
+      sheetName: z.string().nullable(),
+    }),
+  ),
 });
 
 const SYSTEM = `You map fixed asset register (FAR) spreadsheets onto a canonical asset schema for business personal property tax analysis. You see each sheet's first rows exactly as uploaded.
@@ -54,7 +63,8 @@ Rules, learned from how these files actually go wrong:
 - A lifetime column may be in months (NetSuite) or "YY/MM" text (Sage) — map it to usefulLife either way; it is stored as text.
 - Emit one entry in columns for every column in the sheet, in order, with field=null for columns that map to nothing. Use the note field only where the header alone would not justify the choice.
 - confidence is your honest estimate (0 to 1) that this mapping could run unreviewed without producing wrong assets. Ambiguous cost columns or guessed sheets should push it well below 0.8.
-- List every sheet from the input in your answer, including excluded ones.`;
+- List every sheet from the input in your answer, including excluded ones.
+- asks: questions ONLY the client can answer, where the answer would change the mapping or the filing built on it. Typical: whether year-only acquisition dates are fiscal or calendar years; whether a file showing only net book value has original cost somewhere else; whether an ambiguous sheet holds real assets; whether listed property is owned, leased, or consigned. Phrase each question so it can be forwarded to the client verbatim, and say in why what turns on the answer. Do NOT restate the rationale, ask about things the data already answers, or pad the list — an empty list is the right answer for a clean file. At most 5.`;
 
 function renderSheet(summary: SheetSummary): string {
   const rows = summary.preview
@@ -132,10 +142,19 @@ function sanitize(
     });
   }
 
+  // An ask about a sheet that does not exist keeps its question but loses the
+  // pointer — a hallucinated sheet name on the review screen would send the
+  // reviewer hunting for a tab that is not there.
+  const asks: MappingAsk[] = raw.asks.slice(0, 5).map((ask) => ({
+    ...ask,
+    sheetName: ask.sheetName !== null && byName.has(ask.sheetName) ? ask.sheetName : null,
+  }));
+
   return {
     sheets,
     confidence: Math.min(1, Math.max(0, raw.confidence)),
     rationale: raw.rationale,
+    asks,
   };
 }
 
@@ -169,6 +188,8 @@ const MAX_ROUNDS = 3;
 const REVISE = `A proposed mapping was applied to the full workbook — not the preview, the whole file — and measured. Some checks failed; the results and the raw rows behind them are below.
 
 Revise the mapping to fix what the evidence shows. If a check failed because the register genuinely is like that — a file with no printed totals, a legitimately costless listing — keep the mapping unchanged and say why in the rationale; an honest stand-by ends the revision loop. Never bend a mapping just to make a number pass: a wrong cost column that happens to foot is worse than a right one that does not.
+
+If the evidence raises something only the client can answer — a total that does not foot because the file may be missing a page, costs that may be net of disposals — put it in asks rather than guessing.
 
 Return the complete mapping again, every sheet, in the same form as before.`;
 

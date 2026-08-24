@@ -220,6 +220,28 @@ export const MappingVerificationSchema = z.object({
 
 export type MappingVerification = z.infer<typeof MappingVerificationSchema>;
 
+/**
+ * A question the data cannot answer and the mapping depends on.
+ *
+ * Distinct from the rationale on purpose. The rationale is the model
+ * explaining itself; an ask is work — something a person has to put to the
+ * client before the filing built on this file can be trusted. Folding asks
+ * into a paragraph of prose is how "is this fiscal year or calendar year?"
+ * gets read once at intake and never answered.
+ */
+export const MappingAskSchema = z.object({
+  /** The question, phrased to be forwarded to the client verbatim. */
+  question: z.string(),
+  /** What turns on the answer — which mapping or filing decision it changes. */
+  why: z.string(),
+  /** The canonical field the answer decides, when it is that specific. */
+  field: z.enum(CANONICAL_ASSET_FIELDS).nullable(),
+  /** The sheet the question is about, when it is about one sheet. */
+  sheetName: z.string().nullable(),
+});
+
+export type MappingAsk = z.infer<typeof MappingAskSchema>;
+
 export const FarMappingProposalSchema = FarMappingSchema.extend({
   /** The model's own read on how safe this mapping is to trust unreviewed. */
   confidence: z.number().min(0).max(1),
@@ -230,6 +252,12 @@ export const FarMappingProposalSchema = FarMappingSchema.extend({
    * Optional because proposals recorded before the loop existed have none.
    */
   verification: MappingVerificationSchema.optional(),
+  /**
+   * Questions only the client can answer. Optional because proposals recorded
+   * before asks existed have none; an empty array means the model was asked
+   * and had nothing to raise.
+   */
+  asks: z.array(MappingAskSchema).optional(),
 });
 
 export type FarMappingProposal = z.infer<typeof FarMappingProposalSchema>;
