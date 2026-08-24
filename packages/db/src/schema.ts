@@ -392,6 +392,41 @@ export const farFiles = pgTable(
 ).enableRLS();
 
 /**
+ * One question the mapping put to the client, and what came back.
+ *
+ * Asks are born inside a proposal, but they cannot live there: a re-propose
+ * overwrites the proposal jsonb, and an answer somebody collected from the
+ * client must survive that. So each ask is its own row, synced from every
+ * proposal by fingerprint — a reworded question keeps its answer, a new
+ * question gets a new open row, and a question the model stopped asking stays
+ * on the record with whatever was learned.
+ */
+export const mappingAsks = pgTable(
+  'mapping_asks',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    farFileId: uuid('far_file_id')
+      .notNull()
+      .references(() => farFiles.id, { onDelete: 'cascade' }),
+    /** Stable identity across re-proposals; computed in packages/far asks.ts. */
+    fingerprint: text('fingerprint').notNull(),
+    question: text('question').notNull(),
+    why: text('why').notNull(),
+    /** Canonical field the answer decides, when it is that specific. */
+    field: text('field'),
+    sheetName: text('sheet_name'),
+    /** 'open' | 'answered' | 'dismissed'. */
+    status: text('status').notNull().default('open'),
+    /** The client's answer, verbatim as relayed. */
+    answer: text('answer'),
+    answeredAt: timestamp('answered_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('mapping_asks_unique').on(table.farFileId, table.fingerprint)],
+).enableRLS();
+
+/**
  * One application of one confirmed mapping to one file.
  *
  * A file gets confirmed more than once in practice — a mis-set header row, a

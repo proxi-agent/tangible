@@ -83,13 +83,39 @@ export interface MappingProposalResult {
   model: string;
 }
 
+export interface AskAnswer {
+  question: string;
+  answer: string;
+}
+
+/**
+ * Answers the client has given, rendered as fact.
+ *
+ * This is the return leg of the asks loop: a question the model raised, put to
+ * the client, answered, and now handed back as ground truth. Facts, not
+ * hints — the extraction prompts deliberately withhold expected values so a
+ * mismatch stays visible, but an answer the client gave IS the resolution of
+ * an ambiguity the model itself identified, and hedging on it would re-open a
+ * question a person already closed.
+ */
+function renderAnswers(answers: AskAnswer[]): string {
+  return [
+    'The client has answered these questions about the file. Treat each answer as an authoritative fact — do not re-raise it in asks, and let it settle the mapping decisions that turned on it:',
+    ...answers.map((a) => `- Q: ${a.question}\n  A: ${a.answer}`),
+  ].join('\n');
+}
+
 export async function proposeMapping(
   summaries: SheetSummary[],
-  context: { filename: string },
+  context: { filename: string; answers?: AskAnswer[] },
 ): Promise<MappingProposalResult> {
   const { parsed, model } = await parseStructured({
     system: SYSTEM,
-    user: `Workbook: ${JSON.stringify(context.filename)}\n\n${summaries.map(renderSheet).join('\n\n')}`,
+    user: [
+      `Workbook: ${JSON.stringify(context.filename)}`,
+      summaries.map(renderSheet).join('\n\n'),
+      ...(context.answers && context.answers.length > 0 ? [renderAnswers(context.answers)] : []),
+    ].join('\n\n'),
     schema: ProposalOutputSchema,
     schemaName: 'far_mapping_proposal',
     maxTokens: 16000,
@@ -200,7 +226,7 @@ export interface VerifiedMappingResult extends MappingProposalResult {
 export async function proposeVerifiedMapping(
   workbook: ParsedWorkbook,
   summaries: SheetSummary[],
-  context: { filename: string },
+  context: { filename: string; answers?: AskAnswer[] },
 ): Promise<VerifiedMappingResult> {
   const workbookText = summaries.map(renderSheet).join('\n\n');
 
@@ -214,6 +240,7 @@ export async function proposeVerifiedMapping(
       user: [
         `Workbook: ${JSON.stringify(context.filename)}`,
         workbookText,
+        ...(context.answers && context.answers.length > 0 ? [renderAnswers(context.answers)] : []),
         REVISE,
         `Your previous mapping:\n${JSON.stringify({ sheets: proposal.sheets })}`,
         `What it produced:\n${describe(result)}`,

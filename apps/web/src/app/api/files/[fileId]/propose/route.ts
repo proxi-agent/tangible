@@ -7,6 +7,7 @@ import {
 } from '@tangible/ai';
 import { parseWorkbook, type ParsedWorkbook } from '@tangible/far';
 import type { SheetSummary } from '@tangible/types';
+import { answeredAsks, syncAsks } from '@/lib/asks';
 import { downloadFarFile } from '@/lib/far-storage';
 import { HttpError, handle } from '@/lib/route';
 import { farFileDto, fetchFarFile } from '@/lib/workspace';
@@ -47,11 +48,17 @@ export function POST(
       workbook = null;
     }
 
+    // The return leg of the asks loop: answers collected since the last
+    // proposal go back in as fact, so re-proposing after the client replies is
+    // how an answer becomes a mapping.
+    const answers = await answeredAsks(fileId);
+
     let result;
     try {
+      const context = { filename: row.originalFilename, answers };
       result = workbook
-        ? await proposeVerifiedMapping(workbook, summaries, { filename: row.originalFilename })
-        : await proposeMapping(summaries, { filename: row.originalFilename });
+        ? await proposeVerifiedMapping(workbook, summaries, context)
+        : await proposeMapping(summaries, context);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : String(cause);
       throw new HttpError(502, `The mapping proposal failed: ${message}`);
@@ -72,6 +79,8 @@ export function POST(
       })
       .where(eq(schema.farFiles.id, fileId))
       .returning();
+
+    await syncAsks(fileId, result.proposal.asks ?? []);
 
     return farFileDto(updated!);
   });

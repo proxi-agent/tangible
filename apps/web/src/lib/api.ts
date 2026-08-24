@@ -59,6 +59,8 @@ import type {
   RecordMotionRequest,
   RecordNoticeRequest,
   NoticeRecordProposal,
+  MappingAskRecord,
+  UpdateAskRequest,
   RecordResolutionRequest,
   Rendition,
   RenditionBasis,
@@ -584,6 +586,13 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  /** The asks ledger for a file — every question the mapping raised. */
+  fileAsks: (fileId: string) => request<{ items: MappingAskRecord[] }>(`/files/${fileId}/asks`),
+
+  /** Record the client's answer, dismiss a question, or reopen either. */
+  updateAsk: (askId: string, body: UpdateAskRequest) =>
+    request<MappingAskRecord>(`/asks/${askId}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   /**
    * What the intake would record for an uploaded notice. Advice, freshly

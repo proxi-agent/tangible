@@ -11,6 +11,7 @@ export { parseStructured, type StructuredDocument, type StructuredResult } from 
 export {
   proposeMapping,
   proposeVerifiedMapping,
+  type AskAnswer,
   type MappingProposalResult,
   type VerifiedMappingResult,
 } from './mapping.js';

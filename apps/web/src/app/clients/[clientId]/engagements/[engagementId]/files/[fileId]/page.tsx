@@ -14,6 +14,8 @@ import type {
   NormalizationResult,
   SheetMapping,
   SheetSummary,
+  MappingAskRecord,
+  UpdateAskRequest,
 } from '@tangible/types';
 import { CANONICAL_ASSET_FIELDS, CANONICAL_FIELD_INFO } from '@tangible/types';
 import { ApiError, api } from '@/lib/api';
@@ -180,9 +182,7 @@ export default function MappingReviewPage() {
               {file.proposal.verification ? (
                 <Verification verification={file.proposal.verification} />
               ) : null}
-              {file.proposal.asks && file.proposal.asks.length > 0 ? (
-                <Asks asks={file.proposal.asks} />
-              ) : null}
+              <Asks fileId={fileId} fallback={file.proposal.asks ?? []} />
             </div>
             <Button onClick={() => propose.mutate({ auto: false })} disabled={proposePending}>
               {proposePending ? 'Proposing…' : 'Re-propose'}
@@ -599,24 +599,145 @@ function Verification({ verification }: { verification: MappingVerification }) {
  * exists to prevent is "is this fiscal year or calendar year?" being read once
  * at intake and never put to anybody.
  */
-function Asks({ asks }: { asks: readonly MappingAsk[] }) {
+function Asks({ fileId, fallback }: { fileId: string; fallback: readonly MappingAsk[] }) {
+  const queryClient = useQueryClient();
+  const { data } = useQuery({
+    queryKey: ['file-asks', fileId],
+    queryFn: () => api.fileAsks(fileId),
+  });
+
+  const update = useMutation({
+    mutationFn: ({ askId, body }: { askId: string; body: UpdateAskRequest }) =>
+      api.updateAsk(askId, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['file-asks', fileId] });
+    },
+  });
+
+  const ledger = data?.items ?? [];
+  // Ledger rows exist for any file proposed since asks became durable; the
+  // fallback covers older proposals whose asks live only in the jsonb.
+  if (ledger.length === 0 && fallback.length === 0) return null;
+
+  const answered = ledger.filter((a) => a.status === 'answered').length;
+
   return (
     <div className="mt-2.5 space-y-1.5 rounded-md border border-[color-mix(in_oklab,var(--color-series-1)_30%,transparent)] bg-[color-mix(in_oklab,var(--color-series-1)_6%,transparent)] px-3 py-2.5">
       <p className="text-[11px] font-medium">
-        {asks.length === 1 ? 'One question' : `${asks.length} questions`} for the client — the file
-        cannot answer {asks.length === 1 ? 'it' : 'these'}:
+        {ledger.length > 0
+          ? `Questions for the client — ${answered} of ${ledger.length} answered`
+          : `${fallback.length === 1 ? 'One question' : `${fallback.length} questions`} for the client — the file cannot answer ${fallback.length === 1 ? 'it' : 'these'}:`}
       </p>
-      <ul className="space-y-1.5">
-        {asks.map((ask, i) => (
-          <li key={i} className="text-[11px] leading-relaxed">
-            <span className="font-medium">{ask.question}</span>
-            {ask.sheetName ? (
-              <span className="text-[var(--color-ink-muted)]"> ({ask.sheetName})</span>
-            ) : null}
-            <span className="block text-[var(--color-ink-secondary)]">{ask.why}</span>
-          </li>
-        ))}
-      </ul>
+      {ledger.length > 0 ? (
+        <>
+          <ul className="space-y-2">
+            {ledger.map((ask) => (
+              <AskRow
+                key={ask.id}
+                ask={ask}
+                pending={update.isPending}
+                onUpdate={(body) => update.mutate({ askId: ask.id, body })}
+              />
+            ))}
+          </ul>
+          {answered > 0 ? (
+            <p className="text-[11px] text-[var(--color-ink-secondary)]">
+              Answers go back into the next proposal as fact — re-propose to fold them into the
+              mapping.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <ul className="space-y-1.5">
+          {fallback.map((ask, i) => (
+            <li key={i} className="text-[11px] leading-relaxed">
+              <span className="font-medium">{ask.question}</span>
+              {ask.sheetName ? (
+                <span className="text-[var(--color-ink-muted)]"> ({ask.sheetName})</span>
+              ) : null}
+              <span className="block text-[var(--color-ink-secondary)]">{ask.why}</span>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
+  );
+}
+
+/**
+ * One question, worked. Open takes an answer or a dismissal; both are
+ * reversible, because a corrected answer or a reconsidered dismissal is normal
+ * work, not an exception.
+ */
+function AskRow({
+  ask,
+  pending,
+  onUpdate,
+}: {
+  ask: MappingAskRecord;
+  pending: boolean;
+  onUpdate: (body: UpdateAskRequest) => void;
+}) {
+  const [draft, setDraft] = useState('');
+
+  return (
+    <li className="text-[11px] leading-relaxed">
+      <span className={ask.status === 'dismissed' ? 'font-medium text-[var(--color-ink-muted)] line-through' : 'font-medium'}>
+        {ask.question}
+      </span>
+      {ask.sheetName ? (
+        <span className="text-[var(--color-ink-muted)]"> ({ask.sheetName})</span>
+      ) : null}
+      <span className="block text-[var(--color-ink-secondary)]">{ask.why}</span>
+      {ask.status === 'answered' ? (
+        <span className="mt-0.5 flex items-center gap-1.5">
+          <span className="text-[var(--color-good)]">Answered: {ask.answer}</span>
+          <button
+            type="button"
+            className="text-[var(--color-ink-muted)] underline decoration-dotted hover:text-[var(--color-ink)]"
+            onClick={() => onUpdate({ status: 'open', answer: null })}
+            disabled={pending}
+          >
+            reopen
+          </button>
+        </span>
+      ) : ask.status === 'dismissed' ? (
+        <span className="mt-0.5 flex items-center gap-1.5 text-[var(--color-ink-muted)]">
+          Dismissed — the client will not be asked.
+          <button
+            type="button"
+            className="underline decoration-dotted hover:text-[var(--color-ink)]"
+            onClick={() => onUpdate({ status: 'open', answer: null })}
+            disabled={pending}
+          >
+            reopen
+          </button>
+        </span>
+      ) : (
+        <span className="mt-1 flex flex-wrap items-center gap-1.5">
+          <input
+            type="text"
+            value={draft}
+            onChange={(event) => setDraft(event.target.value)}
+            placeholder="The client's answer…"
+            className="min-w-48 flex-1 rounded border border-[var(--color-hairline)] bg-[var(--color-surface)] px-2 py-1 text-[11px] outline-none focus:border-[var(--color-series-1)]"
+          />
+          <Button
+            onClick={() => onUpdate({ status: 'answered', answer: draft })}
+            disabled={pending || draft.trim().length === 0}
+          >
+            Record answer
+          </Button>
+          <button
+            type="button"
+            className="text-[var(--color-ink-muted)] underline decoration-dotted hover:text-[var(--color-ink)]"
+            onClick={() => onUpdate({ status: 'dismissed', answer: null })}
+            disabled={pending}
+          >
+            dismiss
+          </button>
+        </span>
+      )}
+    </li>
   );
 }

@@ -14,3 +14,4 @@ export {
 } from './normalize.js';
 export { dateValue, isoDate, numberValue, textValue, yearValue } from './values.js';
 export { verifyMapping, type VerifyResult } from './verify.js';
+export { askFingerprint, askLooseFingerprint, planAskSync, type AskSyncPlan, type ExistingAsk } from './asks.js';

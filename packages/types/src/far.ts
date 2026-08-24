@@ -242,6 +242,45 @@ export const MappingAskSchema = z.object({
 
 export type MappingAsk = z.infer<typeof MappingAskSchema>;
 
+/**
+ * An ask as a durable row, with its disposition.
+ *
+ * The proposal jsonb is where asks are born; this is where they live, because
+ * an answer collected from the client must survive the re-propose that
+ * overwrites the proposal. 'open' is work; 'answered' carries the answer back
+ * into the next proposal as fact; 'dismissed' says a person decided the
+ * question does not need the client.
+ */
+export const MAPPING_ASK_STATUSES = ['open', 'answered', 'dismissed'] as const;
+export const MappingAskStatusSchema = z.enum(MAPPING_ASK_STATUSES);
+export type MappingAskStatus = z.infer<typeof MappingAskStatusSchema>;
+
+export const MappingAskRecordSchema = MappingAskSchema.extend({
+  id: z.string(),
+  farFileId: z.string(),
+  status: MappingAskStatusSchema,
+  answer: z.string().nullable(),
+  answeredAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type MappingAskRecord = z.infer<typeof MappingAskRecordSchema>;
+
+export const UpdateAskRequestSchema = z
+  .object({
+    status: MappingAskStatusSchema,
+    answer: z
+      .string()
+      .trim()
+      .max(2000)
+      .nullish()
+      .transform((v) => (v ? v : null)),
+  })
+  .refine((body) => body.status !== 'answered' || body.answer !== null, {
+    path: ['answer'],
+    message: 'An answered ask needs the answer — that is the thing being recorded.',
+  });
+export type UpdateAskRequest = z.infer<typeof UpdateAskRequestSchema>;
+
 export const FarMappingProposalSchema = FarMappingSchema.extend({
   /** The model's own read on how safe this mapping is to trust unreviewed. */
   confidence: z.number().min(0).max(1),
