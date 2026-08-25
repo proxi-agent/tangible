@@ -485,9 +485,13 @@ export const importBatches = pgTable(
  * looking at a disposal should know the difference between "this asset left" and
  * "one of these ten left".
  *
- * `currentVersionId` and the batch pointers are plain uuids, not foreign keys:
- * assets and versions reference each other, and one side has to give way for the
- * DDL to be creatable in any order.
+ * `currentVersionId` is a plain uuid, not a foreign key: assets and versions
+ * reference each other, and one side has to give way for the DDL to be
+ * creatable in any order. The batch pointers have no such excuse and are real
+ * references — deleting a far file cascades its batches away, and without the
+ * constraint that delete left these pointers silently dangling. `no action`
+ * on purpose: a future delete path must repair the pointers (repoint to the
+ * newest surviving batch among the asset's versions) before the batch can go.
  */
 export const assets = pgTable(
   'assets',
@@ -502,8 +506,12 @@ export const assets = pgTable(
     ordinal: integer('ordinal').notNull().default(0),
     /** 'asset-tag' | 'fingerprint' | 'fingerprint-ordinal' | 'new'. */
     matchMethod: text('match_method').notNull(),
-    firstSeenBatchId: uuid('first_seen_batch_id').notNull(),
-    lastSeenBatchId: uuid('last_seen_batch_id').notNull(),
+    firstSeenBatchId: uuid('first_seen_batch_id')
+      .notNull()
+      .references(() => importBatches.id),
+    lastSeenBatchId: uuid('last_seen_batch_id')
+      .notNull()
+      .references(() => importBatches.id),
     currentVersionId: uuid('current_version_id'),
     /**
      * The tax year of the most recent register this asset appeared in, which is
