@@ -1,5 +1,5 @@
 import type { FarMapping, MappingCheck } from '@tangible/types';
-import { applyMapping, isTotalLabel, type NormalizeOutput } from './normalize.js';
+import { applyMapping, hasTotalLabel, type NormalizeOutput } from './normalize.js';
 import { formatCell, type ParsedWorkbook } from './parse.js';
 import { numberValue } from './values.js';
 
@@ -51,10 +51,22 @@ export function verifyMapping(workbook: ParsedWorkbook, mapping: FarMapping): Ve
   const total = output.assets.length + output.skipped.length;
   checks.push(
     included.length === 0
-      ? { check: 'produced-assets', ok: false, detail: 'No sheet is included — the mapping produces no assets at all.' }
+      ? {
+          check: 'produced-assets',
+          ok: false,
+          detail: 'No sheet is included — the mapping produces no assets at all.',
+        }
       : output.assets.length === 0
-        ? { check: 'produced-assets', ok: false, detail: `${included.length} included sheet(s) produced 0 assets across ${total} rows.` }
-        : { check: 'produced-assets', ok: true, detail: `${output.assets.length} assets from ${included.length} included sheet(s).` },
+        ? {
+            check: 'produced-assets',
+            ok: false,
+            detail: `${included.length} included sheet(s) produced 0 assets across ${total} rows.`,
+          }
+        : {
+            check: 'produced-assets',
+            ok: true,
+            detail: `${output.assets.length} assets from ${included.length} included sheet(s).`,
+          },
   );
 
   const skipRate = total === 0 ? 0 : output.skipped.length / total;
@@ -66,13 +78,21 @@ export function verifyMapping(workbook: ParsedWorkbook, mapping: FarMapping): Ve
       detail: `${output.skipped.length} of ${total} rows were skipped (${Math.round(skipRate * 100)}%). Top reasons: ${reasons}.`,
     });
     for (const skip of output.skipped.slice(0, EVIDENCE_ROWS)) {
-      evidence.push(`skipped ${skip.sheet} row ${skip.row}: ${skip.reason} — ${rawRow(workbook, skip.sheet, skip.row)}`);
+      evidence.push(
+        `skipped ${skip.sheet} row ${skip.row}: ${skip.reason} — ${rawRow(workbook, skip.sheet, skip.row)}`,
+      );
     }
   } else {
-    checks.push({ check: 'skip-rate', ok: true, detail: `${output.skipped.length} of ${total} rows skipped.` });
+    checks.push({
+      check: 'skip-rate',
+      ok: true,
+      detail: `${output.skipped.length} of ${total} rows skipped.`,
+    });
   }
 
-  const costMapped = included.some((sheet) => sheet.columns.some((c) => c.field === 'originalCost'));
+  const costMapped = included.some((sheet) =>
+    sheet.columns.some((c) => c.field === 'originalCost'),
+  );
   const costless = output.assets.filter((asset) => asset.originalCost === null).length;
   const costlessRate = output.assets.length === 0 ? 0 : costless / output.assets.length;
   checks.push(
@@ -84,8 +104,18 @@ export function verifyMapping(workbook: ParsedWorkbook, mapping: FarMapping): Ve
             'No included sheet maps an originalCost column. If only net book value exists that is correct — say so. Otherwise the cost column was missed.',
         }
       : costlessRate > COSTLESS_LIMIT
-        ? { check: 'cost-mapped', ok: false, detail: `${costless} of ${output.assets.length} assets have no original cost — the cost column may be mapped to the wrong place.` }
-        : { check: 'cost-mapped', ok: true, detail: costMapped ? `${output.assets.length - costless} of ${output.assets.length} assets carry a cost.` : 'No cost column exists to map.' },
+        ? {
+            check: 'cost-mapped',
+            ok: false,
+            detail: `${costless} of ${output.assets.length} assets have no original cost — the cost column may be mapped to the wrong place.`,
+          }
+        : {
+            check: 'cost-mapped',
+            ok: true,
+            detail: costMapped
+              ? `${output.assets.length - costless} of ${output.assets.length} assets carry a cost.`
+              : 'No cost column exists to map.',
+          },
   );
 
   // The strongest check available: does the mapped cost column foot against a
@@ -101,21 +131,41 @@ export function verifyMapping(workbook: ParsedWorkbook, mapping: FarMapping): Ve
       .reduce((sum, asset) => sum + (asset.originalCost ?? 0), 0);
     const printed = printedTotals(parsed.matrix, costCol);
     if (printed.length === 0) {
-      checks.push({ check: 'foots', ok: true, detail: `${sheet.sheetName}: no printed total row found to foot against.` });
+      checks.push({
+        check: 'foots',
+        ok: true,
+        detail: `${sheet.sheetName}: no printed total row found to foot against.`,
+      });
       continue;
     }
-    const closest = printed.reduce((best, one) =>
+    // A banded register prints a total per section and often no grand total at
+    // all — or one that reads "see attached". Against such a sheet the whole
+    // column has to be footed against the sum of the sections, because the
+    // largest single subtotal is not what the column should equal. Trying both
+    // is what keeps this check from crying wolf on the commonest layout there
+    // is, which is worse than not running: a reviewer who is shown a red foot
+    // on every correct mapping stops reading the green ones.
+    const sectionSum = printed.reduce((sum, one) => sum + one.value, 0);
+    const candidates = printed.length > 1 ? [...printed, { row: -1, value: sectionSum }] : printed;
+    const closest = candidates.reduce((best, one) =>
       Math.abs(one.value - summedCost) < Math.abs(best.value - summedCost) ? one : best,
     );
     const foots = Math.abs(closest.value - summedCost) <= Math.abs(closest.value) * FOOT_TOLERANCE;
+    const against =
+      closest.row === -1
+        ? `the ${printed.length} section totals it prints`
+        : `the total printed on row ${closest.row}`;
     checks.push({
       check: 'foots',
       ok: foots,
       detail: foots
-        ? `${sheet.sheetName}: mapped costs sum to ${money(summedCost)}, footing against the total printed on row ${closest.row}.`
-        : `${sheet.sheetName}: mapped costs sum to ${money(summedCost)} but the nearest printed total (row ${closest.row}) is ${money(closest.value)}.`,
+        ? `${sheet.sheetName}: mapped costs sum to ${money(summedCost)}, footing against ${against}.`
+        : `${sheet.sheetName}: mapped costs sum to ${money(summedCost)} but ${against} comes to ${money(closest.value)}.`,
     });
-    if (!foots) evidence.push(`total row ${sheet.sheetName}!${closest.row}: ${rawRow(workbook, sheet.sheetName, closest.row)}`);
+    if (!foots && closest.row !== -1)
+      evidence.push(
+        `total row ${sheet.sheetName}!${closest.row}: ${rawRow(workbook, sheet.sheetName, closest.row)}`,
+      );
   }
 
   // A header row pointing at data shows up as numeric "headers" on mapped
@@ -135,7 +185,9 @@ export function verifyMapping(workbook: ParsedWorkbook, mapping: FarMapping): Ve
         ok: false,
         detail: `${sheet.sheetName}: ${numeric} of ${mapped.length} mapped columns have numbers on header row ${sheet.headerRow} — that row is probably data, not headers.`,
       });
-      evidence.push(`claimed header ${sheet.sheetName} row ${sheet.headerRow}: ${rawRow(workbook, sheet.sheetName, sheet.headerRow)}`);
+      evidence.push(
+        `claimed header ${sheet.sheetName} row ${sheet.headerRow}: ${rawRow(workbook, sheet.sheetName, sheet.headerRow)}`,
+      );
     }
   }
 
@@ -149,17 +201,32 @@ export function verifyMapping(workbook: ParsedWorkbook, mapping: FarMapping): Ve
       detail: `${warned} of ${output.assets.length} assets read with warnings. Top warnings: ${words}.`,
     });
   } else {
-    checks.push({ check: 'warning-rate', ok: true, detail: `${warned} of ${output.assets.length} assets carry a warning.` });
+    checks.push({
+      check: 'warning-rate',
+      ok: true,
+      detail: `${warned} of ${output.assets.length} assets carry a warning.`,
+    });
   }
 
   return { ok: checks.every((check) => check.ok), checks, output, evidence };
 }
 
-/** Numeric values in the cost column on rows that carry a total label. */
+/**
+ * Numeric values in the cost column on rows that carry a total label.
+ *
+ * Sparsity is part of the test, not decoration. `hasTotalLabel` accepts the
+ * loose "Total Machinery & Equipment" wording that a band's closing line uses,
+ * and a real asset can be named that way too ("Total Station Leica TS16") — but
+ * an asset row is a full row, and a subtotal is a label and an amount.
+ */
 function printedTotals(matrix: unknown[][], costCol: number): { row: number; value: number }[] {
   const found: { row: number; value: number }[] = [];
   matrix.forEach((row, index) => {
-    if (!row.some((cell) => isTotalLabel(cell))) return;
+    if (!hasTotalLabel(row)) return;
+    const populated = row.filter(
+      (cell) => cell !== null && cell !== undefined && String(cell).trim() !== '',
+    ).length;
+    if (populated > 4) return;
     const value = numberValue(row[costCol]);
     if (value !== null && value !== 0) found.push({ row: index, value });
   });
