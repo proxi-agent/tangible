@@ -90,7 +90,29 @@ export default function PriorDocumentPage() {
   });
 
   if (error) return <ErrorState error={error} />;
-  if (isLoading || !data) return <Skeleton className="h-64 w-full" />;
+  // The header row the page opens with, then the identity card and the first
+  // reading card underneath it.
+  if (isLoading || !data) {
+    return (
+      <div className="flex flex-col gap-5">
+        <div className="space-y-1.5">
+          <Skeleton className="h-6 w-96 max-w-full" />
+          <Skeleton className="h-3.5 w-56" />
+        </div>
+        {[0, 1].map((card) => (
+          <Card key={card}>
+            <div className="space-y-2 p-5">
+              <Skeleton className="h-5 w-64" />
+              <Skeleton className="h-3.5 w-full max-w-lg" />
+            </div>
+            <div className="px-5 pb-5">
+              <Skeleton className="h-16 w-full" />
+            </div>
+          </Card>
+        ))}
+      </div>
+    );
+  }
 
   const { document, lines, basis } = data;
   const isRendition = document.kind === 'rendition';
@@ -167,7 +189,24 @@ function ComparisonSection({
   });
 
   if (error) return <ErrorState error={error} />;
-  if (isLoading || !data) return <Skeleton className="h-64 w-full" />;
+  // The comparison card it becomes: header lines over a few table rows.
+  if (isLoading || !data) {
+    return (
+      <Card>
+        <div className="space-y-2 p-5">
+          <Skeleton className="h-5 w-72" />
+          <Skeleton className="h-3.5 w-full max-w-lg" />
+        </div>
+        <ul className="divide-y divide-[var(--color-hairline)]">
+          {[0, 1, 2].map((row) => (
+            <li key={row} className="px-5 py-3.5">
+              <Skeleton className="h-4 w-full max-w-md" />
+            </li>
+          ))}
+        </ul>
+      </Card>
+    );
+  }
 
   return (
     <div className="space-y-4">

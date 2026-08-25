@@ -103,7 +103,27 @@ export default function MappingReviewPage() {
   }, [file, proposeMutate]);
 
   if (error) return <ErrorState error={error} />;
-  if (isLoading || !file || !mapping) return <Skeleton className="h-64 w-full" />;
+  // The header line, then the mapping card with a few column rows sketched in.
+  if (isLoading || !file || !mapping) {
+    return (
+      <div className="space-y-5">
+        <Skeleton className="h-6 w-80 max-w-full" />
+        <Card>
+          <div className="space-y-2 p-5">
+            <Skeleton className="h-5 w-64" />
+            <Skeleton className="h-3.5 w-full max-w-lg" />
+          </div>
+          <ul className="divide-y divide-[var(--color-hairline)]">
+            {[0, 1, 2, 3].map((row) => (
+              <li key={row} className="px-5 py-3.5">
+                <Skeleton className="h-4 w-full max-w-md" />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+    );
+  }
   if (!file.sheetSummaries) {
     return (
       <ErrorState

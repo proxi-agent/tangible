@@ -5,7 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
-import { ErrorState, Skeleton } from '@/components/ui/primitives';
+import { Card, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { FindingSetView } from '@/components/workspace/finding-set';
 
 /**
@@ -27,7 +27,27 @@ export default function FindingSetPage() {
   });
 
   if (error) return <ErrorState error={error} />;
-  if (isLoading || !data) return <Skeleton className="h-96 w-full" />;
+  // The back link, then the finding-set card: header lines over finding rows.
+  if (isLoading || !data) {
+    return (
+      <div className="space-y-5">
+        <Skeleton className="h-4 w-44" />
+        <Card>
+          <div className="space-y-2 p-5">
+            <Skeleton className="h-5 w-72" />
+            <Skeleton className="h-3.5 w-full max-w-lg" />
+          </div>
+          <ul className="divide-y divide-[var(--color-hairline)]">
+            {[0, 1, 2].map((row) => (
+              <li key={row} className="px-5 py-4">
+                <Skeleton className="h-4 w-full max-w-md" />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

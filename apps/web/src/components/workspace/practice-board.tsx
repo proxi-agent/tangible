@@ -37,7 +37,28 @@ export function PracticeBoard() {
   });
 
   if (season.error) return <ErrorState error={season.error} />;
-  if (!season.data) return <Skeleton className="h-64 w-full" />;
+  // Shaped like the board it becomes — a card with a heading, a calendar
+  // sentence, and a few worklist rows — not one grey slab on the landing page.
+  if (!season.data) {
+    return (
+      <Card>
+        <div className="space-y-2 p-5">
+          <Skeleton className="h-5 w-72" />
+          <Skeleton className="h-3.5 w-full max-w-xl" />
+        </div>
+        <ul className="divide-y divide-[var(--color-hairline)]">
+          {[0, 1, 2].map((row) => (
+            <li key={row} className="px-5 py-4">
+              <Skeleton className="h-4 w-full max-w-md" />
+            </li>
+          ))}
+        </ul>
+        <div className="border-t border-[var(--color-hairline)] px-5 py-3.5">
+          <Skeleton className="h-3.5 w-56" />
+        </div>
+      </Card>
+    );
+  }
 
   const data = season.data;
   // By site, not by row. Where two engagements draft the same site and one of

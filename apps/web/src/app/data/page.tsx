@@ -15,7 +15,32 @@ const DEFAULT_YEARS = '2021,2022,2023,2024,2025,2026';
 
 export default function DataPage() {
   return (
-    <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+    <Suspense
+      // The jurisdictions card over the runs card — the page's settled shape.
+      fallback={
+        <div className="space-y-4">
+          <Card>
+            <div className="space-y-2 p-5">
+              <Skeleton className="h-5 w-36" />
+              <Skeleton className="h-3.5 w-full max-w-lg" />
+            </div>
+            <div className="space-y-2 px-5 pb-5">
+              {[0, 1].map((row) => (
+                <Skeleton key={row} className="h-16 w-full" />
+              ))}
+            </div>
+          </Card>
+          <Card>
+            <div className="space-y-2 p-5">
+              <Skeleton className="h-5 w-28" />
+            </div>
+            <div className="px-5 pb-5">
+              <Skeleton className="h-24 w-full" />
+            </div>
+          </Card>
+        </div>
+      }
+    >
       <DataSources />
     </Suspense>
   );
@@ -63,7 +88,8 @@ function DataSources() {
       <Card>
         <CardHeader
           title="Jurisdictions"
-          description="Each connector knows one appraisal district's file layout. Everything downstream is jurisdiction-agnostic, so adding a county is a connector, not a migration."
+          description="Each connector knows one appraisal district's file layout."
+          help="Everything downstream of ingest is jurisdiction-agnostic, so adding a county means writing a connector for its published files, not migrating the warehouse."
         />
 
         <div className="border-b border-[var(--color-hairline)] p-5">

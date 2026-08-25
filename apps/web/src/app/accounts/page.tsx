@@ -15,7 +15,32 @@ import { count, money } from '@/lib/format';
 
 export default function AccountsPage() {
   return (
-    <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+    <Suspense
+      // The two cards the page settles into: filters, then the table rows.
+      fallback={
+        <div className="space-y-4">
+          <Card>
+            <div className="space-y-2 p-5">
+              <Skeleton className="h-5 w-24" />
+              <Skeleton className="h-3.5 w-full max-w-lg" />
+            </div>
+            <div className="px-5 pb-5">
+              <Skeleton className="h-16 w-full" />
+            </div>
+          </Card>
+          <Card>
+            <div className="space-y-2 p-5">
+              <Skeleton className="h-5 w-32" />
+            </div>
+            <div className="space-y-2 px-5 pb-5">
+              {Array.from({ length: 6 }, (_, i) => (
+                <Skeleton key={i} className="h-9 w-full" />
+              ))}
+            </div>
+          </Card>
+        </div>
+      }
+    >
       <Accounts />
     </Suspense>
   );
@@ -60,7 +85,8 @@ function Accounts() {
       <Card>
         <CardHeader
           title="Filters"
-          description="Each account below is one business location's equipment, as the county recorded it. Narrow the list with the buttons — hover any of them to see what it means. Picking several narrows further: an account has to satisfy every one."
+          description="Each account below is one business location's equipment, as the county recorded it."
+          help="Narrow the list with the buttons — hover any of them to see what it means. Picking several narrows further: an account has to satisfy every one of the chosen filters."
           action={
             activeFilterCount > 0 ? (
               <Button variant="ghost" onClick={reset}>

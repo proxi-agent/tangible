@@ -48,7 +48,35 @@ export default function ClientPage() {
   });
 
   if (error) return <ErrorState error={error} />;
-  if (isLoading || !data) return <Skeleton className="h-48 w-full" />;
+  // Shaped like the page: the back-link header line, then the two-column pair
+  // of cards the client page settles into.
+  if (isLoading || !data) {
+    return (
+      <div className="space-y-6">
+        <Skeleton className="h-6 w-64" />
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <div className="space-y-2 p-5">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-3.5 w-full max-w-sm" />
+            </div>
+            <div className="px-5 pb-5">
+              <Skeleton className="h-24 w-full" />
+            </div>
+          </Card>
+          <Card>
+            <div className="space-y-2 p-5">
+              <Skeleton className="h-5 w-40" />
+              <Skeleton className="h-3.5 w-full max-w-sm" />
+            </div>
+            <div className="px-5 pb-5">
+              <Skeleton className="h-24 w-full" />
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   const { client, engagements, locations, filingProfile } = data;
 

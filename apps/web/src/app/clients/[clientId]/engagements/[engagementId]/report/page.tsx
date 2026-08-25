@@ -5,7 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
-import { ErrorState, Skeleton } from '@/components/ui/primitives';
+import { Card, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { CommitFindings } from '@/components/workspace/commit-findings';
 import { SavingsReportView } from '@/components/workspace/savings-report';
 
@@ -23,7 +23,24 @@ export default function SavingsReportPage() {
   });
 
   if (error) return <ErrorState error={error} />;
-  if (isLoading || !data) return <Skeleton className="h-96 w-full" />;
+  // The back link, then the report card taking shape under it.
+  if (isLoading || !data) {
+    return (
+      <div className="space-y-5">
+        <Skeleton className="h-4 w-44" />
+        <Card>
+          <div className="space-y-2 p-5">
+            <Skeleton className="h-5 w-80" />
+            <Skeleton className="h-3.5 w-full max-w-lg" />
+          </div>
+          <div className="space-y-3 px-5 pb-5">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-20 w-full" />
+          </div>
+        </Card>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-5">

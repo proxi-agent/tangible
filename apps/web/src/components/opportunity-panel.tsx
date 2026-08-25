@@ -68,7 +68,8 @@ export function OpportunityPanel({
     <Card>
       <CardHeader
         title="Revenue model"
-        description="If you sold a filing service to these businesses, what would it be worth? Pick who you would sell to, set a price and a hit rate, and the arithmetic follows. The ceiling is not a forecast."
+        description="If you sold a filing service to these businesses, what would it be worth?"
+        help="Pick who you would sell to, set a price and a hit rate, and the arithmetic follows. The ceiling is arithmetic over the roll, not a forecast — it says what the segment is worth if everything converts, which nothing does."
       />
 
       <div className="grid gap-3 border-b border-[var(--color-hairline)] p-5 sm:grid-cols-3">

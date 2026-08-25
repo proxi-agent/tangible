@@ -366,13 +366,12 @@ function Close({ notice, engagementId }: { notice: AssessmentNotice; engagementI
   if (outcome === null) {
     return (
       <div className="flex flex-wrap items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setOutcome('protested')}
-          className="cursor-pointer text-[11px] font-medium text-[var(--color-ink-secondary)] hover:underline"
-        >
+        {/* The forward action gets button affordance; "Recorded in error"
+            stays a quiet text control on purpose — it is corrective, not a
+            step anyone should be invited toward. */}
+        <Button className="h-7 px-2.5 text-xs" onClick={() => setOutcome('protested')}>
           We protested this
-        </button>
+        </Button>
         <button
           type="button"
           onClick={() => setOutcome('void')}
@@ -634,13 +633,9 @@ function Resolve({ notice, engagementId }: { notice: AssessmentNotice; engagemen
 
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="cursor-pointer text-[11px] font-medium text-[var(--color-ink-secondary)] hover:underline"
-      >
+      <Button className="h-7 px-2.5 text-xs" onClick={() => setOpen(true)}>
         Record how it ended
-      </button>
+      </Button>
     );
   }
 
@@ -817,13 +812,9 @@ function RecordForm({
 
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline"
-      >
+      <Button className="h-7 px-2.5 text-xs" onClick={() => setOpen(true)}>
         Record a notice
-      </button>
+      </Button>
     );
   }
 
