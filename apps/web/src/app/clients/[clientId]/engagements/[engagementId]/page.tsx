@@ -224,7 +224,7 @@ function TabBody({
       return (
         <>
           <StatsRow detail={detail} />
-          <AssetsCard detail={detail} engagementId={engagementId} />
+          <AssetsCard detail={detail} clientId={clientId} engagementId={engagementId} />
         </>
       );
     case 'value':
@@ -592,7 +592,15 @@ const ASSET_FILTERS = [
   },
 ];
 
-function AssetsCard({ detail, engagementId }: { detail: EngagementDetail; engagementId: string }) {
+function AssetsCard({
+  detail,
+  clientId,
+  engagementId,
+}: {
+  detail: EngagementDetail;
+  clientId: string;
+  engagementId: string;
+}) {
   const [search, setSearch] = useState('');
   const [submittedSearch, setSubmittedSearch] = useState('');
   const [filters, setFilters] = useState<('warnings' | 'disposed')[]>([]);
@@ -637,9 +645,18 @@ function AssetsCard({ detail, engagementId }: { detail: EngagementDetail; engage
       id: 'description',
       header: 'Description',
       accessorFn: (row) => row.description,
+      meta: {
+        help: 'Click a description to open the asset’s full profile — identity, classification, appraisal arithmetic, filings, and history.',
+      },
       cell: ({ row }) => (
         <div className="max-w-96">
-          <p className="truncate">{row.original.description ?? '—'}</p>
+          <Link
+            href={`/clients/${clientId}/engagements/${engagementId}/assets/${row.original.id}`}
+            className="block truncate hover:text-[var(--color-series-1)] hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-series-1)]"
+            title={row.original.description ?? undefined}
+          >
+            {row.original.description ?? '—'}
+          </Link>
           {row.original.warnings.length > 0 ? (
             <Tooltip
               title="Warnings"

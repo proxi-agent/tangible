@@ -14,6 +14,7 @@ import type {
   RolloverResult,
   DraftMotionRequest,
   Asset,
+  AssetProfile,
   AssetQuery,
   ClassificationDecisionResult,
   ClassificationQuery,
@@ -415,6 +416,9 @@ export const api = {
     request<Paginated<Asset>>(
       `/engagements/${engagementId}/assets?${toSearchParams(query as never)}`,
     ),
+
+  assetProfile: (engagementId: string, assetId: string) =>
+    request<AssetProfile>(`/engagements/${engagementId}/assets/${assetId}`),
 
   // -------------------------------------------------------------------------
   // Classification and valuation

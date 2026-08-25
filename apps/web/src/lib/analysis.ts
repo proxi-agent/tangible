@@ -289,7 +289,7 @@ async function mappingFingerprint(documentId: string): Promise<Array<string | nu
  * other half is fully computable. A missing roll means the report says it has
  * no "before" rather than failing.
  */
-async function lookupRate(jurisdictionId: string | null): Promise<number> {
+export async function lookupRate(jurisdictionId: string | null): Promise<number> {
   if (!jurisdictionId) return FALLBACK_BLENDED_RATE;
   try {
     const db = requireDb();

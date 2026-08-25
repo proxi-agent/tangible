@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AssetSchema } from './far.js';
 
 /**
  * The asset graph: an asset as a thing the company owns, not a row in a
@@ -259,18 +260,168 @@ export const ImportBatchSchema = z.object({
 
 export type ImportBatch = z.infer<typeof ImportBatchSchema>;
 
-/** Everything the graph knows about one asset, for the detail drawer. */
+// ---------------------------------------------------------------------------
+// The per-asset profile
+// ---------------------------------------------------------------------------
+
+/** One import this asset appeared in, named by the file a person would recognize. */
+export const AssetImportSightingSchema = z.object({
+  batchId: z.string(),
+  fileName: z.string().nullable(),
+  appliedAt: z.string().datetime().nullable(),
+});
+
+export type AssetImportSighting = z.infer<typeof AssetImportSightingSchema>;
+
+/** One snapshot of the asset, as one confirmed mapping read it. */
+export const AssetVersionSummarySchema = z.object({
+  versionId: z.string(),
+  batchId: z.string(),
+  engagementId: z.string(),
+  fileName: z.string().nullable(),
+  batchStatus: BatchStatusSchema,
+  isCurrent: z.boolean(),
+  createdAt: z.string().datetime(),
+  sourceSheet: z.string(),
+  sourceRow: z.number().int().nonnegative(),
+  originalCost: z.number().nullable(),
+  accumulatedDepreciation: z.number().nullable(),
+  netBookValue: z.number().nullable(),
+  category: z.string().nullable(),
+  location: z.string().nullable(),
+  isDisposed: z.boolean(),
+});
+
+export type AssetVersionSummary = z.infer<typeof AssetVersionSummarySchema>;
+
+/** The live classification decision, with everything needed to judge it. */
+export const AssetProfileClassificationSchema = z.object({
+  categoryKey: z.string().nullable(),
+  /** Human label for the key, resolved server-side so the page needs no vocabulary. */
+  label: z.string().nullable(),
+  lifeClassOverride: z.number().int().nullable(),
+  confidence: z.number(),
+  rationale: z.string().nullable(),
+  /** Which authority decided: a remembered human answer, the model, or a person here. */
+  source: z.enum(['memory', 'ai', 'human']),
+  status: z.enum(['auto-accepted', 'needs-review', 'confirmed']),
+  model: z.string().nullable(),
+  reviewedBy: z.string().nullable(),
+  reviewedAt: z.string().datetime().nullable(),
+});
+
+export type AssetProfileClassification = z.infer<typeof AssetProfileClassificationSchema>;
+
+/** Where the asset physically sits, once an operator has placed it. */
+export const AssetPlacementSchema = z.object({
+  locationId: z.string(),
+  label: z.string(),
+  addressLine1: z.string().nullable(),
+  city: z.string().nullable(),
+  stateCode: z.string().nullable(),
+  /** The site's account on the public roll, where identified. */
+  accountId: z.string().nullable(),
+  jurisdictionId: z.string().nullable(),
+  jurisdictionName: z.string().nullable(),
+});
+
+export type AssetPlacement = z.infer<typeof AssetPlacementSchema>;
+
+/**
+ * What this season's arithmetic says about the asset — or exactly why it says
+ * nothing. The refusals are the same ones the engagement-level valuation makes,
+ * carried down to the single asset so the page never shows a number built on an
+ * unreviewed guess.
+ */
+export const AssetAppraisalStateSchema = z.discriminatedUnion('state', [
+  z.object({
+    state: z.literal('valued'),
+    marketValue: z.number(),
+    replacementCostNew: z.number(),
+    indexFactor: z.number(),
+    percentGood: z.number(),
+    /** The life table used: a year count, a special-schedule key, or 'none'. */
+    schedule: z.union([z.number(), z.string()]),
+    lifeSource: z.enum(['override', 'sic', 'category']),
+    atFloor: z.boolean(),
+    sic: z
+      .object({ code: z.string(), description: z.string(), life: z.number() })
+      .nullable(),
+    /** The blended rate the estimate used — an estimate, never the bill. */
+    taxRate: z.number(),
+    estimatedTax: z.number(),
+  }),
+  /** On the register but disposed: not on the return, so not valued. */
+  z.object({ state: z.literal('disposed') }),
+  /** Classified out of BPP entirely — inventory-exempt, real property, etc. */
+  z.object({ state: z.literal('excluded'), categoryKey: z.string(), label: z.string() }),
+  /** Still in the review queue. A number here would be a guess with decimals. */
+  z.object({ state: z.literal('needs-review') }),
+  z.object({ state: z.literal('unclassified') }),
+  z.object({ state: z.literal('no-schedule'), detail: z.string() }),
+  /** Classified and willing, but missing an input — no cost, no year. */
+  z.object({ state: z.literal('gap'), reason: z.string(), detail: z.string() }),
+]);
+
+export type AssetAppraisalState = z.infer<typeof AssetAppraisalStateSchema>;
+
+/** A filed return this asset was on. Observed from the filing record, not derived. */
+export const AssetFilingAppearanceSchema = z.object({
+  filingId: z.string(),
+  engagementId: z.string(),
+  taxYear: z.number().int(),
+  jurisdictionId: z.string().nullable(),
+  jurisdictionName: z.string().nullable(),
+  locationLabel: z.string(),
+  /** 'filed' | 'superseded' | 'void'. */
+  status: z.string(),
+  scheduleValue: z.number(),
+  recordedAt: z.string().datetime(),
+});
+
+export type AssetFilingAppearance = z.infer<typeof AssetFilingAppearanceSchema>;
+
+/** A committed finding whose evidence names this asset. */
+export const AssetFindingRefSchema = z.object({
+  setId: z.string(),
+  source: z.string(),
+  key: z.string(),
+  title: z.string(),
+  kind: z.string(),
+  effect: z.string(),
+  committedAt: z.string().datetime(),
+});
+
+export type AssetFindingRef = z.infer<typeof AssetFindingRefSchema>;
+
+/**
+ * Everything the graph knows about one asset, on one page.
+ *
+ * `asset` is the current snapshot as this engagement reads it — the same shape
+ * the assets table already shows. Everything else is what the table cannot
+ * show: where the row came from and how it matched, what was decided about it,
+ * what the district's arithmetic makes of it, which sworn documents it has
+ * been on, and every change any import has ever recorded against it.
+ */
 export const AssetProfileSchema = z.object({
-  assetId: z.string(),
+  asset: AssetSchema,
   clientId: z.string(),
   naturalKey: z.string(),
   ordinal: z.number().int().nonnegative(),
   matchMethod: AssetMatchMethodSchema,
-  firstSeenBatchId: z.string(),
-  lastSeenBatchId: z.string(),
   isAbsent: z.boolean(),
+  currentTaxYear: z.number().int(),
+  firstSeen: AssetImportSightingSchema.nullable(),
+  lastSeen: AssetImportSightingSchema.nullable(),
+  classification: AssetProfileClassificationSchema.nullable(),
+  placement: AssetPlacementSchema.nullable(),
+  appraisal: AssetAppraisalStateSchema,
+  filings: z.array(AssetFilingAppearanceSchema),
+  findings: z.array(AssetFindingRefSchema),
   events: z.array(AssetEventSchema),
-  positions: z.array(AssetPositionSchema),
+  versions: z.array(AssetVersionSummarySchema),
+  /** The source row's cells exactly as parsed, for the lineage view. */
+  raw: z.record(z.string(), z.unknown()).nullable(),
 });
 
 export type AssetProfile = z.infer<typeof AssetProfileSchema>;
