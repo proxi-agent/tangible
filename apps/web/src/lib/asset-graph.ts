@@ -265,28 +265,57 @@ export async function applyImportBatch(input: ApplyBatchInput): Promise<ApplyBat
 
     // 3. Point each asset at what this batch says, unless what it already knows
     //    is newer. An asset seen here is by definition no longer absent.
+    //
+    //    Written as two statements rather than one per asset. The row-at-a-time
+    //    version was correct and unusably slow: a three-hundred-line register —
+    //    smaller than the ones this is for — spent most of a minute here, inside
+    //    a transaction, against a route that gives it sixty seconds. The work was
+    //    never the database's; it was three hundred sequential round-trips to it.
+    const advancing: { id: string; matchMethod: string; versionId: string | null }[] = [];
+    const holding: string[] = [];
     for (const r of plan.resolutions) {
       const assetId = assetIdByDraftIndex.get(r.draftIndex);
       if (!assetId) continue;
-      const versionId = versionIdByAssetId.get(assetId);
       const known = taxYearById.get(assetId);
-      const advances = known === undefined || input.taxYear >= known;
+      if (known === undefined || input.taxYear >= known) {
+        advancing.push({
+          id: assetId,
+          matchMethod: r.matchMethod,
+          versionId: versionIdByAssetId.get(assetId) ?? null,
+        });
+      } else {
+        holding.push(assetId);
+      }
+    }
 
+    // The advancing rows each carry their own match method and version, so they
+    // travel as a values list joined back onto the table rather than as one flat
+    // SET. Chunked because a parameter list is not unbounded.
+    const UPDATE_CHUNK = 500;
+    for (let i = 0; i < advancing.length; i += UPDATE_CHUNK) {
+      const rows = advancing.slice(i, i + UPDATE_CHUNK);
+      const values = sql.join(
+        rows.map((row) => sql`(${row.id}::uuid, ${row.matchMethod}::text, ${row.versionId}::uuid)`),
+        sql`, `,
+      );
+      await tx.execute(sql`
+        update assets set
+          match_method = incoming.match_method,
+          last_seen_batch_id = ${batchId}::uuid,
+          current_version_id = incoming.current_version_id,
+          current_tax_year = ${input.taxYear},
+          is_absent = false,
+          updated_at = now()
+        from (values ${values}) as incoming(id, match_method, current_version_id)
+        where assets.id = incoming.id
+      `);
+    }
+
+    if (holding.length > 0) {
       await tx
         .update(schema.assets)
-        .set(
-          advances
-            ? {
-                matchMethod: r.matchMethod,
-                lastSeenBatchId: batchId,
-                currentVersionId: versionId ?? null,
-                currentTaxYear: input.taxYear,
-                isAbsent: false,
-                updatedAt: new Date(),
-              }
-            : { isAbsent: false, updatedAt: new Date() },
-        )
-        .where(eq(schema.assets.id, assetId));
+        .set({ isAbsent: false, updatedAt: new Date() })
+        .where(inArray(schema.assets.id, holding));
     }
 
     // 4. Assets this register did not mention.
