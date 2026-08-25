@@ -1,8 +1,10 @@
 # The warehouse and the county archives are gigabytes and belong in object
-# storage, not in a deployment. `data/` is gitignored too, so a git-triggered
+# storage, not in a deployment. `/data/` is gitignored too, so a git-triggered
 # build never sees it — this is the guard for `vercel deploy` run by hand from
-# a working copy that has the files.
-data/
+# a working copy that has the files. Anchored with a leading slash: bare
+# `data/` also matches `apps/web/src/app/data/`, which silently deleted the
+# Data page — the one screen that drives ingest — from every deployment.
+/data/
 *.duckdb
 *.duckdb.wal
 *.parquet

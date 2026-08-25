@@ -59,5 +59,6 @@
     "clean": {
       "cache": false
     }
-  }
+  },
+  "globalPassThroughEnv": ["PORT", "CORS_ORIGIN"]
 }
