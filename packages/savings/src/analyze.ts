@@ -110,6 +110,27 @@ function evidenceFor(asset: SavingsAsset, value: number | null): FindingEvidence
   };
 }
 
+/**
+ * The identity fingerprint, folded the way `@tangible/graph` folds it: case,
+ * whitespace and punctuation are export noise, a model number is signal. Two
+ * settled lines sharing description, cost and acquisition year are either a
+ * genuine multiple purchase or the same asset capitalized twice — and the
+ * register alone cannot say which, which is what makes the finding built on
+ * this a screening question rather than a priced adjustment.
+ */
+function duplicateKey(asset: SavingsAsset): string | null {
+  const description = asset.description?.trim();
+  if (!description || !asset.originalCost) return null;
+  const folded = description
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  if (!folded) return null;
+  return `${folded}|${Math.round(asset.originalCost * 100)}|${asset.acquisitionYear ?? '~'}`;
+}
+
 /** Biggest first, and capped: a report is read, not scrolled. */
 const EVIDENCE_SHOWN = 25;
 const byCost = (a: FindingEvidence, b: FindingEvidence) =>
@@ -185,6 +206,11 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
   let leaseholdValue = 0;
   let leaseholdCost = 0;
   let inventoryCost = 0;
+
+  // Valued lines grouped by identity fingerprint, for the duplicate check.
+  // Only lines that made the corrected position: a duplicate among disposed or
+  // excluded rows is already coming off the rendition for its own reason.
+  const dupCandidates = new Map<string, { asset: SavingsAsset; value: number }[]>();
 
   for (const asset of input.assets) {
     if (asset.status === null) {
@@ -269,6 +295,35 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
       inventoryCost += cost;
       tally(asset, { lead: { key: 'freeport', cost } });
     }
+
+    const fingerprint = duplicateKey(asset);
+    if (fingerprint) {
+      const group = dupCandidates.get(fingerprint) ?? [];
+      group.push({ asset, value: result.value.marketValue });
+      dupCandidates.set(fingerprint, group);
+    }
+  }
+
+  // --- Duplicate capitalization: groups of identical valued lines -----------
+  // The excess is everything past one copy per group — what the rendition
+  // carries twice if each group turns out to be one asset entered repeatedly.
+  const dupGroups = [...dupCandidates.values()].filter((group) => group.length > 1);
+  const dupEvidence: FindingEvidence[] = [];
+  let dupCost = 0;
+  let dupExcessCost = 0;
+  let dupExcessValue = 0;
+  for (const group of dupGroups) {
+    group.forEach(({ asset, value }, index) => {
+      dupEvidence.push(evidenceFor(asset, value));
+      dupCost += asset.originalCost ?? 0;
+      if (index > 0) {
+        dupExcessCost += asset.originalCost ?? 0;
+        dupExcessValue += value;
+      }
+      tally(asset, {
+        lead: { key: 'duplicate-capitalization', cost: asset.originalCost ?? 0 },
+      });
+    });
   }
 
   // Which line of business the machinery life came from, if any. Reported so a
@@ -366,6 +421,23 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
       assumption:
         'Settled by asking one question: what share of inventory ships out of state, and how fast? A shipping report answers it.',
       evidence: inventory.sort(byCost).slice(0, EVIDENCE_SHOWN),
+    });
+  }
+
+  if (dupGroups.length > 0) {
+    findings.push({
+      key: 'duplicate-capitalization',
+      title: 'Possibly the same asset capitalized twice',
+      kind: 'screening',
+      valueRemoved: null,
+      originalCost: dupCost,
+      assetCount: dupEvidence.length,
+      summary: `${dupGroups.length} group${dupGroups.length === 1 ? '' : 's'} of identical lines — same description, cost, and acquisition year — carr${dupGroups.length === 1 ? 'ies' : 'y'} ${money(dupCost)} of cost across ${dupEvidence.length} rows. If each group is one asset entered more than once, ${money(dupExcessCost)} of cost, about ${money(dupExcessValue)} of schedule value, is on the rendition twice.`,
+      basis:
+        'A project capitalized once as a total and again as its components, or a batch imported twice, puts the same property on the rendition more than once — and the district values every line it is given. The register alone cannot tell a double entry from a genuine multiple purchase; identity is exactly what an invoice adds.',
+      assumption:
+        'Ten identical desks on one purchase order are ten real assets; one lathe entered by two teams is one. The purchase order or invoice behind each group settles it, line by line.',
+      evidence: dupEvidence.sort(byCost).slice(0, EVIDENCE_SHOWN),
     });
   }
 

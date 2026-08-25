@@ -138,6 +138,64 @@ describe('findings', () => {
   });
 });
 
+describe('duplicate capitalization', () => {
+  it('asks about identical valued lines and never prices the question', () => {
+    const report = run([
+      asset({ description: 'CNC lathe HAAS ST-20', originalCost: 185_000 }),
+      asset({ description: 'CNC lathe HAAS ST-20', originalCost: 185_000 }),
+      asset({ description: 'Forklift', originalCost: 30_000 }),
+    ]);
+    const finding = find(report, 'duplicate-capitalization')!;
+    expect(finding).toBeDefined();
+    expect(finding.kind).toBe('screening');
+    expect(finding.valueRemoved).toBeNull();
+    expect(finding.assetCount).toBe(2);
+    // The scale is every line involved; the excess past one copy per group is
+    // stated in the summary, not invented as a saving.
+    expect(finding.originalCost).toBe(370_000);
+    expect(finding.summary).toContain('$185,000');
+    expect(report.totalValueRemoved).toBe(0);
+    // Both copies still stand in the corrected position until somebody answers.
+    expect(report.farOriginalCost).toBe(400_000);
+  });
+
+  it('folds case, whitespace and punctuation the way the asset graph does', () => {
+    const report = run([
+      asset({ description: 'CNC Lathe — HAAS ST-20' }),
+      asset({ description: 'cnc lathe  haas st 20' }),
+    ]);
+    expect(find(report, 'duplicate-capitalization')).toBeDefined();
+  });
+
+  it('treats a different cost or year as a different asset', () => {
+    const report = run([
+      asset({ originalCost: 100_000 }),
+      asset({ originalCost: 100_000.5 }),
+      asset({ originalCost: 90_000, acquisitionYear: 2021 }),
+    ]);
+    expect(find(report, 'duplicate-capitalization')).toBeUndefined();
+  });
+
+  it('ignores duplicates already leaving the rendition for their own reason', () => {
+    // Disposed and excluded rows are ghost/non-taxable findings; flagging them
+    // again as duplicates would double-count the same dollars as two questions.
+    const report = run([
+      asset({ isDisposed: true }),
+      asset({ isDisposed: true }),
+      asset({ categoryKey: 'excluded-intangible' }),
+      asset({ categoryKey: 'excluded-intangible' }),
+    ]);
+    expect(find(report, 'duplicate-capitalization')).toBeUndefined();
+  });
+
+  it('counts the group in the leakage leads', () => {
+    const report = run([asset(), asset()]);
+    expect(find(report, 'duplicate-capitalization')).toBeDefined();
+    expect(report.leakage.leadCount).toBe(1);
+    expect(report.leakage.leadCost).toBe(200_000);
+  });
+});
+
 describe('the bottom line', () => {
   it('applies the exemption and prices the corrected position', () => {
     const report = run([asset({ originalCost: 1_000_000 })]);

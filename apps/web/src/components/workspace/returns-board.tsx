@@ -661,7 +661,12 @@ function Detail({ entry, noticeOpen }: { entry: SeasonReturn; noticeOpen: boolea
           </span>
         </>
       ) : null}
-      {noticeOpen ? null : <Contradiction notice={entry.notice} />}
+      {noticeOpen ? null : (
+        <>
+          <Contradiction notice={entry.notice} />
+          <Divergence notice={entry.notice} />
+        </>
+      )}
     </p>
   );
 }
@@ -686,6 +691,45 @@ function Contradiction({ notice }: { notice: AssessmentNotice | null }) {
     <>
       <br />
       <span className="text-[var(--color-critical)]">{critical.message}</span>
+    </>
+  );
+}
+
+/**
+ * A noticed value above our own filed schedule, with no protest on file.
+ *
+ * The arithmetic already lives in the notice panel's checks; what the row has
+ * to say is the combination — the district ignored what we rendered *and*
+ * nobody has answered. While the Chapter 41 window is open that is a deadline
+ * running against found money. Once it shuts unanswered the value stood, and
+ * the honest thing left to point at is the panel's 25.25 outlook rather than
+ * a protest nobody can file any more.
+ *
+ * Stands down with Contradiction when the panel is open, for the same reason:
+ * the panel's check list says this three lines down.
+ */
+function Divergence({ notice }: { notice: AssessmentNotice | null }) {
+  if (!notice || notice.protestFiledOn !== null) return null;
+  const above = notice.checks.find((check) => check.key === 'above-schedule');
+  if (!above) return null;
+  if (notice.protest.open) {
+    return (
+      <>
+        <br />
+        <span className="text-[var(--color-warning)]">
+          {above.message} No protest is on file — the window runs to{' '}
+          {dayShort(notice.protest.deadline)} ({countdown(daysUntil(notice.protest.deadline))}).
+        </span>
+      </>
+    );
+  }
+  return (
+    <>
+      <br />
+      <span className="text-[var(--color-ink-muted)]">
+        {above.message} The protest window closed with nothing filed, so that value stood for{' '}
+        {notice.taxYear} — the notice panel says whether a 25.25 route back into it is still open.
+      </span>
     </>
   );
 }
