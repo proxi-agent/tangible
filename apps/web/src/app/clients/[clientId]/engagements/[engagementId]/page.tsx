@@ -128,6 +128,16 @@ export default function EngagementPage() {
             </Button>
           </Link>
         ) : null}
+        {data.classification.classifiedCount > 0 ? (
+          // A plain anchor on purpose: the response is a file, and routing it
+          // through the client-side router would download nothing.
+          <a href={`/api/engagements/${engagementId}/export`} download>
+            <Button>
+              <FileSpreadsheet size={14} strokeWidth={2} />
+              Excel
+            </Button>
+          </a>
+        ) : null}
       </div>
 
       <TabNav tab={tab} tabHref={tabHref} />
