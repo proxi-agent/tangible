@@ -125,6 +125,45 @@ export const SavingsCoverageSchema = z.object({
 
 export type SavingsCoverage = z.infer<typeof SavingsCoverageSchema>;
 
+/**
+ * The three numbers of the leakage headline, at one grain.
+ *
+ * Kept as three numbers on purpose: a single dollarized total collapses under
+ * the first sophisticated question, because it blends what was computed with
+ * what was assumed and what is still only a question. Measured and modeled are
+ * dollars of value; leads are a count, and deliberately never a dollar —
+ * `leadCost` is the original cost *behind* the questions, printed as scale,
+ * not as a saving.
+ */
+export const LeakageRowSchema = z.object({
+  measuredValue: z.number(),
+  modeledValue: z.number(),
+  /** Screening findings with at least one asset at this grain. */
+  leadCount: z.number().int().nonnegative(),
+  /** Original cost behind the leads. The size of the question, not an answer. */
+  leadCost: z.number(),
+});
+
+export const LeakageJurisdictionSchema = LeakageRowSchema.extend({
+  /** Null for assets not yet placed at a site. */
+  jurisdictionId: z.string().nullable(),
+  jurisdictionName: z.string().nullable(),
+  /** The client sites this row aggregates, for the reader who thinks in sites. */
+  siteLabels: z.array(z.string()),
+});
+
+export const SavingsLeakageSchema = LeakageRowSchema.extend({
+  /**
+   * The same three numbers per jurisdiction, from each asset's placement.
+   * Length 1 (or an all-null row) when nothing distinguishes jurisdictions —
+   * the view should only render the split when there is a split to show.
+   */
+  byJurisdiction: z.array(LeakageJurisdictionSchema),
+});
+
+export type LeakageJurisdiction = z.infer<typeof LeakageJurisdictionSchema>;
+export type SavingsLeakage = z.infer<typeof SavingsLeakageSchema>;
+
 export const SavingsReportSchema = z.object({
   engagementId: z.string(),
   clientName: z.string(),
@@ -161,6 +200,9 @@ export const SavingsReportSchema = z.object({
   findings: z.array(SavingsFindingSchema),
   /** Sum of `valueRemoved` across measured and modeled findings only. */
   totalValueRemoved: z.number(),
+
+  /** The headline that survives diligence: measured, modeled, and leads apart. */
+  leakage: SavingsLeakageSchema,
 
   exemption: z.object({
     label: z.string(),

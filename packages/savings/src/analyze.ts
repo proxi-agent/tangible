@@ -3,6 +3,7 @@ import type {
   AssessedPosition,
   ClassificationStatus,
   FindingEvidence,
+  LeakageJurisdiction,
   SavingsCoverage,
   SavingsFinding,
   SavingsReport,
@@ -36,6 +37,13 @@ export interface SavingsAsset {
   lifeClassOverride: number | null;
   /** Null when the asset has no classification row at all. */
   status: ClassificationStatus | null;
+  /**
+   * Where the asset is placed, for the per-jurisdiction leakage rollup.
+   * Optional so the engine stays callable from tests and callers that do not
+   * track situs; null or absent means "not placed at a site", which is its own
+   * honest bucket rather than a guess.
+   */
+  site?: { label: string; jurisdictionId: string | null; jurisdictionName: string | null } | null;
 }
 
 export interface SavingsInput {
@@ -131,6 +139,43 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
   const leasehold: FindingEvidence[] = [];
   const inventory: FindingEvidence[] = [];
 
+  // The per-jurisdiction leakage rollup, accumulated in the same walk as the
+  // findings so the split can never disagree with them. Evidence lists are
+  // capped for reading; this is the only place the full per-asset attribution
+  // exists, which is why the rollup is computed here and not in a view.
+  const byJurisdiction = new Map<
+    string,
+    LeakageJurisdiction & { siteSet: Set<string>; leadKeys: Set<string> }
+  >();
+  const tally = (
+    asset: SavingsAsset,
+    patch: { measured?: number; modeled?: number; lead?: { key: string; cost: number } },
+  ) => {
+    const key = asset.site?.jurisdictionId ?? '(unplaced)';
+    let row = byJurisdiction.get(key);
+    if (!row) {
+      row = {
+        jurisdictionId: asset.site?.jurisdictionId ?? null,
+        jurisdictionName: asset.site?.jurisdictionName ?? null,
+        siteLabels: [],
+        measuredValue: 0,
+        modeledValue: 0,
+        leadCount: 0,
+        leadCost: 0,
+        siteSet: new Set(),
+        leadKeys: new Set(),
+      };
+      byJurisdiction.set(key, row);
+    }
+    if (asset.site) row.siteSet.add(asset.site.label);
+    row.measuredValue += patch.measured ?? 0;
+    row.modeledValue += patch.modeled ?? 0;
+    if (patch.lead) {
+      row.leadKeys.add(patch.lead.key);
+      row.leadCost += patch.lead.cost;
+    }
+  };
+
   let ghostValue = 0;
   let excludedValue = 0;
   let ghostCost = 0;
@@ -166,6 +211,7 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
       ghosts.push(evidenceFor(asset, value));
       ghostCost += cost;
       ghostValue += value ?? 0;
+      tally(asset, { measured: value ?? 0 });
       coverage.inFindingsCount += 1;
       continue;
     }
@@ -177,6 +223,7 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
       excluded.push(evidenceFor(asset, value));
       excludedCost += cost;
       excludedValue += value ?? 0;
+      tally(asset, { modeled: value ?? 0 });
       coverage.inFindingsCount += 1;
       continue;
     }
@@ -209,15 +256,18 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
       floored.push(evidenceFor(asset, result.value.marketValue));
       flooredCost += cost;
       flooredValue += result.value.marketValue;
+      tally(asset, { lead: { key: 'fully-depreciated', cost } });
     }
     if (key === 'leasehold-improvements') {
       leasehold.push(evidenceFor(asset, result.value.marketValue));
       leaseholdCost += cost;
       leaseholdValue += result.value.marketValue;
+      tally(asset, { lead: { key: 'leasehold-double-tax', cost } });
     }
     if (key === 'inventory') {
       inventory.push(evidenceFor(asset, result.value.marketValue));
       inventoryCost += cost;
+      tally(asset, { lead: { key: 'freeport', cost } });
     }
   }
 
@@ -323,6 +373,29 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
   // screening finding is a question, and a question is not a saving.
   const totalValueRemoved = findings.reduce((sum, f) => sum + (f.valueRemoved ?? 0), 0);
 
+  // The headline is derived from the findings list itself so the three numbers
+  // can never drift from the rows printed beneath them.
+  const sumKind = (kind: SavingsFinding['kind']) =>
+    findings.filter((f) => f.kind === kind).reduce((sum, f) => sum + (f.valueRemoved ?? 0), 0);
+  const screeningFindings = findings.filter((f) => f.kind === 'screening');
+  const leakage = {
+    measuredValue: sumKind('measured'),
+    modeledValue: sumKind('modeled'),
+    leadCount: screeningFindings.length,
+    leadCost: screeningFindings.reduce((sum, f) => sum + f.originalCost, 0),
+    byJurisdiction: [...byJurisdiction.values()]
+      .map(({ siteSet, leadKeys, ...row }) => ({
+        ...row,
+        siteLabels: [...siteSet].sort(),
+        leadCount: leadKeys.size,
+      }))
+      .sort(
+        (a, b) =>
+          b.measuredValue + b.modeledValue - (a.measuredValue + a.modeledValue) ||
+          b.leadCost - a.leadCost,
+      ),
+  };
+
   const applied = Math.min(input.exemptionAmount, farImpliedValue);
   const proposedTaxableValue = Math.max(0, farImpliedValue - applied);
   const proposedTax = proposedTaxableValue * input.blendedTaxRate;
@@ -354,6 +427,7 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
     farOriginalCost,
     findings,
     totalValueRemoved,
+    leakage,
     exemption: {
       label: 'Business personal property exemption',
       basis: 'Texas Tax Code 11.145, as raised by HB 9 (2025) and Proposition 9, effective 2026.',

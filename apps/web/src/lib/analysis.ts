@@ -1,7 +1,12 @@
 import { eq, sql } from 'drizzle-orm';
 import { getAccount } from '@tangible/analytics';
 import type { ClientRow, EngagementRow, PriorDocumentRow } from '@tangible/db';
-import { compareRegister, type RegisterAsset, type RegisterComparison } from '@tangible/filing';
+import {
+  appraisalDistrictName,
+  compareRegister,
+  type RegisterAsset,
+  type RegisterComparison,
+} from '@tangible/filing';
 import { sourceFingerprint } from '@tangible/findings';
 import { listAvailableYears } from '@tangible/ingest/catalog';
 import { analyzeSavings, exemptionFor, type SavingsAsset } from '@tangible/savings';
@@ -56,15 +61,43 @@ export async function buildSavingsAnalysis(engagementId: string): Promise<Saving
   const db = requireDb();
 
   const rows = await db
-    .select({ asset: schema.assetVersions, classification: schema.assetClassifications })
+    .select({
+      asset: schema.assetVersions,
+      locationId: schema.assets.locationId,
+      classification: schema.assetClassifications,
+    })
     .from(schema.assetVersions)
+    .innerJoin(schema.assets, eq(schema.assets.id, schema.assetVersions.assetId))
     .leftJoin(
       schema.assetClassifications,
       eq(schema.assetClassifications.assetId, schema.assetVersions.assetId),
     )
     .where(engagementAssetsWhere(engagementId));
 
-  const assets: SavingsAsset[] = rows.map(({ asset, classification }) => ({
+  // Placement, for the per-jurisdiction leakage rollup. An unplaced asset is
+  // passed with no site — its own bucket in the rollup, not a guess.
+  const sites = new Map(
+    (
+      await db
+        .select()
+        .from(schema.clientLocations)
+        .where(eq(schema.clientLocations.clientId, engagement.clientId))
+    ).map((l) => {
+      // Same rule as the returns builder: the site's own county wins where it
+      // names one, else the county the engagement was opened under.
+      const jurisdictionId = l.jurisdictionId ?? engagement.jurisdictionId;
+      return [
+        l.id,
+        {
+          label: l.label,
+          jurisdictionId,
+          jurisdictionName: jurisdictionId ? appraisalDistrictName(jurisdictionId) : null,
+        },
+      ] as const;
+    }),
+  );
+
+  const assets: SavingsAsset[] = rows.map(({ asset, locationId, classification }) => ({
     id: asset.assetId,
     description: asset.description,
     acquisitionYear: asset.acquisitionYear,
@@ -74,6 +107,7 @@ export async function buildSavingsAnalysis(engagementId: string): Promise<Saving
     categoryKey: classification?.categoryKey ?? null,
     lifeClassOverride: classification?.lifeClassOverride ?? null,
     status: (classification?.status as ClassificationStatus | undefined) ?? null,
+    site: (locationId ? sites.get(locationId) : null) ?? null,
   }));
 
   const schedule = engagement.jurisdictionId

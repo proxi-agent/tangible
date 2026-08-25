@@ -150,7 +150,9 @@ function Headline({ report }: { report: SavingsReport }) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 gap-px border-b border-[var(--color-hairline)] bg-[var(--color-hairline)] lg:grid-cols-4">
+      <LeakageBand report={report} />
+
+      <div className="grid grid-cols-2 gap-px border-b border-[var(--color-hairline)] bg-[var(--color-hairline)] lg:grid-cols-3">
         <Tile
           label="Register cost"
           value={money(report.farOriginalCost)}
@@ -166,12 +168,6 @@ function Headline({ report }: { report: SavingsReport }) {
           }
         />
         <Tile
-          label="Adjustments identified"
-          value={money(report.totalValueRemoved)}
-          note={`${count(report.findings.filter((f) => f.valueRemoved !== null).length)} priced ${plural(report.findings.filter((f) => f.valueRemoved !== null).length, 'finding')}`}
-          strong={report.totalValueRemoved > 0}
-        />
-        <Tile
           label="Exemption applied"
           value={money(report.exemption.applied)}
           note={report.exemption.basis}
@@ -179,6 +175,117 @@ function Headline({ report }: { report: SavingsReport }) {
         />
       </div>
     </Card>
+  );
+}
+
+/**
+ * The leakage headline as three numbers, never one. A single dollarized total
+ * blends what was computed with what was assumed and what is still only a
+ * question, and collapses under the first sophisticated question about it.
+ * Kept apart, each number is defensible on its own terms — and a lead is a
+ * count on purpose, because a question does not have a dollar figure yet.
+ */
+function LeakageBand({ report }: { report: SavingsReport }) {
+  const l = report.leakage;
+  if (!l || (l.measuredValue === 0 && l.modeledValue === 0 && l.leadCount === 0)) return null;
+  const rate = report.blendedTaxRate;
+  // One row of "everything is one jurisdiction" is the headline repeated, so
+  // the split only renders when there is a split to show.
+  const split = l.byJurisdiction.length > 1 ? l.byJurisdiction : null;
+
+  return (
+    <div className="border-b border-[var(--color-hairline)] px-5 py-4">
+      <div className="flex flex-wrap items-end gap-x-10 gap-y-3">
+        <LeakageFigure
+          label="Measured"
+          value={money(l.measuredValue)}
+          note={`≈ ${money(l.measuredValue * rate)} of tax a year`}
+          tone="good"
+          help={KIND_META.measured.help}
+        />
+        <LeakageFigure
+          label="Modeled"
+          value={money(l.modeledValue)}
+          note={`≈ ${money(l.modeledValue * rate)} of tax a year`}
+          tone="accent"
+          help={KIND_META.modeled.help}
+        />
+        <LeakageFigure
+          label="Leads worth pursuing"
+          value={`${count(l.leadCount)}`}
+          note={`on ${money(l.leadCost)} of cost — not counted until answered`}
+          tone="warning"
+          help={KIND_META.screening.help}
+        />
+      </div>
+
+      {split ? (
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="text-left text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+                <th className="py-1.5 pr-4 font-medium">Jurisdiction</th>
+                <th className="py-1.5 pr-4 font-medium">Sites</th>
+                <th className="py-1.5 pr-4 text-right font-medium">Measured</th>
+                <th className="py-1.5 pr-4 text-right font-medium">Modeled</th>
+                <th className="py-1.5 text-right font-medium">Leads</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-hairline)]">
+              {split.map((row) => (
+                <tr key={row.jurisdictionId ?? '(unplaced)'}>
+                  <td className="py-1.5 pr-4">
+                    {row.jurisdictionName ?? row.jurisdictionId ?? (
+                      <span className="text-[var(--color-warning)]">No site placed yet</span>
+                    )}
+                  </td>
+                  <td className="py-1.5 pr-4 text-[var(--color-ink-secondary)]">
+                    {row.siteLabels.length > 0 ? row.siteLabels.join(', ') : '—'}
+                  </td>
+                  <td className="tabular py-1.5 pr-4 text-right">{money(row.measuredValue)}</td>
+                  <td className="tabular py-1.5 pr-4 text-right">{money(row.modeledValue)}</td>
+                  <td className="tabular py-1.5 text-right">{count(row.leadCount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const LEAKAGE_TONE: Record<'good' | 'accent' | 'warning', string> = {
+  good: 'text-[var(--color-good)]',
+  accent: 'text-[var(--color-series-1)]',
+  warning: 'text-[var(--color-warning)]',
+};
+
+function LeakageFigure({
+  label,
+  value,
+  note,
+  tone,
+  help,
+}: {
+  label: string;
+  value: string;
+  note: string;
+  tone: 'good' | 'accent' | 'warning';
+  help: string;
+}) {
+  return (
+    <Tooltip title={label} content={help}>
+      <span className="cursor-help">
+        <span className="block text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+          {label}
+        </span>
+        <span className={cn('tabular block text-2xl font-semibold', LEAKAGE_TONE[tone])}>
+          {value}
+        </span>
+        <span className="block text-[11px] leading-snug text-[var(--color-ink-muted)]">{note}</span>
+      </span>
+    </Tooltip>
   );
 }
 
