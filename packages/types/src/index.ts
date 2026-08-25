@@ -21,3 +21,4 @@ export * from './letter.js';
 export * from './motion-draft.js';
 export * from './ask.js';
 export * from './rollover.js';
+export * from './deletion.js';

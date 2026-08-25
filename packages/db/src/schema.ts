@@ -1458,9 +1458,10 @@ export const motionDrafts = pgTable(
     model: text('model'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index('motion_drafts_year_idx').on(table.engagementId, table.yearKey, table.createdAt)],
+  (table) => [
+    index('motion_drafts_year_idx').on(table.engagementId, table.yearKey, table.createdAt),
+  ],
 ).enableRLS();
-
 
 /**
  * A motion filed under 25.25 to correct an appraisal roll after the fact.
@@ -1807,6 +1808,31 @@ export const agentAppointments = pgTable(
     /** The question every rendition asks: may we sign for this client, here? */
     index('agent_appointments_client_district_idx').on(table.clientId, table.jurisdictionId),
   ],
+).enableRLS();
+
+/**
+ * What is left after a client is deleted at their request.
+ *
+ * Deliberately unconstrained: `clientId` carries no foreign key, because the
+ * row it would point at is the row this table exists to record the absence of.
+ * It holds counts and a name, no client data — enough to answer "did you
+ * actually delete us, and when", which is the whole point of writing it down.
+ * Never edited, for the same reason a receipt you can revise is worthless.
+ */
+export const deletionReceipts = pgTable(
+  'deletion_receipts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientId: uuid('client_id').notNull(),
+    clientName: text('client_name').notNull(),
+    /** See DeletionCountsSchema — what the cascade destroyed, by kind. */
+    counts: jsonb('counts').notNull(),
+    storageRemoved: integer('storage_removed').notNull().default(0),
+    /** Objects the bucket would not give up, named rather than rounded down. */
+    storageFailed: jsonb('storage_failed').notNull(),
+    deletedAt: timestamp('deleted_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('deletion_receipts_deleted_idx').on(table.deletedAt)],
 ).enableRLS();
 
 export type Jurisdiction = typeof jurisdictions.$inferSelect;

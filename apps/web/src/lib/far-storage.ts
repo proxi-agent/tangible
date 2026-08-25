@@ -1,5 +1,5 @@
 import 'server-only';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, normalize } from 'node:path';
 import { resolveDataPath } from '@tangible/analytics';
 import { getSupabaseAdmin } from '@tangible/db';
@@ -65,6 +65,45 @@ export async function uploadFarFile(
     .storage.from(BUCKET)
     .upload(path, data, { contentType: contentType ?? 'application/octet-stream' });
   if (error) throw new Error(`Could not store the file: ${error.message}`);
+}
+
+/**
+ * Remove stored objects, and report honestly on the ones that would not go.
+ *
+ * Never throws: this runs after a client's rows are already gone, and the
+ * deletion receipt is more useful naming the files it could not sweep than a
+ * request is failing with the database already committed. A missing object
+ * counts as removed — the promise is that the file is not there, not that we
+ * were the ones to remove it.
+ */
+export async function removeFarFiles(
+  paths: string[],
+): Promise<{ removed: number; failed: string[] }> {
+  const unique = [...new Set(paths)];
+  if (unique.length === 0) return { removed: 0, failed: [] };
+
+  if (!supabaseConfigured()) {
+    const failed: string[] = [];
+    let removed = 0;
+    for (const path of unique) {
+      try {
+        await rm(localPath(path), { force: true });
+        removed += 1;
+      } catch {
+        failed.push(path);
+      }
+    }
+    return { removed, failed };
+  }
+
+  try {
+    await ensureBucket();
+    const { error } = await getSupabaseAdmin().storage.from(BUCKET).remove(unique);
+    if (error) return { removed: 0, failed: unique };
+    return { removed: unique.length, failed: [] };
+  } catch {
+    return { removed: 0, failed: unique };
+  }
 }
 
 export async function downloadFarFile(path: string): Promise<Uint8Array> {

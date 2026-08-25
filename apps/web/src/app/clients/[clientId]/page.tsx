@@ -11,9 +11,17 @@ import { scheduledJurisdictions } from '@tangible/valuation';
 import { api } from '@/lib/api';
 import { AgentAppointmentCard } from '@/components/workspace/agent-appointment-card';
 import { ClientStatusBadge } from '@/components/workspace/badges';
+import { DeleteClientCard } from '@/components/workspace/delete-client-card';
 import { FilingProfileCard } from '@/components/workspace/filing-profile-card';
 import { Button, Field, Select, TextInput } from '@/components/ui/controls';
-import { Badge, Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
+import {
+  Badge,
+  Card,
+  CardHeader,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+} from '@/components/ui/primitives';
 
 export default function ClientPage() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -218,6 +226,8 @@ export default function ClientPage() {
       <FilingProfileCard clientId={clientId} clientName={client.name} profile={filingProfile} />
 
       <AgentAppointmentCard clientId={clientId} locations={locations} />
+
+      <DeleteClientCard clientId={clientId} clientName={client.name} />
     </div>
   );
 }
@@ -240,11 +250,7 @@ function SeasonHint({ engagementId }: { engagementId: string }) {
   const blocked = data.returns.filter((entry) => entry.status === 'blocked').length;
   const unfiled = data.returns.filter((entry) => entry.status !== 'filed').length;
   if (blocked > 0) {
-    return (
-      <Badge tone="critical">
-        {blocked} blocked
-      </Badge>
-    );
+    return <Badge tone="critical">{blocked} blocked</Badge>;
   }
   if (unfiled > 0) return <Badge tone="accent">ready to file</Badge>;
   return <Badge tone="good">filed</Badge>;

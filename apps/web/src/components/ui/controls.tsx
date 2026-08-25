@@ -2,7 +2,14 @@
 
 import { Check } from 'lucide-react';
 import Link from 'next/link';
-import { cloneElement, isValidElement, useId, type ReactElement, type ReactNode, type SelectHTMLAttributes } from 'react';
+import {
+  cloneElement,
+  isValidElement,
+  useId,
+  type ReactElement,
+  type ReactNode,
+  type SelectHTMLAttributes,
+} from 'react';
 import type { ComponentProps } from 'react';
 import { cn } from '@/lib/cn';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
@@ -70,10 +77,7 @@ export function Select({
   );
 }
 
-export function TextInput({
-  className,
-  ...props
-}: React.InputHTMLAttributes<HTMLInputElement>) {
+export function TextInput({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       className={cn(
@@ -108,7 +112,9 @@ export function Button({
   variant = 'secondary',
   className,
   ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'ghost' }) {
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+}) {
   const variants = {
     primary:
       'bg-[var(--color-series-1)] text-white hover:brightness-110 border-transparent shadow-sm',
@@ -118,6 +124,10 @@ export function Button({
     ghost:
       'bg-transparent text-[var(--color-ink-secondary)] hover:bg-[var(--color-plane)] ' +
       'hover:text-[var(--color-ink)] border-transparent',
+    // Reserved for the irreversible. Nothing that can be undone should wear it,
+    // or the colour stops meaning anything by the time it matters.
+    danger:
+      'bg-[var(--color-critical)] text-white hover:brightness-110 border-transparent shadow-sm',
   };
 
   return (
@@ -129,7 +139,7 @@ export function Button({
         // A pressed state you can feel: the click registers visually even when
         // the result takes a round trip to arrive.
         'active:scale-[0.98]',
-        'disabled:cursor-not-allowed disabled:opacity-45 disabled:active:scale-100 disabled:hover:bg-[var(--color-surface)]',
+        'disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[var(--color-surface)] disabled:active:scale-100',
         variants[variant],
         className,
       )}

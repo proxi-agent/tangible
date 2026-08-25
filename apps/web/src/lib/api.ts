@@ -10,6 +10,8 @@ import type {
   UnblockPlanRecord,
   ResultLetterRecord,
   MotionDraftRecord,
+  DeletionPreview,
+  DeletionReceipt,
   GraphAskRecord,
   RolloverPlan,
   RolloverResult,
@@ -311,8 +313,7 @@ export const api = {
    * The filled Form 50-162, as a normal navigation for the same reason the CSV
    * export is one. A 409 body carries the form's own refusal to print.
    */
-  appointmentPdfUrl: (appointmentId: string) =>
-    `${BASE_URL}/api/appointments/${appointmentId}/pdf`,
+  appointmentPdfUrl: (appointmentId: string) => `${BASE_URL}/api/appointments/${appointmentId}/pdf`,
 
   createLocation: (clientId: string, body: CreateLocationRequest) =>
     request<ClientLocation>(`/clients/${clientId}/locations`, {
@@ -500,6 +501,17 @@ export const api = {
     request<{ ask: GraphAskRecord }>(`/engagements/${engagementId}/ask`, {
       method: 'POST',
       body: JSON.stringify({ question }),
+    }),
+
+  /** What deleting this client would destroy, and what the operator should weigh. */
+  deletionPreview: (clientId: string) =>
+    request<{ preview: DeletionPreview }>(`/clients/${clientId}/deletion`),
+
+  /** Delete the client and everything of theirs. The receipt is what survives. */
+  deleteClient: (clientId: string, confirmName: string) =>
+    request<{ receipt: DeletionReceipt }>(`/clients/${clientId}/deletion`, {
+      method: 'POST',
+      body: JSON.stringify({ confirmName }),
     }),
 
   /** The newest drafted 25.25 motion for one open year, or null. */
