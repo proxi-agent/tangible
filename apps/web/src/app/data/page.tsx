@@ -143,6 +143,10 @@ function DataSources() {
 
         {runs.isPending ? (
           <Skeleton className="m-5 h-24" />
+        ) : runs.error ? (
+          // An outage is not an empty history — without this branch a 503
+          // fell through to "No ingest runs yet", which reads as data loss.
+          <ErrorState error={runs.error} />
         ) : runs.data && runs.data.length > 0 ? (
           <ul className="divide-y divide-[var(--color-hairline)]">
             {runs.data.map((run) => (

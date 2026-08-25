@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { count, money, plural } from '@/lib/format';
 import { Button, Select } from '@/components/ui/controls';
 import { Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { InfoTip } from '@/components/ui/tooltip';
 
 /**
  * Where this register says its property sits, and where we have decided it does.
@@ -95,9 +96,12 @@ export function SitesCard({ clientId, engagementId }: { clientId: string; engage
       {resolved.size > 1 ? (
         <p className="border-b border-[var(--color-hairline)] bg-[var(--color-plane)] px-5 py-3 text-xs text-[var(--color-ink-secondary)]">
           This register spans {count(resolved.size)} sites, which is {count(resolved.size)}{' '}
-          renditions rather than one. Districts assess per business location and each situs gets its
-          own account, so filing them on a single form would put one site&rsquo;s property in
-          another&rsquo;s taxing units.
+          renditions rather than one.{' '}
+          <InfoTip
+            size={12}
+            className="align-text-bottom"
+            content="Districts assess per business location and each situs gets its own account, so filing them on a single form would put one site's property in another's taxing units."
+          />
         </p>
       ) : null}
 

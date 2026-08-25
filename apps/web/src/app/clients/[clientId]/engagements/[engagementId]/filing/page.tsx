@@ -40,9 +40,37 @@ import { Tooltip } from '@/components/ui/tooltip';
  */
 export default function FilingPage() {
   return (
-    <Suspense fallback={<Skeleton className="h-96 w-full" />}>
+    <Suspense fallback={<FilingSkeleton />}>
       <FilingDraft />
     </Suspense>
+  );
+}
+
+/**
+ * Shaped like the page it becomes — back link, the form card with its basis
+ * controls and totals, then the blockers — so the draft building reads as
+ * loading rather than as a blank screen deciding whether to work.
+ */
+function FilingSkeleton() {
+  return (
+    <div className="space-y-5">
+      <Skeleton className="h-4 w-40" />
+      <Card>
+        <div className="space-y-2 p-5">
+          <Skeleton className="h-5 w-72 max-w-full" />
+          <Skeleton className="h-3.5 w-96 max-w-full" />
+        </div>
+        <div className="border-t border-[var(--color-hairline)] p-5">
+          <Skeleton className="h-16 w-full" />
+        </div>
+        <div className="border-t border-[var(--color-hairline)] p-5">
+          <Skeleton className="h-10 w-full" />
+        </div>
+      </Card>
+      <Card>
+        <Skeleton className="m-5 h-24" />
+      </Card>
+    </div>
   );
 }
 
@@ -83,6 +111,19 @@ function FilingDraft() {
       .map((filing) => filing.locationId),
   );
 
+  // The other thing worth knowing before picking a site: whether the record
+  // gate would refuse it today. The season board already computes that per
+  // return, and its query is usually warm from the engagement page.
+  const season = useQuery({
+    queryKey: ['engagement-season', engagementId],
+    queryFn: () => api.season(engagementId),
+  });
+  const blocked = new Set(
+    (season.data?.returns ?? [])
+      .filter((entry) => entry.status === 'blocked')
+      .map((entry) => entry.locationId),
+  );
+
   // A multi-site engagement with no site chosen has no draft to show — one
   // account per site means one form per site, and a screen that opened on a
   // whole-register draft its own gate calls unfileable taught every visitor to
@@ -99,7 +140,7 @@ function FilingDraft() {
 
   if (returns.error) return <ErrorState error={returns.error} />;
   if (error) return <ErrorState error={error} />;
-  if (!returns.data) return <Skeleton className="h-96 w-full" />;
+  if (!returns.data) return <FilingSkeleton />;
 
   const back = (
     <Link
@@ -115,12 +156,18 @@ function FilingDraft() {
     return (
       <div className="space-y-5">
         <div className="flex items-center gap-4">{back}</div>
-        <ReturnPicker owed={returns.data} chosen={locationId} filed={filed} onChoose={choose} />
+        <ReturnPicker
+          owed={returns.data}
+          chosen={locationId}
+          filed={filed}
+          blocked={blocked}
+          onChoose={choose}
+        />
       </div>
     );
   }
 
-  if (isLoading || !data) return <Skeleton className="h-96 w-full" />;
+  if (isLoading || !data) return <FilingSkeleton />;
 
   const site = locationId ? `&location=${encodeURIComponent(locationId)}` : '';
 
@@ -138,7 +185,13 @@ function FilingDraft() {
       </div>
 
       {returns.data.returns.length > 1 ? (
-        <ReturnPicker owed={returns.data} chosen={locationId} filed={filed} onChoose={choose} />
+        <ReturnPicker
+          owed={returns.data}
+          chosen={locationId}
+          filed={filed}
+          blocked={blocked}
+          onChoose={choose}
+        />
       ) : null}
 
       <Card>
@@ -199,12 +252,15 @@ function ReturnPicker({
   owed,
   chosen,
   filed,
+  blocked,
   onChoose,
 }: {
   owed: EngagementReturns;
   chosen: string | null;
   /** Sites with a return already standing for this year. */
   filed: Set<string>;
+  /** Sites the record gate would refuse today, per the season board. */
+  blocked: Set<string>;
   onChoose: (locationId: string | null) => void;
 }) {
   return (
@@ -228,6 +284,7 @@ function ReturnPicker({
             entry={entry}
             active={chosen === entry.locationId}
             filed={filed.has(entry.locationId)}
+            blocked={blocked.has(entry.locationId)}
             onClick={() => onChoose(chosen === entry.locationId ? null : entry.locationId)}
           />
         ))}
@@ -240,11 +297,13 @@ function ReturnChip({
   entry,
   active,
   filed,
+  blocked,
   onClick,
 }: {
   entry: EngagementReturn;
   active: boolean;
   filed: boolean;
+  blocked: boolean;
   onClick: () => void;
 }) {
   return (
@@ -266,7 +325,13 @@ function ReturnChip({
         {/* So it is visible from the picker that a site is done — otherwise the
             only way to find out is to open its draft and read the card at the
             bottom, which is how a return gets filed twice. */}
-        {filed ? <Badge tone="good">filed</Badge> : null}
+        {filed ? (
+          <Badge tone="good">filed</Badge>
+        ) : blocked ? (
+          // The same word the season board uses — a chip that looks pickable
+          // but whose draft opens on a record gate refusal should say so here.
+          <Badge tone="critical">blocked</Badge>
+        ) : null}
       </span>
       {/* Said out loud, because the returns board next door shows the same site
           with a smaller number: this is what the register holds here, that is

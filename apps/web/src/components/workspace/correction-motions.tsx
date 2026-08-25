@@ -168,13 +168,9 @@ function Bring({ year, engagementId }: { year: OpenYear; engagementId: string })
 
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="cursor-pointer text-[11px] font-medium text-[var(--color-ink-secondary)] hover:underline"
-      >
+      <Button className="h-7 px-2.5 text-xs" onClick={() => setOpen(true)}>
         Record a 25.25 motion
-      </button>
+      </Button>
     );
   }
 

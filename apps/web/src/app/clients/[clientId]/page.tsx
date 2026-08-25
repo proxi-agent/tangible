@@ -13,7 +13,7 @@ import { AgentAppointmentCard } from '@/components/workspace/agent-appointment-c
 import { ClientStatusBadge } from '@/components/workspace/badges';
 import { FilingProfileCard } from '@/components/workspace/filing-profile-card';
 import { Button, Field, Select, TextInput } from '@/components/ui/controls';
-import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { Badge, Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
 
 export default function ClientPage() {
   const { clientId } = useParams<{ clientId: string }>();
@@ -119,8 +119,11 @@ export default function ClientPage() {
                     className="flex items-center justify-between px-5 py-3 transition-colors hover:bg-[var(--color-plane)]"
                   >
                     <span className="text-sm font-medium">Tax year {engagement.taxYear}</span>
-                    <span className="text-xs text-[var(--color-ink-muted)]">
-                      created {new Date(engagement.createdAt).toLocaleDateString()}
+                    <span className="flex items-center gap-2.5">
+                      <SeasonHint engagementId={engagement.id} />
+                      <span className="text-xs text-[var(--color-ink-muted)]">
+                        created {new Date(engagement.createdAt).toLocaleDateString()}
+                      </span>
                     </span>
                   </Link>
                 </li>
@@ -189,6 +192,34 @@ export default function ClientPage() {
       <AgentAppointmentCard clientId={clientId} locations={locations} />
     </div>
   );
+}
+
+/**
+ * Where the engagement's season stands, on the row that opens it.
+ *
+ * "Tax year 2027 · created 8/19" says an engagement exists, not whether it
+ * needs anyone. This reads the same season the engagement page shows — the
+ * fetch doubles as a prefetch for the page the row links to — and reduces it
+ * to the one word worth knowing before clicking: blocked, ready, or filed.
+ */
+function SeasonHint({ engagementId }: { engagementId: string }) {
+  const { data } = useQuery({
+    queryKey: ['engagement-season', engagementId],
+    queryFn: () => api.season(engagementId),
+  });
+  if (!data || data.returns.length === 0) return null;
+
+  const blocked = data.returns.filter((entry) => entry.status === 'blocked').length;
+  const unfiled = data.returns.filter((entry) => entry.status !== 'filed').length;
+  if (blocked > 0) {
+    return (
+      <Badge tone="critical">
+        {blocked} blocked
+      </Badge>
+    );
+  }
+  if (unfiled > 0) return <Badge tone="accent">ready to file</Badge>;
+  return <Badge tone="good">filed</Badge>;
 }
 
 const DISTRICT_NAMES = new Map(APPRAISAL_DISTRICTS.map((d) => [d.id, d.name]));

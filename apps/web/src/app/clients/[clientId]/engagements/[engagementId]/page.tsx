@@ -473,7 +473,7 @@ function FilesCard({
     <Card>
       <CardHeader
         title="Fixed asset registers"
-        description="Upload the client's FAR export — Sage, NetSuite, QuickBooks, or a hand-built workbook."
+        description="Every register on this engagement — most arrive through the client drop above."
         help="Parsing never guesses: the AI proposes a column mapping and a person confirms it before any assets exist."
       />
 
@@ -493,21 +493,26 @@ function FilesCard({
             if (file) upload.mutate(file);
           }}
           className={cn(
-            'flex w-full cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed px-6 py-8 text-sm transition-colors outline-none',
+            // Compact on purpose: the client drop above is the front door, and
+            // two hero-sized dropzones ask a first-time user to pick a pipeline.
+            // This strip is the shortcut for a file already known to be a register.
+            'flex w-full cursor-pointer flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-lg border border-dashed px-4 py-2.5 text-xs transition-colors outline-none',
             'focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
             dragging
               ? 'border-[var(--color-series-1)] bg-[color-mix(in_oklab,var(--color-series-1)_8%,transparent)]'
               : 'border-[var(--color-hairline)] hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)] hover:bg-[var(--color-plane)]',
           )}
         >
-          <UploadCloud size={20} strokeWidth={1.8} className="text-[var(--color-ink-muted)]" />
+          <UploadCloud size={14} strokeWidth={1.8} className="text-[var(--color-ink-muted)]" />
           {upload.isPending ? (
             <span>Uploading and reading sheets…</span>
           ) : (
             <>
-              <span className="font-medium">Drop a register here, or click to choose</span>
-              <span className="text-xs text-[var(--color-ink-muted)]">
-                {FAR_UPLOAD_EXTENSIONS.join(' · ')} — stored privately, parsed immediately
+              <span className="font-medium">
+                Already know it&rsquo;s a register? Drop it here to skip triage
+              </span>
+              <span className="text-[11px] text-[var(--color-ink-muted)]">
+                {FAR_UPLOAD_EXTENSIONS.join(' · ')}
               </span>
             </>
           )}

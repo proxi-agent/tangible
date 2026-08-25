@@ -51,7 +51,13 @@ export interface Scope {
 }
 
 export function useJurisdictions() {
-  return useQuery({ queryKey: ['jurisdictions'], queryFn: api.jurisdictions });
+  return useQuery({
+    queryKey: ['jurisdictions'],
+    queryFn: api.jurisdictions,
+    // Read by the shell's scope selectors, so it mounts on nearly every page —
+    // the list changes only when an ingest runs, not between navigations.
+    staleTime: 5 * 60 * 1000,
+  });
 }
 
 /**

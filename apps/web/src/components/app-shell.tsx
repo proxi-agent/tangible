@@ -90,7 +90,13 @@ export function AppShell({ children }: { children: ReactNode }) {
                   key={item.href}
                   {...item}
                   href={item.href}
-                  active={pathname.startsWith(item.href)}
+                  active={
+                    pathname.startsWith(item.href) ||
+                    // A filed form lives at /filings/… but is reached from a
+                    // client's engagement — with no nav lit, the page reads as
+                    // outside the app.
+                    (item.href === '/clients' && pathname.startsWith('/filings'))
+                  }
                 />
               ))}
             </NavGroup>

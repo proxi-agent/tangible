@@ -51,13 +51,11 @@ export function MotionDraftSection({
           onClose={() => setOpen(false)}
         />
       ) : (
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="cursor-pointer text-[11px] font-medium text-[var(--color-ink-secondary)] hover:underline"
-        >
+        // The only action on the tab — row-scale button affordance, same as
+        // the boards' LinkButton, so it reads as a thing to click, not a caption.
+        <Button className="h-7 px-2.5 text-xs" onClick={() => setOpen(true)}>
           {record ? 'Redraft the motion' : 'Draft the motion'}
-        </button>
+        </Button>
       )}
     </div>
   );
