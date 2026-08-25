@@ -10,6 +10,7 @@ import type {
   UnblockPlanRecord,
   ResultLetterRecord,
   MotionDraftRecord,
+  GraphAskRecord,
   RolloverPlan,
   RolloverResult,
   DraftMotionRequest,
@@ -488,6 +489,17 @@ export const api = {
   draftResultLetter: (engagementId: string) =>
     request<{ letter: ResultLetterRecord }>(`/engagements/${engagementId}/letter`, {
       method: 'POST',
+    }),
+
+  /** Everything asked of this engagement's record, newest first. */
+  graphAsks: (engagementId: string) =>
+    request<{ asks: GraphAskRecord[] }>(`/engagements/${engagementId}/ask`),
+
+  /** Ask the record a question — the answer and the facts behind it, frozen together. */
+  askGraph: (engagementId: string, question: string) =>
+    request<{ ask: GraphAskRecord }>(`/engagements/${engagementId}/ask`, {
+      method: 'POST',
+      body: JSON.stringify({ question }),
     }),
 
   /** The newest drafted 25.25 motion for one open year, or null. */

@@ -2,7 +2,14 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef, SortingState } from '@tanstack/react-table';
-import { ArrowLeft, FileCheck, FileSpreadsheet, FileText, UploadCloud } from 'lucide-react';
+import {
+  ArrowLeft,
+  FileCheck,
+  FileSpreadsheet,
+  FileText,
+  MessageCircleQuestion,
+  UploadCloud,
+} from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useRef, useState } from 'react';
@@ -109,11 +116,18 @@ export default function EngagementPage() {
         <h1 className="text-lg font-semibold tracking-tight">Tax year {data.engagement.taxYear}</h1>
         <JurisdictionPicker engagement={data.engagement} />
         <SicField engagement={data.engagement} />
+        {/*
+          Ungated on purpose: asking an empty record is a fair thing to do, and
+          it answers that the record is empty rather than hiding the door.
+        */}
+        <Link href={`/clients/${clientId}/engagements/${engagementId}/ask`} className="ml-auto">
+          <Button>
+            <MessageCircleQuestion size={14} strokeWidth={2} />
+            Ask the record
+          </Button>
+        </Link>
         {data.classification.classifiedCount > 0 ? (
-          <Link
-            href={`/clients/${clientId}/engagements/${engagementId}/report`}
-            className="ml-auto"
-          >
+          <Link href={`/clients/${clientId}/engagements/${engagementId}/report`}>
             <Button variant="primary">
               <FileText size={14} strokeWidth={2} />
               Savings report

@@ -1408,6 +1408,34 @@ export const resultLetters = pgTable(
 ).enableRLS();
 
 /**
+ * An ask-the-graph exchange: a question about the engagement, the digest of
+ * the record it was answered from, and the answer — frozen together.
+ *
+ * Not `mapping_asks` (questions the firm asks the client about a file); these
+ * are questions the firm asks the record. Same jsonb discipline as the
+ * drafting agents: `facts` is what code assembled and the model was allowed
+ * to see, `answer` is what it made of it, and rows are never edited — the
+ * history of what was asked is itself part of the record.
+ */
+export const graphAnswers = pgTable(
+  'graph_answers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    question: text('question').notNull(),
+    /** The assembled digest, frozen. See GraphDigestSchema. */
+    facts: jsonb('facts').notNull(),
+    /** The answer, references already validated. See GraphAnswerSchema. */
+    answer: jsonb('answer').notNull(),
+    model: text('model'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('graph_answers_engagement_idx').on(table.engagementId, table.createdAt)],
+).enableRLS();
+
+/**
  * A drafted 25.25 correction motion: the checked facts and the document,
  * frozen together. Keyed by the open-years (account, year) key as well as the
  * engagement, because the draft belongs to the year being corrected — several

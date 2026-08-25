@@ -88,3 +88,4 @@ export { assembleUnblockFacts, unblockBlocker, type UnblockSource } from './unbl
 export { assembleLetterFacts, letterBlocker } from './letter.js';
 export { assembleMotionDraftFacts, motionDraftBlocker } from './motion-draft.js';
 export { planRollover, type RolloverEngagement, type RolloverSource } from './rollover.js';
+export { sanitizeAnswer } from './ask.js';
