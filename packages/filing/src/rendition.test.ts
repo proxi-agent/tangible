@@ -104,11 +104,14 @@ describe('the two filing bases', () => {
   // Zero is not "we don't know" — on a form signed under penalty of perjury it
   // is an assertion that the property is worthless.
   it('withholds an estimate it cannot compute rather than stating zero', () => {
-    const rendition = build([asset({ acquisitionYear: null, originalCost: 3_850 })], {
+    // Dated, so this is only about the value — the register left the cost
+    // blank. A year we do not have at all is a different problem with its own
+    // blocker, because it also empties a box on the form.
+    const rendition = build([asset({ originalCost: null })], {
       basis: 'estimate',
     });
     const line = scheduleFor(rendition, 'E')!.lines[0]!;
-    expect(line.historicalCost).toBe(3_850);
+    expect(line.yearAcquired).toBe(2022);
     expect(line.goodFaithEstimate).toBeNull();
     expect(scheduleFor(rendition, 'E')!.totalEstimate).toBeNull();
     expect(rendition.totalGoodFaithEstimate).toBeNull();
@@ -117,11 +120,22 @@ describe('the two filing bases', () => {
   });
 
   it('treats the same gap as a note when filing on cost', () => {
-    // The cost basis asks for cost and year; the district does the arithmetic,
-    // so a value we could not compute costs nothing.
-    const rendition = build([asset({ acquisitionYear: null })], { basis: 'cost' });
+    // The cost basis asks for cost and year, not for a value, so a value we
+    // could not compute costs nothing — provided we do have the year.
+    const rendition = build([asset({ originalCost: null })], { basis: 'cost' });
     expect(blocker(rendition, 'unvaluable')?.severity).toBe('warning');
-    expect(scheduleFor(rendition, 'E')!.lines[0]!.historicalCost).toBeGreaterThan(0);
+    expect(blocker(rendition, 'no-year-acquired')).toBeUndefined();
+    expect(scheduleFor(rendition, 'E')!.lines[0]!.yearAcquired).toBe(2022);
+  });
+
+  it('blocks on a missing year whichever basis is chosen', () => {
+    // 22.01(a) offers cost *with* year or an estimate. Without the year neither
+    // is available, and Schedule E has a box the filing cannot fill — so this
+    // is not the soft note that a missing value is on the cost basis.
+    for (const basis of ['cost', 'estimate'] as const) {
+      const rendition = build([asset({ acquisitionYear: null })], { basis });
+      expect(blocker(rendition, 'no-year-acquired')?.severity, basis).toBe('blocking');
+    }
   });
 });
 
@@ -184,7 +198,11 @@ describe('what blocks a signature', () => {
 
   it('drops the agent reminder once an appointment stands', () => {
     const rendition = build([asset()], {
-      appointment: { effective: true, standing: 'Filed January 15 2026.', receivesConfidential: true },
+      appointment: {
+        effective: true,
+        standing: 'Filed January 15 2026.',
+        receivesConfidential: true,
+      },
     });
     expect(blocker(rendition, 'agent-appointment')).toBeUndefined();
   });
@@ -213,7 +231,7 @@ describe('what blocks a signature', () => {
   });
 
   it('warns rather than blocks on things that only make it worse', () => {
-    const rendition = build([asset({ acquisitionYear: null })], {
+    const rendition = build([asset({ originalCost: null })], {
       accountId: null,
       sicCode: null,
     });

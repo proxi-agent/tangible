@@ -188,6 +188,12 @@ export function buildRendition(input: RenditionInput): Rendition {
   let unvaluable = 0;
   let disposedStillListed = 0;
   let scheduleValue = 0;
+  // Property reaching a schedule the form files by year, carrying no year.
+  // Counted apart from `unvaluable` because the two are different problems that
+  // happen to share a cause: one is a number we cannot show, the other is a
+  // box on the form we cannot fill.
+  let undated = 0;
+  let undatedCost = 0;
 
   type Bucket = {
     cost: number;
@@ -273,11 +279,22 @@ export function buildRendition(input: RenditionInput): Rendition {
       continue;
     }
 
+    // The two gaps are counted apart and never both, because they ask the
+    // reviewer for different work. A schedule that cannot value an asset is
+    // arithmetic we could not do; a year-acquired schedule with no year is a
+    // box on the form nobody can fill. The second is the one a filer has to
+    // act on whichever basis they chose.
+    const meta = SCHEDULE_META[target];
+    const undatedHere = meta.byYear && asset.acquisitionYear === null;
+    if (undatedHere) {
+      undated += 1;
+      undatedCost += cost;
+    }
+
     const value = schedule ? appraisedValue(asset, schedule, categoryKey, input.sicCode) : null;
-    if (value === null && schedule) unvaluable += 1;
+    if (value === null && schedule && !undatedHere) unvaluable += 1;
     scheduleValue += value ?? 0;
 
-    const meta = SCHEDULE_META[target];
     const bucket = bucketFor(
       target,
       classificationLabel(categoryKey),
@@ -360,6 +377,8 @@ export function buildRendition(input: RenditionInput): Rendition {
       needsReview,
       unclassified,
       unvaluable,
+      undated,
+      undatedCost,
       disposedStillListed,
       hasSchedule: schedule !== null,
       anythingToFile: buckets.size > 0,
@@ -472,6 +491,8 @@ function blockersFor(context: {
   needsReview: number;
   unclassified: number;
   unvaluable: number;
+  undated: number;
+  undatedCost: number;
   disposedStillListed: number;
   hasSchedule: boolean;
   anythingToFile: boolean;
@@ -529,21 +550,45 @@ function blockersFor(context: {
       resolution: 'Settle the review queue.',
     });
   }
+  // Neither basis survives a missing year, and the cost basis is the one that
+  // survives it least. 22.01(a) offers the owner a choice of two ways to state
+  // the property — a good faith estimate of market value, *or* historical cost
+  // when new **and** the year of acquisition — and the second is not half
+  // available. Schedules D and E are laid out by year to match, so an undated
+  // asset has no row to sit on: `planFormFill` cannot place it on a rung and
+  // sends it to the attached listing, which needs the same year the register
+  // never gave. Saying this plainly matters because the old warning said the
+  // opposite — that undated property was "filed at cost with no value shown,
+  // which is what this basis asks for" — and reassured the filer about the one
+  // gap that stops the form from being complete.
+  if (context.undated > 0) {
+    const many = context.undated !== 1;
+    blockers.push({
+      key: 'no-year-acquired',
+      severity: 'blocking',
+      message: `${context.undated} asset${many ? 's' : ''} carrying ${money(context.undatedCost)} reach${many ? '' : 'es'} a schedule the form files by year acquired, with no year. Tax Code 22.01(a) lets the owner render on historical cost only together with the year of acquisition, so ${many ? 'these lines have' : 'this line has'} no complete form to sit on.`,
+      resolution:
+        'Supply the acquisition year for those assets, or render them on a good faith estimate of market value instead.',
+    });
+  }
+
+  // What remains under `unvaluable` once the undated are counted separately:
+  // property the schedule could not price for some other reason. Harmless on
+  // cost, which asks for no value at all; disqualifying on the estimate basis,
+  // where leaving it at zero would understate a signed document.
   if (context.unvaluable > 0) {
-    // On the cost basis a missing value costs nothing — the form asks for cost
-    // and year, and the district does its own arithmetic. On the estimate basis
-    // it is disqualifying: there is no honest number to swear to, and leaving
-    // it at zero would understate the rendition on a signed document.
+    const unvaluableDated = context.unvaluable;
     const onEstimate = input.basis === 'estimate';
+    const many = unvaluableDated !== 1;
     blockers.push({
       key: 'unvaluable',
       severity: onEstimate ? 'blocking' : 'warning',
       message: onEstimate
-        ? `${context.unvaluable} asset${context.unvaluable === 1 ? '' : 's'} could not be valued — usually a missing acquisition year — so no good faith estimate can be stated for the ${context.unvaluable === 1 ? 'line it sits on' : 'lines they sit on'}. Those estimates are withheld rather than filed as zero.`
-        : `${context.unvaluable} asset${context.unvaluable === 1 ? '' : 's'} could not be valued — usually a missing acquisition year. ${context.unvaluable === 1 ? 'It is' : 'They are'} filed at cost with no value shown, which is what this basis asks for.`,
+        ? `${unvaluableDated} asset${many ? 's' : ''} could not be valued against the district’s schedule, so no good faith estimate can be stated for the ${many ? 'lines they sit on' : 'line it sits on'}. Those estimates are withheld rather than filed as zero.`
+        : `${unvaluableDated} asset${many ? 's' : ''} could not be valued against the district’s schedule. ${many ? 'They are' : 'It is'} filed at cost and year, which is what this basis asks for.`,
       resolution: onEstimate
-        ? 'Supply the acquisition year, or file on the cost basis, which does not require a value.'
-        : 'Supply the acquisition year if you want a value shown alongside.',
+        ? 'Check the acquisition years against the schedule’s published range, or file on the cost basis, which does not require a value.'
+        : 'No action needed to file; check the years against the schedule if you want a value shown alongside.',
     });
   }
   if (!input.accountId) {

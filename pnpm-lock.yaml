@@ -364,6 +364,9 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@tangible/far':
+        specifier: workspace:*
+        version: link:../far
       '@types/node':
         specifier: 'catalog:'
         version: 26.2.0
