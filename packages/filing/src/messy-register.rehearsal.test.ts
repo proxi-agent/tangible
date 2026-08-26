@@ -135,6 +135,12 @@ describe('a whole register on the form', () => {
     const e = rendition.schedules.find((s) => s.key === 'E');
     expect(d?.lines.reduce((n, l) => n + l.assetCount, 0)).toBe(12);
     expect(e?.lines.reduce((n, l) => n + l.assetCount, 0)).toBe(140 + 60 + 90 + 8 - 1);
+    // And having put them there, says so: whether any of the twelve is the one
+    // vehicle 22.01(k) would relieve is a fact about the owner, not about the
+    // register, so the form asks rather than assuming either way.
+    const asked = rendition.blockers.find((b) => b.key === 'vehicles-personal-use');
+    expect(asked?.severity).toBe('warning');
+    expect(asked?.message).toContain('12 licensed vehicles');
   });
 
   it('blocks on the rows the register would not date, on either basis', () => {

@@ -262,6 +262,46 @@ describe('what blocks a signature', () => {
   });
 });
 
+describe('the vehicle question the register cannot answer', () => {
+  it('asks it once, with the dollars, when Schedule D carries something', () => {
+    const rendition = build([
+      asset({ categoryKey: 'vehicles', originalCost: 42_000 }),
+      asset({ categoryKey: 'vehicles', originalCost: 38_000, acquisitionYear: 2021 }),
+      asset({ categoryKey: 'machinery-equipment', originalCost: 500_000 }),
+    ]);
+    const warning = blocker(rendition, 'vehicles-personal-use');
+    // A warning, not a blocker: rendering the vehicles is the right default and
+    // the form is complete without an answer. It is only worse than it needs to
+    // be for the rare individual owner who has actually applied.
+    expect(warning?.severity).toBe('warning');
+    expect(warning?.message).toContain('2 licensed vehicles');
+    expect(warning?.message).toContain('$80,000');
+    // Both halves of the test, because either alone reads as broader relief
+    // than the statute gives.
+    expect(warning?.message).toContain('22.01(k)');
+    expect(warning?.message).toContain('11.254');
+    expect(warning?.message).toContain('individual');
+    // The clause that decides it. "Would qualify" is not the test.
+    expect(warning?.message).toContain('applied for');
+  });
+
+  it('stays quiet when no vehicle reaches the form', () => {
+    // Including when the register listed one and a disposal took it off: the
+    // question is about what gets rendered, and nothing is being rendered.
+    expect(blocker(build([asset({})]), 'vehicles-personal-use')).toBeUndefined();
+    const disposed = build([asset({ categoryKey: 'vehicles', isDisposed: true }), asset({})]);
+    expect(blocker(disposed, 'vehicles-personal-use')).toBeUndefined();
+  });
+
+  it('counts a vehicle that reached Schedule D even with no year on it', () => {
+    // The undated blocker and this one are about different things and both
+    // apply; neither swallows the other.
+    const rendition = build([asset({ categoryKey: 'vehicles', acquisitionYear: null })]);
+    expect(blocker(rendition, 'vehicles-personal-use')?.message).toContain('1 licensed vehicle');
+    expect(blocker(rendition, 'no-year-acquired')?.severity).toBe('blocking');
+  });
+});
+
 describe('deadlines', () => {
   it('carries the statute with every date', () => {
     const dates = deadlinesFor(2027);

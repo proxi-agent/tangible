@@ -194,6 +194,11 @@ export function buildRendition(input: RenditionInput): Rendition {
   // box on the form we cannot fill.
   let undated = 0;
   let undatedCost = 0;
+  // Licensed vehicles actually reaching Schedule D. Tracked only so the one
+  // question the register cannot answer about them is asked once, and only when
+  // there is something to ask it about.
+  let vehicles = 0;
+  let vehiclesCost = 0;
 
   type Bucket = {
     cost: number;
@@ -285,6 +290,10 @@ export function buildRendition(input: RenditionInput): Rendition {
     // box on the form nobody can fill. The second is the one a filer has to
     // act on whichever basis they chose.
     const meta = SCHEDULE_META[target];
+    if (target === 'D') {
+      vehicles += 1;
+      vehiclesCost += cost;
+    }
     const undatedHere = meta.byYear && asset.acquisitionYear === null;
     if (undatedHere) {
       undated += 1;
@@ -379,6 +388,8 @@ export function buildRendition(input: RenditionInput): Rendition {
       unvaluable,
       undated,
       undatedCost,
+      vehicles,
+      vehiclesCost,
       disposedStillListed,
       hasSchedule: schedule !== null,
       anythingToFile: buckets.size > 0,
@@ -493,6 +504,8 @@ function blockersFor(context: {
   unvaluable: number;
   undated: number;
   undatedCost: number;
+  vehicles: number;
+  vehiclesCost: number;
   disposedStillListed: number;
   hasSchedule: boolean;
   anythingToFile: boolean;
@@ -606,6 +619,35 @@ function blockersFor(context: {
       message:
         'No SIC code is set, so machinery sits on the ten-year placeholder rather than the life the district publishes for this line of business.',
       resolution: 'Set the SIC code on the engagement.',
+    });
+  }
+  // The one question a fixed asset register can never answer about a vehicle,
+  // asked once and only when Schedule D actually carries something.
+  //
+  // Everything titled and licensed goes on Schedule D by default, and that
+  // default is right: the relief is 22.01(k), and it is narrow in a way worth
+  // stating rather than assuming. It runs only where the owner is an
+  // *individual* — an LP, LLC or corporation cannot reach it at all, because
+  // 11.254(a) exempts "one motor vehicle owned by the individual" — and only
+  // for a passenger car or light truck (11.254(b), borrowing Transportation
+  // Code 502.001), used in that individual's occupation *and also* personally,
+  // not carrying passengers for hire (11.254(d)), one per individual (11.254(c)).
+  //
+  // The part that decides it is the last clause of 22.01(k): relief belongs to
+  // an individual who "has been granted or has applied for" the exemption. Not
+  // one who would qualify. A client whose truck plainly meets every test in
+  // 11.254 and who never filed Form 50-759 still owes the rendition on it, so
+  // the fact to establish is a filed application, not a qualifying vehicle —
+  // which is exactly the shape of 22.23(b) and the freeport late-file, and the
+  // shape a reviewer working from the register alone would get backwards.
+  if (context.vehicles > 0) {
+    const many = context.vehicles !== 1;
+    blockers.push({
+      key: 'vehicles-personal-use',
+      severity: 'warning',
+      message: `${context.vehicles} licensed vehicle${many ? 's' : ''} carrying ${money(context.vehiclesCost)} ${many ? 'are' : 'is'} rendered on Schedule D. Tax Code 22.01(k) relieves the rendition duty for one vehicle only where the owner is an individual who has been granted or has applied for the Section 11.254 exemption — an entity cannot claim it, and qualifying without applying does not relieve anything.`,
+      resolution:
+        'Confirm the owner is an entity, or that no 11.254 application has been filed. If one has, take that vehicle off the register for this filing — a category removal would take them all.',
     });
   }
   if (context.disposedStillListed > 0) {
