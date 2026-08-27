@@ -3,7 +3,6 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
-  ArrowLeft,
   CalendarDays,
   CircleCheck,
   FileText,
@@ -11,7 +10,6 @@ import {
   MapPin,
   Stamp,
 } from 'lucide-react';
-import Link from 'next/link';
 import { usePathname, useParams, useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import type {
@@ -24,10 +22,21 @@ import type {
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { count, money, moneyExact, plural } from '@/lib/format';
-import { Button } from '@/components/ui/controls';
+import { Button, LinkButton } from '@/components/ui/controls';
 import { FilingRecordCard } from '@/components/workspace/filing-record-card';
-import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+import {
+  BackLink,
+  Badge,
+  Card,
+  CardHeader,
+  ErrorState,
+  PageHeader,
+  Skeleton,
+  Stat,
+  StatCell,
+} from '@/components/ui/primitives';
 import { Tooltip } from '@/components/ui/tooltip';
+import { today } from '@/lib/today';
 
 /**
  * The rendition draft.
@@ -54,11 +63,14 @@ export default function FilingPage() {
 function FilingSkeleton() {
   return (
     <div className="space-y-5">
-      <Skeleton className="h-4 w-40" />
+      <div className="space-y-2">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-6 w-80 max-w-full" />
+        <Skeleton className="h-3.5 w-full max-w-xl" />
+      </div>
       <Card>
         <div className="space-y-2 p-5">
-          <Skeleton className="h-5 w-72 max-w-full" />
-          <Skeleton className="h-3.5 w-96 max-w-full" />
+          <Skeleton className="h-4 w-56 max-w-full" />
         </div>
         <div className="border-t border-[var(--color-hairline)] p-5">
           <Skeleton className="h-16 w-full" />
@@ -143,25 +155,29 @@ function FilingDraft() {
   if (!returns.data) return <FilingSkeleton />;
 
   const back = (
-    <Link
-      href={`/clients/${clientId}/engagements/${engagementId}`}
-      className="inline-flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-    >
-      <ArrowLeft size={13} strokeWidth={2} />
+    <BackLink href={`/clients/${clientId}/engagements/${engagementId}`}>
       Back to the engagement
-    </Link>
+    </BackLink>
   );
 
   if (unchosen) {
     return (
       <div className="space-y-5">
-        <div className="flex items-center gap-4">{back}</div>
+        {/* Nothing is drafted until a site is picked, so the page has to say what
+            it is on its own — a lone back link over a picker left the screen
+            unnamed at the one moment it has nothing else to show. */}
+        <PageHeader
+          back={back}
+          title="Rendition"
+          description={`This engagement owes ${count(returns.data.returns.length)} returns: a district opens one account per business location, so each site is its own Form 50-144. Nothing is drafted until you pick one, and every schedule, total and blocker below is measured against that site alone.`}
+        />
         <ReturnPicker
           owed={returns.data}
           chosen={locationId}
           filed={filed}
           blocked={blocked}
           onChoose={choose}
+          bare
         />
       </div>
     );
@@ -173,16 +189,30 @@ function FilingDraft() {
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center gap-4">
-        {back}
-        <Link
-          href={`/clients/${clientId}/engagements/${engagementId}/filing/form?basis=${basis}&agent=${filedByAgent}${site}`}
-          className="ml-auto inline-flex items-center gap-1.5 text-xs font-medium text-[var(--color-ink)] hover:underline"
-        >
-          <FileText size={13} strokeWidth={2} />
-          View the form
-        </Link>
-      </div>
+      {/* The form being drafted is the page — which site, which year, which
+          account. It had been the heading of the third card down, under a back
+          link and a picker, so the screen opened without saying what was on it. */}
+      <PageHeader
+        back={back}
+        title={`Form 50-144 — ${data.clientName}${chosenLabel(returns.data, locationId)}`}
+        description={
+          <>
+            Tax year {data.taxYear} ·{' '}
+            {data.jurisdictionName ?? data.jurisdictionId ?? 'no jurisdiction set'}
+            {data.accountId ? ` · account ${data.accountId}` : ' · no account number'}
+            {data.sicCode ? ` · SIC ${data.sicCode}` : ''} · drafted{' '}
+            {new Date(data.generatedAt).toLocaleDateString()}
+          </>
+        }
+        actions={
+          <LinkButton
+            href={`/clients/${clientId}/engagements/${engagementId}/filing/form?basis=${basis}&agent=${filedByAgent}${site}`}
+          >
+            <FileText size={13} strokeWidth={2} />
+            View the form
+          </LinkButton>
+        }
+      />
 
       {returns.data.returns.length > 1 ? (
         <ReturnPicker
@@ -196,15 +226,8 @@ function FilingDraft() {
 
       <Card>
         <CardHeader
-          title={`Form 50-144 — ${data.clientName}${chosenLabel(returns.data, locationId)}, tax year ${data.taxYear}`}
-          description={
-            <>
-              {data.jurisdictionName ?? data.jurisdictionId ?? 'No jurisdiction set'}
-              {data.accountId ? ` · account ${data.accountId}` : ' · no account number'}
-              {data.sicCode ? ` · SIC ${data.sicCode}` : ''} · drafted{' '}
-              {new Date(data.generatedAt).toLocaleDateString()}
-            </>
-          }
+          title="What the form will say"
+          description="The basis it is rendered on, and the totals that follow from it."
         />
         <BasisControls
           basis={basis}
@@ -254,6 +277,7 @@ function ReturnPicker({
   filed,
   blocked,
   onChoose,
+  bare,
 }: {
   owed: EngagementReturns;
   chosen: string | null;
@@ -262,22 +286,41 @@ function ReturnPicker({
   /** Sites the record gate would refuse today, per the season board. */
   blocked: Set<string>;
   onChoose: (locationId: string | null) => void;
+  /**
+   * Chips only. On the page that opens with nothing picked, the page header
+   * already says what these are and why there is more than one of them —
+   * printing the card's own heading under it says it twice.
+   */
+  bare?: boolean;
 }) {
   return (
     <Card>
-      <CardHeader
-        title={`${count(owed.returns.length)} returns for this engagement`}
-        description="Pick the site you are working on — the schedules, the totals and the findings below are all measured against that site alone."
-        help="Property is assessed where it stood on January 1 and each business location has its own account, so each site here is its own Form 50-144."
-        action={
-          owed.unplacedCount > 0 ? (
-            <span className="text-xs text-[var(--color-warning)]">
-              {count(owed.unplacedCount)} {plural(owed.unplacedCount, 'asset')} on no return
-            </span>
-          ) : null
-        }
-      />
-      <div className="flex flex-wrap gap-2 px-5 py-3">
+      {bare ? null : (
+        <CardHeader
+          title={`${count(owed.returns.length)} returns for this engagement`}
+          description="Pick the site you are working on — the schedules, the totals and the findings below are all measured against that site alone."
+          help="Property is assessed where it stood on January 1 and each business location has its own account, so each site here is its own Form 50-144."
+          action={
+            owed.unplacedCount > 0 ? (
+              <span className="text-xs text-[var(--color-warning)]">
+                {count(owed.unplacedCount)} {plural(owed.unplacedCount, 'asset')} on no return
+              </span>
+            ) : null
+          }
+        />
+      )}
+      {bare && owed.unplacedCount > 0 ? (
+        <p className="px-5 pt-4 text-xs text-[var(--color-warning)]">
+          {count(owed.unplacedCount)} {plural(owed.unplacedCount, 'asset')} on no return
+        </p>
+      ) : null}
+      {/* On the drafted page these are chips in a rail above the form. On the
+          page that is nothing but this choice they are the choice, and a row
+          of small tiles pushed against the left edge of a full-width card read
+          as leftovers rather than as the two things to pick between. */}
+      <div
+        className={cn(bare ? 'grid gap-3 p-5 sm:grid-cols-2' : 'flex flex-wrap gap-2 px-5 py-3')}
+      >
         {owed.returns.map((entry) => (
           <ReturnChip
             key={entry.locationId}
@@ -285,6 +328,7 @@ function ReturnPicker({
             active={chosen === entry.locationId}
             filed={filed.has(entry.locationId)}
             blocked={blocked.has(entry.locationId)}
+            roomy={bare}
             onClick={() => onChoose(chosen === entry.locationId ? null : entry.locationId)}
           />
         ))}
@@ -298,12 +342,15 @@ function ReturnChip({
   active,
   filed,
   blocked,
+  roomy,
   onClick,
 }: {
   entry: EngagementReturn;
   active: boolean;
   filed: boolean;
   blocked: boolean;
+  /** Laid out as a choice card rather than a chip in a rail. */
+  roomy?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -313,10 +360,11 @@ function ReturnChip({
       aria-pressed={active}
       aria-label={`The return for ${entry.label}`}
       className={cn(
-        'cursor-pointer rounded-lg border px-3 py-2 text-left transition-colors',
+        'cursor-pointer rounded-lg border text-left transition-colors',
+        roomy ? 'h-full px-4 py-3.5' : 'px-3 py-2',
         active
-          ? 'border-[var(--color-series-1)] bg-[color-mix(in_oklab,var(--color-series-1)_10%,transparent)]'
-          : 'border-[var(--color-hairline)] bg-[var(--color-surface)] hover:bg-[var(--color-plane)]',
+          ? 'border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_10%,transparent)]'
+          : 'border-[var(--color-hairline)] bg-[var(--color-surface)] hover:border-[var(--color-hairline-strong)] hover:bg-[var(--color-plane)]',
       )}
     >
       <span className="flex items-center gap-1.5 text-sm font-medium">
@@ -340,7 +388,7 @@ function ReturnChip({
         {count(entry.assetCount)} {plural(entry.assetCount, 'asset')} · {money(entry.totalCost)} on
         the register
       </span>
-      <span className="block text-[11px] text-[var(--color-ink-muted)]">
+      <span className="block text-xs text-[var(--color-ink-muted)]">
         {entry.accountId ? (
           `account ${entry.accountId}`
         ) : (
@@ -374,7 +422,7 @@ function BasisControls({
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-[var(--color-hairline)] px-5 py-3">
       <div className="flex items-center gap-2">
-        <span className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+        <span className="text-2xs font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
           Filed on
         </span>
         {(
@@ -399,7 +447,7 @@ function BasisControls({
               className={cn(
                 'cursor-pointer rounded-full border px-2.5 py-1 text-xs font-medium transition-colors',
                 basis === option.value
-                  ? 'border-[var(--color-series-1)] bg-[color-mix(in_oklab,var(--color-series-1)_14%,transparent)] text-[var(--color-series-1)]'
+                  ? 'border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] text-[var(--color-accent)]'
                   : 'border-[var(--color-hairline)] bg-[var(--color-surface)] text-[var(--color-ink-secondary)] hover:bg-[var(--color-plane)]',
               )}
             >
@@ -457,17 +505,11 @@ function Totals({ rendition }: { rendition: Rendition }) {
     },
   ];
   return (
-    <div className="grid grid-cols-1 gap-px border-b border-[var(--color-hairline)] bg-[var(--color-hairline)] sm:grid-cols-3">
+    <div className="grid grid-cols-1 gap-px overflow-hidden border-b border-[var(--color-hairline)] sm:grid-cols-3">
       {tiles.map((tile) => (
-        <div key={tile.label} className="bg-[var(--color-surface)] px-5 py-3">
-          <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
-            {tile.label}
-          </p>
-          <p className="tabular mt-1 text-xl font-semibold">{tile.value}</p>
-          {tile.note ? (
-            <p className="text-[11px] text-[var(--color-ink-muted)]">{tile.note}</p>
-          ) : null}
-        </div>
+        <StatCell key={tile.label}>
+          <Stat label={tile.label} value={tile.value} note={tile.note} size="lg" />
+        </StatCell>
       ))}
     </div>
   );
@@ -576,7 +618,7 @@ function Decision({ decision }: { decision: RenditionDecision }) {
           {decision.effectOnForm}
         </p>
         {decision.decidedAt ? (
-          <p className="mt-0.5 text-[11px] text-[var(--color-ink-muted)]">
+          <p className="mt-0.5 text-xs text-[var(--color-ink-muted)]">
             {decision.decidedBy ?? 'Nobody recorded'} ·{' '}
             {new Date(decision.decidedAt).toLocaleDateString()}
           </p>
@@ -610,7 +652,7 @@ function Schedules({ rendition }: { rendition: Rendition }) {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-[var(--color-hairline)] text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+                <tr className="text-2xs border-b border-[var(--color-hairline)] tracking-wide text-[var(--color-ink-muted)] uppercase">
                   <th className="px-5 py-2 text-left font-medium">Property type</th>
                   <th className="px-5 py-2 text-right font-medium">Year acquired</th>
                   <th className="px-5 py-2 text-right font-medium">Assets</th>
@@ -689,7 +731,7 @@ function Exclusions({ rendition }: { rendition: Rendition }) {
 }
 
 function Deadlines({ rendition }: { rendition: Rendition }) {
-  const today = new Date().toISOString().slice(0, 10);
+  const asOf = today();
   return (
     <Card>
       <CardHeader
@@ -698,7 +740,7 @@ function Deadlines({ rendition }: { rendition: Rendition }) {
       />
       <ul className="divide-y divide-[var(--color-hairline)]">
         {rendition.deadlines.map((deadline) => {
-          const past = deadline.date < today;
+          const past = deadline.date < asOf;
           return (
             <li key={deadline.key} className="flex items-start gap-3 px-5 py-2.5">
               <CalendarDays

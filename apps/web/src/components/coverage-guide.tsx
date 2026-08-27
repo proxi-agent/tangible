@@ -2,8 +2,9 @@
 
 import { BookOpen, ExternalLink, X } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import { Badge } from '@/components/ui/primitives';
+import { Badge, TextLink } from '@/components/ui/primitives';
 import { Button } from '@/components/ui/controls';
+import { Tooltip } from '@/components/ui/tooltip';
 import { cn } from '@/lib/cn';
 
 /**
@@ -247,7 +248,7 @@ const GUIDES: StateGuide[] = [
   },
 ];
 
-export function CoverageGuideButton({ className }: { className?: string }) {
+export function CoverageGuideButton() {
   const ref = useRef<HTMLDialogElement>(null);
 
   // Esc and the backdrop both close a native dialog for free; the only thing
@@ -267,17 +268,28 @@ export function CoverageGuideButton({ className }: { className?: string }) {
 
   return (
     <>
-      <Button
-        variant="secondary"
-        className={className}
-        onClick={() => {
-          ref.current?.showModal();
-          document.body.style.overflow = 'hidden';
-        }}
+      {/* The longest thing in the header bar, and the least urgent one. Spelled
+          out where there is room for it; shortened where spelling it out was
+          what pushed the assistant onto a second row and squeezed the
+          breadcrumb down to "Data sourc…". The tooltip says it in full either
+          way. */}
+      <Tooltip
+        title="What each state publishes"
+        content="Which states put business personal property on the public record, what each one's file contains, and where the counties that are missing here would come from."
       >
-        <BookOpen size={14} />
-        What each state publishes
-      </Button>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={() => {
+            ref.current?.showModal();
+            document.body.style.overflow = 'hidden';
+          }}
+        >
+          <BookOpen size={14} />
+          <span className="hidden 2xl:inline">What each state publishes</span>
+          <span className="2xl:hidden">Coverage</span>
+        </Button>
+      </Tooltip>
 
       <dialog
         ref={ref}
@@ -344,14 +356,9 @@ function StateSection({ guide }: { guide: StateGuide }) {
           <Label>Where it comes from</Label>
           <p className="mt-1 text-sm">
             {guide.source.url ? (
-              <a
-                href={guide.source.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-1 font-medium text-[var(--color-series-1)] hover:underline"
-              >
+              <TextLink href={guide.source.url} external>
                 {guide.source.label} <ExternalLink size={11} />
-              </a>
+              </TextLink>
             ) : (
               <span className="font-medium">{guide.source.label}</span>
             )}
@@ -377,7 +384,7 @@ function StateSection({ guide }: { guide: StateGuide }) {
           <ol className="mt-2 space-y-2.5">
             {guide.steps.map((step, index) => (
               <li key={step.title} className="flex gap-3">
-                <span className="tabular mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--color-plane)] text-[11px] font-semibold ring-1 ring-[var(--color-hairline)]">
+                <span className="tabular mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full bg-[var(--color-plane)] text-xs font-semibold ring-1 ring-[var(--color-hairline)]">
                   {index + 1}
                 </span>
                 <div className="min-w-0">
@@ -397,7 +404,7 @@ function StateSection({ guide }: { guide: StateGuide }) {
 
 function Label({ children }: { children: React.ReactNode }) {
   return (
-    <h4 className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+    <h4 className="text-2xs font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
       {children}
     </h4>
   );

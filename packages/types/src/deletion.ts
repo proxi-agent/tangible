@@ -31,6 +31,15 @@ export const DeletionCountsSchema = z.object({
    * description text, so the promise does not hold unless they go too.
    */
   memoryRows: z.number().int(),
+  /**
+   * Assistant turns that named this client.
+   *
+   * The assistant answers over the record, so a turn can quote register lines,
+   * a filed position, or a finding — all confidential under Tax Code 22.27.
+   * They hang off a conversation rather than off the client, so no cascade
+   * reaches them and the sweep has to name them.
+   */
+  assistantTurns: z.number().int(),
 });
 export type DeletionCounts = z.infer<typeof DeletionCountsSchema>;
 

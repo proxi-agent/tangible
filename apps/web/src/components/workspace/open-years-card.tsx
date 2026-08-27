@@ -8,7 +8,7 @@ import { api } from '@/lib/api';
 import { moneyExact, plural } from '@/lib/format';
 import { CorrectionRoutes } from '@/components/workspace/correction-routes';
 import { MotionDraftSection } from '@/components/workspace/motion-draft';
-import { Motions } from '@/components/workspace/correction-motions';
+import { FiledMotions, RecordMotion } from '@/components/workspace/correction-motions';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 
 /**
@@ -117,15 +117,22 @@ function Year({
         <span className="tabular font-semibold">{year.taxYear}</span>
         <span className="text-[var(--color-ink-secondary)]">{year.label}</span>
         {year.rolledValue !== null ? (
-          <span className="tabular text-[11px] text-[var(--color-ink-muted)]">
+          <span className="tabular text-xs text-[var(--color-ink-muted)]">
             {moneyExact(year.rolledValue)} on the roll
           </span>
         ) : null}
         <Source year={year} clientId={clientId} engagementId={engagementId} />
       </div>
       <CorrectionRoutes outlook={year.outlook} heading="What 25.25 leaves" />
-      {year.outlook.open ? <MotionDraftSection year={year} engagementId={engagementId} /> : null}
-      <Motions year={year} engagementId={engagementId} />
+      <FiledMotions year={year} engagementId={engagementId} />
+      {/* Drafting a motion and writing down one that has already gone in are two
+          different acts on the same year, not two steps of one. Stacked as
+          identical blocks they read as a sequence; side by side they read as the
+          choice they are. Either one, opened, takes the line to itself. */}
+      <div className="flex flex-wrap items-start gap-2">
+        {year.outlook.open ? <MotionDraftSection year={year} engagementId={engagementId} /> : null}
+        <RecordMotion year={year} engagementId={engagementId} />
+      </div>
     </li>
   );
 }
@@ -150,7 +157,7 @@ function Source({
     return (
       <Link
         href={`/clients/${clientId}/engagements/${engagementId}/priors/${year.documentId}`}
-        className="ml-auto text-[11px] text-[var(--color-ink-muted)] underline underline-offset-2 hover:text-[var(--color-ink)]"
+        className="ml-auto text-xs text-[var(--color-ink-muted)] underline underline-offset-2 hover:text-[var(--color-ink)]"
       >
         uploaded notice
       </Link>
@@ -161,10 +168,10 @@ function Source({
     // Saying so matters: the routes below are computed without a document, and
     // the reader should know that before relying on the value beside them.
     return (
-      <span className="ml-auto text-[11px] text-[var(--color-ink-muted)]">from a motion we filed</span>
+      <span className="ml-auto text-xs text-[var(--color-ink-muted)]">from a motion we filed</span>
     );
   }
-  return <span className="ml-auto text-[11px] text-[var(--color-ink-muted)]">recorded here</span>;
+  return <span className="ml-auto text-xs text-[var(--color-ink-muted)]">recorded here</span>;
 }
 
 /**
@@ -195,7 +202,7 @@ function Closed({
         <span className="text-[var(--color-ink-secondary)]">
           {years.length} {plural(years.length, 'year')} 25.25 can no longer reach
         </span>
-        <span className="ml-auto text-[11px] text-[var(--color-ink-muted)]">
+        <span className="ml-auto text-xs text-[var(--color-ink-muted)]">
           {open ? 'hide' : 'show'}
         </span>
       </button>

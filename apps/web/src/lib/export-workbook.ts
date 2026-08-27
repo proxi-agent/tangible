@@ -14,6 +14,7 @@ import { lookupRate } from '@/lib/analysis';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { buildEngagementRendition } from '@/lib/rendition';
 import { engagementReturns } from '@/lib/sites';
+import { today } from '@/lib/today';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -24,7 +25,12 @@ export interface EngagementWorkbook {
 
 /** Excel refuses sheet names over 31 chars or containing []:*?/\ — quietly fix both. */
 function sheetName(raw: string): string {
-  return raw.replace(/[[\]:*?/\\]/g, ' ').trim().slice(0, 31) || 'Sheet';
+  return (
+    raw
+      .replace(/[[\]:*?/\\]/g, ' ')
+      .trim()
+      .slice(0, 31) || 'Sheet'
+  );
 }
 
 /**
@@ -114,7 +120,7 @@ function summarySheet(
     ['Rendition workpapers'],
     ['Client', clientName],
     ['Tax year', taxYear],
-    ['Generated', new Date().toISOString().slice(0, 10)],
+    ['Generated', today()],
     ['Basis', 'Original cost (Tax Code 22.01)'],
     GAP,
     ['Return', 'District', 'Account', 'Historical cost', 'Schedule value', 'Blockers'],
@@ -281,9 +287,7 @@ async function assetSheet(engagementId: string): Promise<XLSX.WorkSheet> {
       refuse('Unclassified');
       continue;
     }
-    if (
-      !isValuable({ categoryKey: c.categoryKey, status: c.status as ClassificationStatus })
-    ) {
+    if (!isValuable({ categoryKey: c.categoryKey, status: c.status as ClassificationStatus })) {
       refuse('Awaiting review');
       continue;
     }
@@ -404,7 +408,8 @@ function findingsSheet(renditions: Rendition[], siteLabel: (i: number) => string
   }
 
   return sheet(rows, {
-    widths: renditions.length > 1 ? [22, 40, 14, 12, 18, 13, 13, 8, 80] : [40, 14, 12, 18, 13, 13, 8, 80],
+    widths:
+      renditions.length > 1 ? [22, 40, 14, 12, 18, 13, 13, 8, 80] : [40, 14, 12, 18, 13, 13, 8, 80],
     moneyCols: money,
   });
 }

@@ -1,7 +1,9 @@
-import Link from 'next/link';
+import { Download } from 'lucide-react';
 import type { FormAudience } from '@tangible/filing';
 import { buildFiledForm } from '@/lib/filings';
-import { Copy, FormSheet, Omissions } from '@/components/workspace/form-sheet';
+import { buttonClasses } from '@/components/ui/controls';
+import { BackLink, Card, CardHeader, Stat, StatCell, StatGrid } from '@/components/ui/primitives';
+import { Copy, CopyTrack, FormSheet, Omissions } from '@/components/workspace/form-sheet';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -44,35 +46,32 @@ export default async function FiledRenditionPage({
   return (
     <div className="mx-auto max-w-[850px] pb-16">
       <div className="mb-6 flex flex-wrap items-center gap-3 print:hidden">
-        <Link
-          href={`/clients/${clientId}/engagements/${filing.engagementId}/filing`}
-          className="text-sm text-[var(--color-ink-muted)] underline-offset-4 hover:underline"
-        >
-          ← Back to the draft
-        </Link>
-        <div className="ml-auto flex items-center gap-3">
+        <BackLink href={`/clients/${clientId}/engagements/${filing.engagementId}/filing`}>
+          Back to the draft
+        </BackLink>
+        <div className="ml-auto flex items-center gap-2">
           {/* Offered only where it can actually be produced. The alternative —
               a link that returns an error document — reads as a broken app on
               the one page whose whole job is to be dependable. */}
           {printed.blocked === null ? (
-            <a
-              href={`/api/filings/${filingId}/pdf`}
-              className="rounded-md border border-[var(--color-hairline)] px-2.5 py-1.5 text-[13px] hover:bg-[var(--color-surface-raised)]"
-            >
+            // A real `<a>`, not a `LinkButton`: routing a download through the
+            // client router loses the browser's own save behaviour.
+            <a href={`/api/filings/${filingId}/pdf`} className={buttonClasses('secondary', 'sm')}>
+              <Download size={13} strokeWidth={2} />
               Download the filed PDF
             </a>
           ) : (
             <span
-              className="rounded-md border border-[var(--color-hairline)] px-2.5 py-1.5 text-[13px] text-[var(--color-ink-muted)]"
+              className="inline-flex h-7 items-center rounded-[var(--radius-control)] border border-[var(--color-hairline)] px-2.5 text-xs text-[var(--color-ink-muted)]"
               title={printed.blocked}
             >
               No {printed.revision} PDF for {filing.taxYear}
             </span>
           )}
-          <div className="flex items-center gap-1 rounded-md border border-[var(--color-hairline)] p-0.5 text-[13px]">
+          <CopyTrack label="Which copy of this return">
             <Copy href={href('file')} active={audience === 'file'} label="File copy" />
             <Copy href={href('district')} active={audience === 'district'} label="District copy" />
-          </div>
+          </CopyTrack>
         </div>
       </div>
 
@@ -115,19 +114,43 @@ export default async function FiledRenditionPage({
         />
       ) : null}
 
-      <div className="mb-4 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-4 text-[13px] print:hidden">
-        <p className="font-semibold">
-          Filed {filing.filedOn} by {METHOD_LABEL[filing.method] ?? filing.method}
-          {filing.confirmation ? ` · ${filing.confirmation}` : ''}
-        </p>
-        <p className="mt-1 text-[var(--color-ink-muted)]">
-          {filing.locationLabel}
-          {filing.accountId ? ` · account ${filing.accountId}` : ' · no account number'} ·{' '}
-          {filing.assetCount} assets · signed as {filing.filedByAgent ? 'agent' : 'the owner'}
-          {filing.recordedBy ? ` · recorded by ${filing.recordedBy}` : ''}
-        </p>
-        {filing.note ? <p className="mt-1.5 leading-relaxed">{filing.note}</p> : null}
-      </div>
+      {/* The receipt. Every fact here is one somebody will be asked to produce
+          on its own — "which account", "how did it go", "who signed" — and they
+          had been run together into a single middot-separated line where the
+          answer has to be picked back out of the sentence. */}
+      <Card className="mb-4 print:hidden">
+        <CardHeader
+          title={`Filed ${filing.filedOn} by ${METHOD_LABEL[filing.method] ?? filing.method}`}
+          description={filing.confirmation ? `Confirmation ${filing.confirmation}` : undefined}
+        />
+        <StatGrid columns={5}>
+          <StatCell>
+            <Stat size="sm" label="Site" value={filing.locationLabel} />
+          </StatCell>
+          <StatCell>
+            <Stat
+              size="sm"
+              label="Account"
+              value={filing.accountId ?? '—'}
+              note={filing.accountId ? undefined : 'No account number'}
+            />
+          </StatCell>
+          <StatCell>
+            <Stat size="sm" label="Assets" value={filing.assetCount} />
+          </StatCell>
+          <StatCell>
+            <Stat size="sm" label="Signed as" value={filing.filedByAgent ? 'Agent' : 'The owner'} />
+          </StatCell>
+          <StatCell>
+            <Stat size="sm" label="Recorded by" value={filing.recordedBy ?? '—'} />
+          </StatCell>
+        </StatGrid>
+        {filing.note ? (
+          <p className="border-t border-[var(--color-hairline)] px-5 py-3 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+            {filing.note}
+          </p>
+        ) : null}
+      </Card>
 
       <FormSheet
         form={form}

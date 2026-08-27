@@ -251,23 +251,59 @@ export type MappingAsk = z.infer<typeof MappingAskSchema>;
  * into the next proposal as fact; 'dismissed' says a person decided the
  * question does not need the client.
  */
-export const MAPPING_ASK_STATUSES = ['open', 'answered', 'dismissed'] as const;
-export const MappingAskStatusSchema = z.enum(MAPPING_ASK_STATUSES);
-export type MappingAskStatus = z.infer<typeof MappingAskStatusSchema>;
+export const ASK_STATUSES = ['open', 'answered', 'dismissed'] as const;
+export const AskStatusSchema = z.enum(ASK_STATUSES);
+export type AskStatus = z.infer<typeof AskStatusSchema>;
 
-export const MappingAskRecordSchema = MappingAskSchema.extend({
+/**
+ * What raised the question.
+ *
+ * 'mapping' is the original kind: the model could not read a column and the
+ * import waits on the answer. 'finding' is a screening finding on the savings
+ * report — a position the register can see but cannot settle, where the missing
+ * fact is one the taxpayer holds. They are the same row because they are the
+ * same thing to the person answering: something we need to know.
+ */
+export const ASK_SOURCES = ['mapping', 'finding'] as const;
+export const AskSourceSchema = z.enum(ASK_SOURCES);
+export type AskSource = z.infer<typeof AskSourceSchema>;
+
+export const AskRecordSchema = MappingAskSchema.extend({
   id: z.string(),
-  farFileId: z.string(),
-  status: MappingAskStatusSchema,
+  source: AskSourceSchema,
+  /** Set on a mapping ask; null on a finding ask. */
+  farFileId: z.string().nullable(),
+  /** Set on a finding ask; null on a mapping ask. */
+  engagementId: z.string().nullable(),
+  /** The savings finding key this ask settles, on a finding ask. */
+  subject: z.string().nullable(),
+  status: AskStatusSchema,
   answer: z.string().nullable(),
   answeredAt: z.string().nullable(),
   createdAt: z.string(),
 });
-export type MappingAskRecord = z.infer<typeof MappingAskRecordSchema>;
+export type AskRecord = z.infer<typeof AskRecordSchema>;
+
+/**
+ * Raise the question a screening finding turns on.
+ *
+ * Keyed by `findingKey` and nothing else: a finding asks one question, and
+ * posting the same key twice returns the row that already exists rather than
+ * a second copy of a question somebody may already have answered. The wording
+ * travels with the request because the engine writes it — the ledger keeps
+ * what was actually asked, so a later change to that wording cannot silently
+ * rewrite the question an answer was given to.
+ */
+export const CreateAskRequestSchema = z.object({
+  findingKey: z.string().min(1).max(120),
+  question: z.string().trim().min(1).max(600),
+  why: z.string().trim().min(1).max(1000),
+});
+export type CreateAskRequest = z.infer<typeof CreateAskRequestSchema>;
 
 export const UpdateAskRequestSchema = z
   .object({
-    status: MappingAskStatusSchema,
+    status: AskStatusSchema,
     answer: z
       .string()
       .trim()
@@ -441,4 +477,20 @@ export type ConfirmMappingRequest = z.infer<typeof ConfirmMappingRequestSchema>;
 
 /** Upload constraints, shared by the dropzone and the route that enforces them. */
 export const FAR_UPLOAD_MAX_BYTES = 50 * 1024 * 1024;
+
+/**
+ * What a single request body may total, whatever the per-file ceiling says.
+ *
+ * Serverless platforms cap the request body — Vercel at 4.5 MB — and the cap
+ * is enforced at the edge, before any handler runs. A route checking file
+ * sizes therefore never sees an oversized drop at all: the upload is rejected
+ * with an HTML error page the app did not write and cannot annotate. Checking
+ * the total here is what lets the dropzone say "this batch is too large"
+ * *before* spending a minute uploading something that was never going to be
+ * accepted.
+ *
+ * A little under the true 4.5 MB, because multipart framing, filenames and
+ * headers all count toward what the platform measures.
+ */
+export const FAR_REQUEST_MAX_BYTES = 4 * 1024 * 1024;
 export const FAR_UPLOAD_EXTENSIONS = ['.xlsx', '.xls', '.xlsm', '.csv', '.tsv'] as const;

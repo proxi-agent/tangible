@@ -1,10 +1,9 @@
+import { AlertTriangle, OctagonAlert } from 'lucide-react';
 import Link from 'next/link';
-import type {
-  Form50144,
-  FormCheckbox,
-  FormFieldValue,
-  FormScheduleTable,
-} from '@tangible/filing';
+import type { ReactNode } from 'react';
+import type { Form50144, FormCheckbox, FormFieldValue, FormScheduleTable } from '@tangible/filing';
+import { cn } from '@/lib/cn';
+import { Callout } from '@/components/ui/primitives';
 
 /**
  * Form 50-144 as a sheet of paper.
@@ -28,8 +27,8 @@ export function FormSheet({
   return (
     <article className="rounded-lg border border-[var(--color-hairline)] bg-[var(--color-surface)] p-8 print:rounded-none print:border-0 print:p-0">
       <header className="border-b-2 border-[var(--color-ink)] pb-3">
-        <h1 className="text-[15px] leading-snug font-semibold">{form.formName}</h1>
-        <p className="mt-1 text-[13px] text-[var(--color-ink-muted)]">{subtitle}</p>
+        <h1 className="text-base leading-snug font-semibold">{form.formName}</h1>
+        <p className="mt-1 text-xs text-[var(--color-ink-muted)]">{subtitle}</p>
       </header>
 
       <Section title="Property owner">
@@ -60,8 +59,8 @@ export function FormSheet({
       ) : null}
 
       <Section title="Signature">
-        <p className="text-[13px] leading-relaxed">{form.signature.affirmation}</p>
-        <dl className="mt-4 grid grid-cols-[190px_1fr] gap-x-4 gap-y-2 text-[13px]">
+        <p className="text-xs leading-relaxed">{form.signature.affirmation}</p>
+        <dl className="mt-4 grid grid-cols-[190px_1fr] gap-x-4 gap-y-2 text-xs">
           <Row label="Signed by" value={form.signature.signerName || null} />
           <Row label="Capacity" value={form.signature.capacityLabel} />
           <Row
@@ -74,7 +73,7 @@ export function FormSheet({
           <Rule label="Signature" />
           <Rule label="Date" />
         </div>
-        <p className="mt-6 text-[12px] leading-relaxed text-[var(--color-ink-muted)]">
+        <p className="mt-6 text-xs leading-relaxed text-[var(--color-ink-muted)]">
           {form.signature.penaltyNotice}
         </p>
       </Section>
@@ -82,15 +81,39 @@ export function FormSheet({
   );
 }
 
+/**
+ * The track the copy and site switchers sit in.
+ *
+ * Both form screens had inlined this as a bare bordered row — no fill behind
+ * the choices, so the switcher read as two loose links rather than as one
+ * control with a current position. It is the same shape as `Segmented`, which
+ * is what it is: a segmented control whose options happen to be URLs.
+ */
+export function CopyTrack({ children, label }: { children: ReactNode; label: string }) {
+  return (
+    <div
+      role="group"
+      aria-label={label}
+      className="inline-flex items-center gap-0.5 rounded-[var(--radius-control)] border border-[var(--color-hairline)] bg-[var(--color-sunken)] p-0.5"
+    >
+      {children}
+    </div>
+  );
+}
+
 export function Copy({ href, active, label }: { href: string; active: boolean; label: string }) {
   return (
     <Link
       href={href}
-      className={
+      aria-current={active ? 'page' : undefined}
+      className={cn(
+        'inline-flex h-7 items-center justify-center rounded-[calc(var(--radius-control)-2px)] px-2.5',
+        'text-xs font-medium transition-colors outline-none focus-visible:ring-[3px]',
+        'focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
         active
-          ? 'rounded bg-[var(--color-ink)] px-2.5 py-1 font-medium text-[var(--color-surface)]'
-          : 'rounded px-2.5 py-1 text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]'
-      }
+          ? 'bg-[var(--color-surface)] text-[var(--color-ink)] shadow-[var(--shadow-card)]'
+          : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]',
+      )}
     >
       {label}
     </Link>
@@ -106,34 +129,35 @@ export function Omissions({
   title: string;
   items: string[];
 }) {
-  const color = tone === 'critical' ? 'var(--color-critical)' : 'var(--color-warning)';
+  // The same callout the rest of the app uses for the same thing. It had been
+  // a second implementation with its own colour arithmetic, which drifted: a
+  // blocking omission on this screen was tinted differently from a blocking
+  // one on the draft screen it came from.
   return (
-    <div
-      className="mb-4 rounded-md border p-4 print:hidden"
-      style={{
-        borderColor: `color-mix(in oklab, ${color} 40%, transparent)`,
-        background: `color-mix(in oklab, ${color} 8%, transparent)`,
-      }}
+    <Callout
+      tone={tone}
+      title={title}
+      icon={tone === 'critical' ? OctagonAlert : AlertTriangle}
+      className="mb-4 print:hidden"
     >
-      <p className="text-[13px] font-semibold">{title}</p>
-      <ul className="mt-2 space-y-1.5 text-[13px] leading-relaxed">
+      <ul className="mt-1 space-y-1">
         {items.map((item) => (
           <li key={item} className="flex gap-2">
-            <span aria-hidden="true" style={{ color }}>
+            <span aria-hidden="true" className="text-[var(--color-ink-muted)]">
               ·
             </span>
             <span>{item}</span>
           </li>
         ))}
       </ul>
-    </div>
+    </Callout>
   );
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-7 break-inside-avoid">
-      <h2 className="mb-2.5 text-[11px] font-semibold tracking-[0.08em] text-[var(--color-ink-muted)] uppercase">
+      <h2 className="text-2xs mb-2.5 font-semibold tracking-[0.08em] text-[var(--color-ink-muted)] uppercase">
         {title}
       </h2>
       {children}
@@ -143,7 +167,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 function Fields({ fields }: { fields: FormFieldValue[] }) {
   return (
-    <dl className="grid grid-cols-[190px_1fr] gap-x-4 gap-y-2 text-[13px]">
+    <dl className="grid grid-cols-[190px_1fr] gap-x-4 gap-y-2 text-xs">
       {fields.map((field) => (
         <Row key={field.label} label={field.label} value={field.value} note={field.note} />
       ))}
@@ -163,7 +187,7 @@ function Row({ label, value, note }: { label: string; value: string | null; note
           <span className="whitespace-pre-line">{value}</span>
         )}
         {note ? (
-          <span className="mt-0.5 block text-[12px] text-[var(--color-ink-muted)]">{note}</span>
+          <span className="mt-0.5 block text-xs text-[var(--color-ink-muted)]">{note}</span>
         ) : null}
       </dd>
     </>
@@ -172,19 +196,19 @@ function Row({ label, value, note }: { label: string; value: string | null; note
 
 function Boxes({ boxes }: { boxes: FormCheckbox[] }) {
   return (
-    <ul className="space-y-1.5 text-[13px]">
+    <ul className="space-y-1.5 text-xs">
       {boxes.map((box) => (
         <li key={box.label} className="flex gap-2.5">
           <span
             aria-hidden="true"
-            className="mt-[2px] grid h-[15px] w-[15px] shrink-0 place-items-center border border-[var(--color-ink)] text-[11px] leading-none"
+            className="mt-[2px] grid h-[15px] w-[15px] shrink-0 place-items-center border border-[var(--color-ink)] text-xs leading-none"
           >
             {box.checked ? '✕' : ''}
           </span>
           <span className={box.checked ? 'font-medium' : 'text-[var(--color-ink-muted)]'}>
             {box.label}
             {box.basis ? (
-              <span className="mt-0.5 block text-[12px] font-normal text-[var(--color-ink-muted)]">
+              <span className="mt-0.5 block text-xs font-normal text-[var(--color-ink-muted)]">
                 {box.basis}
               </span>
             ) : null}
@@ -198,14 +222,14 @@ function Boxes({ boxes }: { boxes: FormCheckbox[] }) {
 function Schedule({ schedule }: { schedule: FormScheduleTable }) {
   return (
     <section className="mt-7 break-inside-avoid">
-      <h2 className="text-[13px] font-semibold">{schedule.title}</h2>
-      <p className="mt-0.5 mb-2 text-[12px] leading-relaxed text-[var(--color-ink-muted)]">
+      <h2 className="text-xs font-semibold">{schedule.title}</h2>
+      <p className="mt-0.5 mb-2 text-xs leading-relaxed text-[var(--color-ink-muted)]">
         {schedule.instruction}
       </p>
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse text-[13px] tabular-nums">
+        <table className="w-full border-collapse text-xs tabular-nums">
           <thead>
-            <tr className="border-y border-[var(--color-hairline)] text-left text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+            <tr className="text-2xs border-y border-[var(--color-hairline)] text-left tracking-wide text-[var(--color-ink-muted)] uppercase">
               <th className="py-1.5 pr-3 font-medium">Type</th>
               <th className="py-1.5 pr-3 font-medium">Year</th>
               <th className="py-1.5 pr-3 text-right font-medium">Historical cost</th>
@@ -243,7 +267,7 @@ function Schedule({ schedule }: { schedule: FormScheduleTable }) {
         </table>
       </div>
       {schedule.continuationRows > 0 ? (
-        <p className="mt-1.5 text-[12px] text-[var(--color-ink-muted)]">
+        <p className="mt-1.5 text-xs text-[var(--color-ink-muted)]">
           The printed table on the form holds {schedule.rows.length - schedule.continuationRows} of
           these lines. The remaining {schedule.continuationRows} are filed as an attached
           continuation to this schedule; the total above covers every line either way.
@@ -257,7 +281,7 @@ function Rule({ label }: { label: string }) {
   return (
     <div>
       <div className="h-8 border-b border-[var(--color-ink)]" />
-      <span className="mt-1 block text-[11px] text-[var(--color-ink-muted)]">{label}</span>
+      <span className="mt-1 block text-xs text-[var(--color-ink-muted)]">{label}</span>
     </div>
   );
 }

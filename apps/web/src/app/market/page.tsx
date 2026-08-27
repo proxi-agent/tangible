@@ -10,8 +10,15 @@ import {
 import { TrendCharts } from '@/components/charts/trend-charts';
 import { OpportunityPanel } from '@/components/opportunity-panel';
 import { SegmentTiles } from '@/components/segment-tiles';
-import { Card, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
-import { InfoTip } from '@/components/ui/tooltip';
+import {
+  Card,
+  EmptyState,
+  ErrorState,
+  Skeleton,
+  Stat,
+  StatCell,
+  StatGrid,
+} from '@/components/ui/primitives';
 import { useScope } from '@/hooks/use-scope';
 import { api } from '@/lib/api';
 import { count, money, moneyExact, percent } from '@/lib/format';
@@ -118,7 +125,7 @@ function Overview() {
           stateCode={scope.current?.state ?? ''}
         />
       ) : (
-        <Skeleton className="h-28 w-full" />
+        <HeadlineSkeleton />
       )}
 
       {trend.data && trend.data.length > 1 ? (
@@ -194,88 +201,116 @@ function Headline({
   const filingKnown = filingRate !== null;
 
   return (
-    <Card className="p-6">
-      <p className="text-xs font-medium tracking-wide text-[var(--color-ink-secondary)] uppercase">
-        {jurisdictionName} · tax year {taxYear}
-      </p>
+    <Card padded={false}>
+      <div className="p-6">
+        <p className="eyebrow">
+          {jurisdictionName} · tax year {taxYear}
+        </p>
 
-      {filingKnown ? (
-        <>
-          <p className="mt-3 max-w-3xl text-2xl leading-snug font-semibold tracking-tight sm:text-3xl">
-            <span className="text-[var(--color-series-2)]">{money(totalPenalty)}</span> a year in
-            avoidable penalties, across {count(taxableAccounts)} business locations that owe tax on
-            their equipment.
-          </p>
-          <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[var(--color-ink-secondary)]">
-            {RULE_BY_STATE[stateCode] ?? RULE_BY_STATE.default}
-          </p>
-        </>
-      ) : (
-        <>
-          <p className="mt-3 max-w-3xl text-2xl leading-snug font-semibold tracking-tight sm:text-3xl">
-            <span className="text-[var(--color-series-1)]">{money(taxableValue)}</span> of taxable
-            business personal property across {count(taxableAccounts)} accounts.
-          </p>
-          <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[var(--color-ink-secondary)]">
-            Penalty exposure cannot be measured here — this district does not publish whether a
-            rendition was filed.
-          </p>
-        </>
-      )}
+        {filingKnown ? (
+          <>
+            <h1 className="mt-3 max-w-3xl text-2xl leading-snug font-semibold tracking-tight sm:text-3xl">
+              <span className="text-[var(--color-series-2)]">{money(totalPenalty)}</span> a year in
+              avoidable penalties, across {count(taxableAccounts)} business locations that owe tax
+              on their equipment.
+            </h1>
+            <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+              {RULE_BY_STATE[stateCode] ?? RULE_BY_STATE.default}
+            </p>
+          </>
+        ) : (
+          <>
+            <h1 className="mt-3 max-w-3xl text-2xl leading-snug font-semibold tracking-tight sm:text-3xl">
+              <span className="text-[var(--color-accent)]">{money(taxableValue)}</span> of taxable
+              business personal property across {count(taxableAccounts)} accounts.
+            </h1>
+            <p className="mt-2 max-w-2xl text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+              Penalty exposure cannot be measured here — this district does not publish whether a
+              rendition was filed.
+            </p>
+          </>
+        )}
+      </div>
 
-      <dl className="mt-5 flex flex-wrap gap-x-8 gap-y-3">
-        <Stat
-          label="Businesses on file"
-          value={count(totalAccounts)}
-          help="Every business location the county has recorded equipment for this year, including the small ones that owe nothing."
-        />
-        <Stat
-          label="Big enough to tax"
-          value={`${count(taxableAccounts)} (${percent(totalAccounts ? taxableAccounts / totalAccounts : null, 0)})`}
-          help="Locations whose equipment is worth more than the exemption, so they actually owe tax — and can therefore owe a penalty."
-        />
-        <Stat
-          label="Filed on time"
-          value={filingKnown ? percent(filingRate) : 'Not published'}
-          help="The share that sent the county their annual equipment declaration. Some counties do not release this field at all."
-        />
-        <Stat
-          label="Exemption"
-          value={moneyExact(exemption)}
-          help={
-            stateCode === 'FL'
-              ? 'Own less equipment than this and you owe nothing. Florida has held the tangible personal property exemption at $25,000 since 2008, and most accounts on the roll fall under it.'
-              : stateCode === 'TX'
-                ? 'Own less equipment than this and you owe nothing. Texas raised it from $2,500 to $125,000 in 2026, which removes most of the roll from the tax base.'
-                : 'Own less equipment than this and you owe nothing. The threshold is set by state statute and changes when the legislature changes it.'
-          }
-        />
-        <Stat
-          label="Tax rate"
-          value={percent(taxRate, 2)}
-          help="A blended rate across the taxing units in this county — city, county, school district and so on. Every dollar figure on this page is an estimate built on it."
-        />
-      </dl>
+      <StatGrid columns={5} className="border-t border-[var(--color-hairline)]">
+        <StatCell>
+          <Stat
+            label="Businesses on file"
+            value={count(totalAccounts)}
+            help="Every business location the county has recorded equipment for this year, including the small ones that owe nothing."
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Big enough to tax"
+            value={`${count(taxableAccounts)} (${percent(totalAccounts ? taxableAccounts / totalAccounts : null, 0)})`}
+            help="Locations whose equipment is worth more than the exemption, so they actually owe tax — and can therefore owe a penalty."
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Filed on time"
+            value={filingKnown ? percent(filingRate) : 'Not published'}
+            help="The share that sent the county their annual equipment declaration. Some counties do not release this field at all."
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Exemption"
+            value={moneyExact(exemption)}
+            help={
+              stateCode === 'FL'
+                ? 'Own less equipment than this and you owe nothing. Florida has held the tangible personal property exemption at $25,000 since 2008, and most accounts on the roll fall under it.'
+                : stateCode === 'TX'
+                  ? 'Own less equipment than this and you owe nothing. Texas raised it from $2,500 to $125,000 in 2026, which removes most of the roll from the tax base.'
+                  : 'Own less equipment than this and you owe nothing. The threshold is set by state statute and changes when the legislature changes it.'
+            }
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Tax rate"
+            value={percent(taxRate, 2)}
+            help="A blended rate across the taxing units in this county — city, county, school district and so on. Every dollar figure on this page is an estimate built on it."
+          />
+        </StatCell>
+      </StatGrid>
     </Card>
   );
 }
 
-function Stat({ label, value, help }: { label: string; value: string; help: string }) {
+/**
+ * The headline card's outline, not a rectangle where it goes.
+ *
+ * The county scope resolves before anything can be asked for, and on a cold
+ * start that is several seconds of screen. A plain slab says only "wait"; the
+ * shape of the sentence and the five figures under it says what is arriving.
+ */
+function HeadlineSkeleton() {
   return (
-    <div>
-      <dt className="flex items-center gap-1 text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">
-        {label}
-        <InfoTip title={label} content={help} size={11} />
-      </dt>
-      <dd className="tabular mt-0.5 text-sm font-semibold">{value}</dd>
-    </div>
+    <Card padded={false}>
+      <div className="space-y-3 p-6">
+        <Skeleton className="h-2.5 w-44" />
+        <Skeleton className="h-7 w-full max-w-2xl" />
+        <Skeleton className="h-7 w-3/5 max-w-lg" />
+        <Skeleton className="h-3.5 w-full max-w-xl" />
+      </div>
+      <div className="grid grid-cols-2 border-t border-[var(--color-hairline)] sm:grid-cols-5">
+        {Array.from({ length: 5 }, (_, index) => (
+          <div key={index} className="space-y-2 px-4 py-3.5">
+            <Skeleton className="h-2.5 w-24" />
+            <Skeleton className="h-5 w-16" />
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
 function PageSkeleton() {
   return (
     <div className="space-y-6">
-      <Skeleton className="h-40 w-full" />
+      <HeadlineSkeleton />
       <div className="grid gap-4 lg:grid-cols-2">
         <Skeleton className="h-72" />
         <Skeleton className="h-72" />

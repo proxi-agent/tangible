@@ -19,6 +19,7 @@ import { ExtensionPanel } from '@/components/workspace/extension-panel';
 import { NoticePanel } from '@/components/workspace/notice-panel';
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
+import { daysUntil, today } from '@/lib/today';
 
 /**
  * The season: every return this engagement owes, and where each one stands.
@@ -144,7 +145,15 @@ function UnblockPlanSection({ engagementId }: { engagementId: string }) {
             content="Drafting turns the blockers above into a worked plan: what the firm does here, what needs the client, and one draft email that asks for all of it. Nothing is sent — the email is yours to copy."
           />
         </span>
-        <Button variant="ghost" onClick={() => draft.mutate()} disabled={draft.isPending}>
+        {/* A real button, not a ghost. This is the one action on the panel and
+            it sat as grey prose at the end of the heading row, where it read
+            as part of the title rather than as something to press. */}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => draft.mutate()}
+          disabled={draft.isPending}
+        >
           {draft.isPending
             ? 'Drafting…'
             : record
@@ -154,7 +163,7 @@ function UnblockPlanSection({ engagementId }: { engagementId: string }) {
       </div>
 
       {draft.isError ? (
-        <p className="text-[11px] text-[var(--color-critical)]">
+        <p className="text-xs text-[var(--color-critical)]">
           {draft.error instanceof Error ? draft.error.message : 'The draft failed.'}
         </p>
       ) : null}
@@ -162,7 +171,7 @@ function UnblockPlanSection({ engagementId }: { engagementId: string }) {
       {record ? (
         <UnblockPlanBody record={record} />
       ) : query.isLoading ? null : (
-        <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+        <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
           Each blocker above says what clears it; drafting turns the list into a worked plan.
         </p>
       )}
@@ -175,7 +184,7 @@ function UnblockPlanBody({ record }: { record: UnblockPlanRecord }) {
   const firm = plan.steps.filter((step) => step.owner === 'firm');
   const client = plan.steps.filter((step) => step.owner === 'client');
   return (
-    <div className="space-y-2 text-[11px] leading-relaxed">
+    <div className="space-y-2 text-xs leading-relaxed">
       <p className="text-[var(--color-ink-muted)]">
         Drafted {dayShort(record.createdAt.slice(0, 10))} from the board as it stood then — redraft
         after clearing anything.
@@ -452,7 +461,7 @@ function Toggle({
       type="button"
       onClick={onClick}
       aria-expanded={open}
-      className="cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline"
+      className="inline-flex cursor-pointer items-center text-xs font-medium text-[var(--color-ink-secondary)] hover:underline pointer-coarse:min-h-8"
     >
       {children}
     </button>
@@ -538,22 +547,6 @@ function Protest({ entry, taxYear }: { entry: SeasonReturn; taxYear: number }) {
 }
 
 /** Today in UTC, to compare against dates that are dates rather than instants. */
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
-/**
- * Whole days from today to an ISO date, in UTC on both sides.
- *
- * The same rule the season uses on the server. A statutory date is a date, not
- * an instant, and subtracting a local midnight from a UTC one is how a deadline
- * reads as a day nearer or further depending on the reader's timezone.
- */
-function daysUntil(iso: string): number {
-  const now = new Date();
-  const from = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return Math.round((Date.parse(`${iso}T00:00:00Z`) - from) / 86_400_000);
-}
 
 /**
  * The date this one return is working to.

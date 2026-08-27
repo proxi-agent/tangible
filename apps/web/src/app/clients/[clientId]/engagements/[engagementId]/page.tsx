@@ -3,7 +3,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { ColumnDef, SortingState } from '@tanstack/react-table';
 import {
-  ArrowLeft,
   FileCheck,
   FileSpreadsheet,
   FileText,
@@ -12,7 +11,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { useParams, usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import type { Asset, AssetSortField, Engagement, EngagementDetail, FarFile } from '@tangible/types';
 import { FAR_UPLOAD_EXTENSIONS } from '@tangible/types';
 import { lookupSicProfile, scheduledJurisdictions, TX_HARRIS_2026 } from '@tangible/valuation';
@@ -21,6 +20,7 @@ import { cn } from '@/lib/cn';
 import { count, money, moneyExact, plural } from '@/lib/format';
 import { FarFileStatusBadge } from '@/components/workspace/badges';
 import { CarryForwardCard } from '@/components/workspace/carry-forward-card';
+import { DownloadButton } from '@/components/workspace/download-button';
 import { EngagementPipeline } from '@/components/workspace/engagement-pipeline';
 import { ClassificationCard } from '@/components/workspace/classification-card';
 import { FindingsCard } from '@/components/workspace/findings-card';
@@ -34,12 +34,15 @@ import { ValuationCard } from '@/components/workspace/valuation-card';
 import { Button, ChipGroup, Select, TextInput } from '@/components/ui/controls';
 import { DataTable } from '@/components/ui/data-table';
 import {
+  BackLink,
   Badge,
   Card,
   CardHeader,
   EmptyState,
   ErrorState,
+  PageHeader,
   Skeleton,
+  Stat,
 } from '@/components/ui/primitives';
 import { Tooltip } from '@/components/ui/tooltip';
 
@@ -105,54 +108,52 @@ export default function EngagementPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <Link
-          href={`/clients/${clientId}`}
-          className="flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-        >
-          <ArrowLeft size={13} strokeWidth={2} />
-          {data.client.name}
-        </Link>
-        <h1 className="text-lg font-semibold tracking-tight">Tax year {data.engagement.taxYear}</h1>
-        <JurisdictionPicker engagement={data.engagement} />
-        <SicField engagement={data.engagement} />
-        {/*
+      <PageHeader
+        back={<BackLink href={`/clients/${clientId}`}>{data.client.name}</BackLink>}
+        title={`Tax year ${data.engagement.taxYear}`}
+        meta={
+          <>
+            <JurisdictionPicker engagement={data.engagement} />
+            <SicField engagement={data.engagement} />
+          </>
+        }
+        actions={
+          <>
+            {/*
           Ungated on purpose: asking an empty record is a fair thing to do, and
           it answers that the record is empty rather than hiding the door.
         */}
-        <Link href={`/clients/${clientId}/engagements/${engagementId}/ask`} className="ml-auto">
-          <Button>
-            <MessageCircleQuestion size={14} strokeWidth={2} />
-            Ask the record
-          </Button>
-        </Link>
-        {data.classification.classifiedCount > 0 ? (
-          <Link href={`/clients/${clientId}/engagements/${engagementId}/report`}>
-            <Button variant="primary">
-              <FileText size={14} strokeWidth={2} />
-              Savings report
-            </Button>
-          </Link>
-        ) : null}
-        {data.classification.classifiedCount > 0 ? (
-          <Link href={`/clients/${clientId}/engagements/${engagementId}/filing`}>
-            <Button>
-              <FileCheck size={14} strokeWidth={2} />
-              Rendition
-            </Button>
-          </Link>
-        ) : null}
-        {data.classification.classifiedCount > 0 ? (
-          // A plain anchor on purpose: the response is a file, and routing it
-          // through the client-side router would download nothing.
-          <a href={`/api/engagements/${engagementId}/export`} download>
-            <Button>
-              <FileSpreadsheet size={14} strokeWidth={2} />
-              Excel
-            </Button>
-          </a>
-        ) : null}
-      </div>
+            <Link href={`/clients/${clientId}/engagements/${engagementId}/ask`}>
+              <Button>
+                <MessageCircleQuestion size={14} strokeWidth={2} />
+                Ask the record
+              </Button>
+            </Link>
+            {data.classification.classifiedCount > 0 ? (
+              <Link href={`/clients/${clientId}/engagements/${engagementId}/report`}>
+                <Button variant="primary">
+                  <FileText size={14} strokeWidth={2} />
+                  Savings report
+                </Button>
+              </Link>
+            ) : null}
+            {data.classification.classifiedCount > 0 ? (
+              <Link href={`/clients/${clientId}/engagements/${engagementId}/filing`}>
+                <Button>
+                  <FileCheck size={14} strokeWidth={2} />
+                  Rendition
+                </Button>
+              </Link>
+            ) : null}
+            {data.classification.classifiedCount > 0 ? (
+              <DownloadButton href={`/api/engagements/${engagementId}/export`}>
+                <FileSpreadsheet size={14} strokeWidth={2} />
+                Excel
+              </DownloadButton>
+            ) : null}
+          </>
+        }
+      />
 
       <TabNav tab={tab} tabHref={tabHref} />
       <TabBody
@@ -168,7 +169,10 @@ export default function EngagementPage() {
 
 function TabNav({ tab, tabHref }: { tab: TabId; tabHref: (id: string) => string }) {
   return (
-    <nav className="flex flex-wrap gap-1 border-b border-[var(--color-hairline)] pb-px" aria-label="Engagement sections">
+    <nav
+      className="flex flex-wrap gap-1 border-b border-[var(--color-hairline)] pb-px"
+      aria-label="Engagement sections"
+    >
       {TABS.map((entry) => (
         <Link
           key={entry.id}
@@ -323,7 +327,11 @@ function TabBody({
             <Card>
               <EmptyState title="No prior years on file">
                 Upload a prior rendition or notice under{' '}
-                <Link href={tabHref('intake')} scroll={false} className="font-medium hover:underline">
+                <Link
+                  href={tabHref('intake')}
+                  scroll={false}
+                  className="font-medium hover:underline"
+                >
                   Intake
                 </Link>{' '}
                 and this becomes the back catalogue: which closed years Tax Code 25.25 can still
@@ -362,7 +370,7 @@ function JurisdictionPicker({ engagement }: { engagement: Engagement }) {
         onChange={(e) => update.mutate(e.target.value)}
         disabled={update.isPending}
         aria-label="Jurisdiction"
-        className="h-8 text-xs"
+        compact
       >
         <option value="">Jurisdiction not set</option>
         {JURISDICTIONS.map((j) => (
@@ -376,9 +384,7 @@ function JurisdictionPicker({ engagement }: { engagement: Engagement }) {
           title="Why this matters"
           content="Business personal property is assessed where it sits on January 1, and each district publishes its own depreciation schedules. Nothing can be valued until this is set."
         >
-          <span className="cursor-help text-[11px] text-[var(--color-warning)]">
-            needed to value
-          </span>
+          <span className="cursor-help text-xs text-[var(--color-warning)]">needed to value</span>
         </Tooltip>
       ) : null}
     </div>
@@ -395,6 +401,7 @@ function JurisdictionPicker({ engagement }: { engagement: Engagement }) {
  * district's answer, and the report says which one applied.
  */
 function SicField({ engagement }: { engagement: Engagement }) {
+  const fieldId = useId();
   const queryClient = useQueryClient();
   const [value, setValue] = useState(engagement.sicCode ?? '');
   const update = useMutation({
@@ -416,27 +423,33 @@ function SicField({ engagement }: { engagement: Engagement }) {
         update.mutate(value.trim());
       }}
     >
+      {/* A filled field shows a bare four-digit number and nothing else — the
+          placeholder that explained it is gone the moment it is answered. The
+          label stays. */}
+      <label htmlFor={fieldId} className="eyebrow cursor-pointer">
+        SIC
+      </label>
       <TextInput
-        placeholder="SIC"
+        id={fieldId}
+        placeholder="0000"
         value={value}
         onChange={(e) => setValue(e.target.value)}
         onBlur={() => {
           if (value.trim() !== (engagement.sicCode ?? '')) update.mutate(value.trim());
         }}
-        aria-label="SIC code"
-        className="h-8 w-24 text-xs"
+        className="tabular h-8 w-20 text-xs"
       />
       {profile ? (
         <Tooltip
           title={`SIC ${profile.sic}`}
           content={`${profile.profile.description} — machinery depreciates on a ${profile.profile.machineryLife}-year life in this district.`}
         >
-          <span className="max-w-40 cursor-help truncate text-[11px] text-[var(--color-ink-muted)]">
+          <span className="max-w-40 cursor-help truncate text-xs text-[var(--color-ink-muted)]">
             {profile.profile.machineryLife}yr · {profile.profile.description.toLowerCase()}
           </span>
         </Tooltip>
       ) : value.trim() ? (
-        <span className="text-[11px] text-[var(--color-warning)]">not in the guide</span>
+        <span className="text-xs text-[var(--color-warning)]">not in the guide</span>
       ) : null}
     </form>
   );
@@ -456,10 +469,7 @@ function StatsRow({ detail }: { detail: EngagementDetail }) {
     <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
       {tiles.map((tile) => (
         <Card key={tile.label} className="px-4 py-3">
-          <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
-            {tile.label}
-          </p>
-          <p className="tabular mt-1 text-lg font-semibold">{tile.value}</p>
+          <Stat label={tile.label} value={tile.value} />
         </Card>
       ))}
     </div>
@@ -521,10 +531,10 @@ function FilesCard({
             // two hero-sized dropzones ask a first-time user to pick a pipeline.
             // This strip is the shortcut for a file already known to be a register.
             'flex w-full cursor-pointer flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-lg border border-dashed px-4 py-2.5 text-xs transition-colors outline-none',
-            'focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
+            'focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
             dragging
-              ? 'border-[var(--color-series-1)] bg-[color-mix(in_oklab,var(--color-series-1)_8%,transparent)]'
-              : 'border-[var(--color-hairline)] hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)] hover:bg-[var(--color-plane)]',
+              ? 'border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_8%,transparent)]'
+              : 'border-[var(--color-hairline)] hover:border-[color-mix(in_oklab,var(--color-accent)_45%,transparent)] hover:bg-[var(--color-plane)]',
           )}
         >
           <UploadCloud size={14} strokeWidth={1.8} className="text-[var(--color-ink-muted)]" />
@@ -535,7 +545,7 @@ function FilesCard({
               <span className="font-medium">
                 Already know it&rsquo;s a register? Drop it here to skip triage
               </span>
-              <span className="text-[11px] text-[var(--color-ink-muted)]">
+              <span className="text-xs text-[var(--color-ink-muted)]">
                 {FAR_UPLOAD_EXTENSIONS.join(' · ')}
               </span>
             </>
@@ -645,7 +655,7 @@ function AssetsCard({
     offset,
   };
 
-  const { data, error } = useQuery({
+  const { data, error, isPending } = useQuery({
     queryKey: ['engagement-assets', engagementId, query],
     queryFn: () => api.engagementAssets(engagementId, query),
     placeholderData: (previous) => previous,
@@ -676,7 +686,7 @@ function AssetsCard({
         <div className="max-w-96">
           <Link
             href={`/clients/${clientId}/engagements/${engagementId}/assets/${row.original.id}`}
-            className="block truncate hover:text-[var(--color-series-1)] hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-series-1)]"
+            className="block truncate hover:text-[var(--color-accent)] hover:underline focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)]"
             title={row.original.description ?? undefined}
           >
             {row.original.description ?? '—'}
@@ -692,7 +702,7 @@ function AssetsCard({
                 </ul>
               }
             >
-              <span className="cursor-help text-[11px] text-[var(--color-warning)]">
+              <span className="cursor-help text-xs text-[var(--color-warning)]">
                 {row.original.warnings.length} {plural(row.original.warnings.length, 'warning')}
               </span>
             </Tooltip>
@@ -772,8 +782,10 @@ function AssetsCard({
             setOffset(0);
             setSorting(next);
           }}
+          maxHeight="max(26rem, calc(100vh - 20rem))"
           pagination={{ offset, limit, total: data?.total ?? detail.stats.assetCount }}
           onOffsetChange={setOffset}
+          loading={isPending}
           empty={{ title: 'Nothing matches these filters' }}
         />
       )}

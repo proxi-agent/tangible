@@ -13,6 +13,7 @@ import type {
 } from '@tangible/types';
 import { currentActor } from '@/lib/actor';
 import { HttpError, notFound } from '@/lib/route';
+import { today } from '@/lib/today';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -40,8 +41,8 @@ export async function clientMotions(clientId: string): Promise<CorrectionMotion[
     .where(eq(schema.engagements.clientId, clientId))
     .orderBy(desc(schema.correctionMotions.subjectTaxYear), desc(schema.correctionMotions.filedOn));
 
-  const today = new Date().toISOString().slice(0, 10);
-  return rows.map((row) => hydrate(row.motion, row.clientId, today));
+  const asOf = today();
+  return rows.map((row) => hydrate(row.motion, row.clientId, asOf));
 }
 
 /**
@@ -53,9 +54,7 @@ export async function clientMotions(clientId: string): Promise<CorrectionMotion[
  * the subsection is about a motion that ended.
  */
 export function spentBy(motions: readonly CorrectionMotion[]): CorrectionMotionOutcome | null {
-  const ended = motions.filter(
-    (motion) => motion.status === 'recorded' && motion.outcome !== null,
-  );
+  const ended = motions.filter((motion) => motion.status === 'recorded' && motion.outcome !== null);
   const spending = ended.find((motion) => motion.standing.barsAnother);
   if (spending) return spending.outcome;
   return ended.length > 0 ? 'withdrawn' : null;
@@ -229,10 +228,6 @@ export async function voidMotion(
     .returning();
   if (!row) throw new HttpError(500, 'The motion was not voided.');
   return hydrate(row, found.clientId, today());
-}
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
 }
 
 function facts(row: CorrectionMotionRow): CorrectionMotionFacts {

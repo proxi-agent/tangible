@@ -1,73 +1,217 @@
 @import 'tailwindcss';
 
 /*
- * Design tokens.
+ * ─────────────────────────────────────────────────────────────────────────────
+ * Design tokens
+ * ─────────────────────────────────────────────────────────────────────────────
  *
- * Chart colors, surfaces and ink follow the validated reference palette — the
- * categorical slots are used in fixed order and never cycled, so a series keeps
- * its color when a filter changes the set. Dark mode is a selected set of steps
- * for the dark surface, not an inverted light palette.
+ * Three ideas hold this system together.
+ *
+ * 1. One type scale. The app used to be written almost entirely in 10–12px:
+ *    479 tiny-text classes against 97 readable ones. Every size now comes from
+ *    the ramp below, and the ramp starts at a size an adult can read across a
+ *    desk. `2xs` exists for one job — the uppercase eyebrow over a figure — and
+ *    is never body copy.
+ *
+ * 2. Three surface planes, not two. `plane` is the page, `surface` is the card
+ *    that sits on it, `sunken` is the recess inside the card (table headers,
+ *    stat strips, code). The old palette put the page and the card within one
+ *    step of each other, so a card had to be found rather than seen.
+ *
+ * 3. Chart color stays separate from interface color. The categorical series
+ *    slots are the validated reference palette and are used in fixed order, so
+ *    a series keeps its color when a filter changes the set. `accent` is the
+ *    interface blue — buttons, links, selection, focus — and is free to be
+ *    tuned for chrome without touching a single chart.
+ *
+ * Dark mode is a designed set of steps for a dark ground, not an inversion.
  */
+
 @theme {
-  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
 
-  --color-surface: #fcfcfb;
-  --color-plane: #f9f9f7;
-  --color-ink: #0b0b0b;
-  --color-ink-secondary: #52514e;
-  --color-ink-muted: #898781;
-  --color-grid: #e1e0d9;
-  --color-axis: #c3c2b7;
-  --color-hairline: rgba(11, 11, 11, 0.1);
+  /* ── Type scale ────────────────────────────────────────────────────────── */
+  --text-2xs: 0.6875rem; /* 11px — uppercase eyebrows only */
+  --text-2xs--line-height: 1.45;
+  --text-2xs--letter-spacing: 0.04em;
+  --text-xs: 0.8125rem; /* 13px — secondary copy, dense table cells */
+  --text-xs--line-height: 1.5;
+  --text-sm: 0.875rem; /* 14px — body */
+  --text-sm--line-height: 1.55;
+  --text-base: 0.9375rem; /* 15px */
+  --text-base--line-height: 1.6;
+  --text-lg: 1.0625rem; /* 17px — card titles */
+  --text-lg--line-height: 1.45;
+  --text-lg--letter-spacing: -0.011em;
+  --text-xl: 1.25rem; /* 20px — page titles */
+  --text-xl--line-height: 1.35;
+  --text-xl--letter-spacing: -0.015em;
+  --text-2xl: 1.5rem; /* 24px — figures */
+  --text-2xl--line-height: 1.25;
+  --text-2xl--letter-spacing: -0.019em;
+  --text-3xl: 1.875rem; /* 30px */
+  --text-3xl--line-height: 1.2;
+  --text-3xl--letter-spacing: -0.021em;
+  --text-4xl: 2.375rem; /* 38px — the one headline figure per page */
+  --text-4xl--line-height: 1.12;
+  --text-4xl--letter-spacing: -0.024em;
 
+  /* ── Surfaces & ink ───────────────────────────────────────────────────── */
+  --color-plane: #f2f2ef; /* the page */
+  --color-surface: #ffffff; /* cards sitting on it */
+  --color-sunken: #f7f7f5; /* recesses inside a card */
+  --color-raised: #ffffff; /* menus, popovers */
+
+  --color-ink: #17171a;
+  --color-ink-secondary: #5a5a60;
+  /* Muted is still text a reader has to read — breadcrumbs, section labels,
+     the pipeline's own step names — so it has to clear 4.5:1, not merely look
+     quiet. #8a8a90 measured 3.4:1 on a white card and 3.3:1 on the plane. */
+  --color-ink-muted: #6b6b74;
+
+  --color-hairline: rgba(20, 20, 24, 0.09);
+  --color-hairline-strong: rgba(20, 20, 24, 0.16);
+
+  /* ── Interface accent ─────────────────────────────────────────────────── */
+  --color-accent: #2563cf;
+  --color-accent-hover: #1d54b4;
+  --color-accent-soft: #eaf1fd;
+  --color-accent-ink: #1b4fa8;
+  /* The label on top of a filled accent or critical button.
+     `accent` has two jobs that pull in opposite directions: it is the link
+     colour, which on a dark ground has to be light, and it is the fill of the
+     primary button, which the label then has to be readable against. Dark mode
+     resolved that in favour of links and left white-on-#5b9bf5 at 2.8:1 — under
+     the 4.5:1 a 14px label needs. So the label colour is a token of its own, and
+     it flips: white on the deep blue of light mode, near-black on the bright
+     blue of dark. Same for critical, which is a red for the same two jobs. */
+  --color-on-accent: #ffffff;
+  --color-on-critical: #ffffff;
+
+  /* ── Chart series (validated reference palette, fixed order) ──────────── */
   --color-series-1: #2a78d6;
   --color-series-2: #eb6834;
   --color-series-3: #1baf7a;
+  --color-grid: #e4e4de;
+  --color-axis: #c3c2b7;
 
-  --color-good: #0ca30c;
-  --color-warning: #fab219;
-  --color-serious: #ec835a;
-  --color-critical: #d03b3b;
+  /* ── Status ───────────────────────────────────────────────────────────── */
+  /* Each of these is a text colour before it is a dot or a bar — "no account
+     number", "filed", a late-file warning — and most of the time it is 13px
+     text sitting on its own soft tint, which is the darkest ground it meets.
+     Measured on that tint rather than on white: the old amber came to 3.8:1
+     and the old orange to 4.3:1, so both were tuned down until the label,
+     not just the hue, was readable. */
+  --color-good: #0e7a41;
+  --color-good-soft: #e6f4ec;
+  --color-warning: #915e05;
+  --color-warning-soft: #fdf3e0;
+  --color-serious: #b04d1c;
+  --color-serious-soft: #fcefe6;
+  --color-critical: #c9333a;
+  --color-critical-soft: #fceced;
 
+  /* ── Shape ────────────────────────────────────────────────────────────── */
   --radius-card: 0.75rem;
+  --radius-control: 0.5rem;
+
+  /* ── Elevation ────────────────────────────────────────────────────────── */
+  --shadow-card: 0 1px 2px rgba(20, 20, 24, 0.04), 0 1px 3px rgba(20, 20, 24, 0.03);
+  --shadow-raised: 0 4px 12px rgba(20, 20, 24, 0.08), 0 1px 3px rgba(20, 20, 24, 0.05);
+  --shadow-overlay: 0 12px 32px rgba(20, 20, 24, 0.14), 0 2px 8px rgba(20, 20, 24, 0.08);
+}
+
+:root {
 }
 
 /*
  * Dark values are declared under both scopes: the media query follows the OS
  * setting, the data-theme scope follows the in-app toggle and must win either
- * way.
+ * way. Keep the two blocks identical.
  */
 @media (prefers-color-scheme: dark) {
   :root:where(:not([data-theme='light'])) {
-    --color-surface: #1a1a19;
-    --color-plane: #0d0d0d;
-    --color-ink: #ffffff;
-    --color-ink-secondary: #c3c2b7;
-    --color-ink-muted: #898781;
-    --color-grid: #2c2c2a;
-    --color-axis: #383835;
-    --color-hairline: rgba(255, 255, 255, 0.1);
+    --color-plane: #0c0c0e;
+    --color-surface: #17171a;
+    --color-sunken: #1e1e22;
+    --color-raised: #202025;
+
+    --color-ink: #f5f5f6;
+    --color-ink-secondary: #a6a6ad;
+    --color-ink-muted: #8a8a92; /* 3.97:1 before — see the light note above */
+
+    --color-hairline: rgba(255, 255, 255, 0.09);
+    --color-hairline-strong: rgba(255, 255, 255, 0.17);
+
+    --color-accent: #5b9bf5;
+    --color-accent-hover: #79aefa;
+    --color-accent-soft: rgba(91, 155, 245, 0.14);
+    --color-accent-ink: #9cc4fb;
+    --color-on-accent: #0b1220;
+    --color-on-critical: #2a0b0d;
 
     --color-series-1: #3987e5;
     --color-series-2: #d95926;
     --color-series-3: #199e70;
+    --color-grid: #2c2c2f;
+    --color-axis: #3a3a3f;
+
+    --color-good: #46c483;
+    --color-good-soft: rgba(70, 196, 131, 0.14);
+    --color-warning: #e0a83c;
+    --color-warning-soft: rgba(224, 168, 60, 0.14);
+    --color-serious: #ea8a5a;
+    --color-serious-soft: rgba(234, 138, 90, 0.14);
+    --color-critical: #f0666d;
+    --color-critical-soft: rgba(240, 102, 109, 0.14);
+
+    --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-raised: 0 4px 14px rgba(0, 0, 0, 0.5);
+    --shadow-overlay: 0 14px 40px rgba(0, 0, 0, 0.6);
+
     color-scheme: dark;
   }
 }
 
 :root[data-theme='dark'] {
-  --color-surface: #1a1a19;
-  --color-plane: #0d0d0d;
-  --color-ink: #ffffff;
-  --color-ink-secondary: #c3c2b7;
-  --color-ink-muted: #898781;
-  --color-grid: #2c2c2a;
-  --color-axis: #383835;
-  --color-hairline: rgba(255, 255, 255, 0.1);
+  --color-plane: #0c0c0e;
+  --color-surface: #17171a;
+  --color-sunken: #1e1e22;
+  --color-raised: #202025;
+
+  --color-ink: #f5f5f6;
+  --color-ink-secondary: #a6a6ad;
+  --color-ink-muted: #8a8a92;
+
+  --color-hairline: rgba(255, 255, 255, 0.09);
+  --color-hairline-strong: rgba(255, 255, 255, 0.17);
+
+  --color-accent: #5b9bf5;
+  --color-accent-hover: #79aefa;
+  --color-accent-soft: rgba(91, 155, 245, 0.14);
+  --color-accent-ink: #9cc4fb;
+  --color-on-accent: #0b1220;
+  --color-on-critical: #2a0b0d;
 
   --color-series-1: #3987e5;
   --color-series-2: #d95926;
   --color-series-3: #199e70;
+  --color-grid: #2c2c2f;
+  --color-axis: #3a3a3f;
+
+  --color-good: #46c483;
+  --color-good-soft: rgba(70, 196, 131, 0.14);
+  --color-warning: #e0a83c;
+  --color-warning-soft: rgba(224, 168, 60, 0.14);
+  --color-serious: #ea8a5a;
+  --color-serious-soft: rgba(234, 138, 90, 0.14);
+  --color-critical: #f0666d;
+  --color-critical-soft: rgba(240, 102, 109, 0.14);
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-raised: 0 4px 14px rgba(0, 0, 0, 0.5);
+  --shadow-overlay: 0 14px 40px rgba(0, 0, 0, 0.6);
+
   color-scheme: dark;
 }
 
@@ -84,12 +228,31 @@
     background-color: var(--color-plane);
     color: var(--color-ink);
     font-family: var(--font-sans);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /*
+   * Inter's default figures are proportional, which is right for prose and
+   * wrong for a page that is mostly money. Contextual alternates give the
+   * cleaner `1` and `l`; `cv05`/`cv08` fix the ambiguous shapes.
+   */
+  body {
+    font-feature-settings:
+      'cv05' 1,
+      'cv08' 1,
+      'ss03' 1;
   }
 
   /* Columns of numbers must align vertically; standalone figures should not. */
   .tabular {
     font-variant-numeric: tabular-nums;
+    font-feature-settings:
+      'tnum' 1,
+      'cv05' 1;
   }
 
   /*
@@ -113,7 +276,47 @@
   }
 
   ::selection {
-    background-color: color-mix(in oklab, var(--color-series-1) 25%, transparent);
+    background-color: color-mix(in oklab, var(--color-accent) 22%, transparent);
+  }
+
+  /* Native controls should pick up the accent without a wrapper component. */
+  :root {
+    accent-color: var(--color-accent);
+  }
+
+  /*
+   * The scrollbar is chrome, not content. Slim and neutral so a table that
+   * scrolls sideways inside a card does not draw a heavy bar across it.
+   */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-hairline-strong) transparent;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--color-hairline-strong);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--color-ink-muted);
+  }
+
+  /* Placeholders are hints, not values, and must not read as filled-in text. */
+  ::placeholder {
+    color: var(--color-ink-muted);
+    opacity: 1;
   }
 }
 
@@ -122,10 +325,55 @@
     background-color: var(--color-surface);
     border: 1px solid var(--color-hairline);
     border-radius: var(--radius-card);
+    box-shadow: var(--shadow-card);
   }
 
   .hairline {
     border-color: var(--color-hairline);
+  }
+
+  /*
+   * The eyebrow over a figure. Nine files had reinvented this line with three
+   * different sizes and two different tracking values; it is one class now.
+   */
+  .eyebrow {
+    font-size: var(--text-2xs);
+    line-height: var(--text-2xs--line-height);
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--color-ink-muted);
+  }
+
+  /*
+   * The native select arrow is drawn by the OS and ignores the theme. Ours is
+   * a background image whose stroke color comes from a themed variable, so a
+   * dark-mode select stops wearing a light-mode wedge.
+   */
+  /* One focus treatment, so a keyboard user learns it once. */
+  .focus-ring {
+    outline: none;
+  }
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+/* The loading sweep used by <Skeleton>. */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+@layer utilities {
+  /* Long identifiers and owner names truncate to two lines rather than one. */
+  .clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
   }
 }
 
@@ -135,13 +383,24 @@
   outline: none;
 }
 
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /*
  * Printing. The filing screens produce a document somebody signs, so a print
  * from this app has to come out as the document and not as a screenshot of the
  * application around it.
  */
 @media print {
-  header {
+  header,
+  [data-chrome='true'] {
     display: none !important;
   }
   main {
@@ -150,5 +409,9 @@
   }
   body {
     background: #fff;
+  }
+  .card {
+    box-shadow: none !important;
+    border-color: #ddd !important;
   }
 }

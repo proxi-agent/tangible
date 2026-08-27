@@ -1,8 +1,21 @@
 import type { Metadata } from 'next';
+import { Inter } from 'next/font/google';
 import { Suspense } from 'react';
 import { AppShell } from '@/components/app-shell';
 import { Providers } from '@/components/providers';
 import './globals.css';
+
+/**
+ * Inter, loaded as a variable font and exposed as a CSS variable the token
+ * layer reads. It is here rather than in a stylesheet link because next/font
+ * self-hosts the file — no third-party request on first paint, and no layout
+ * shift when the real face arrives.
+ */
+const inter = Inter({
+  subsets: ['latin'],
+  display: 'swap',
+  variable: '--font-inter',
+});
 
 export const metadata: Metadata = {
   title: 'Tangible — business personal property intelligence',
@@ -23,7 +36,7 @@ try {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
       </head>

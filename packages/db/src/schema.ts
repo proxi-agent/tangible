@@ -394,7 +394,7 @@ export const farFiles = pgTable(
 ).enableRLS();
 
 /**
- * One question the mapping put to the client, and what came back.
+ * One question put to the client, and what came back.
  *
  * Asks are born inside a proposal, but they cannot live there: a re-propose
  * overwrites the proposal jsonb, and an answer somebody collected from the
@@ -402,15 +402,32 @@ export const farFiles = pgTable(
  * proposal by fingerprint — a reworded question keeps its answer, a new
  * question gets a new open row, and a question the model stopped asking stays
  * on the record with whatever was learned.
+ *
+ * The same ledger now carries the other kind of question: the one a screening
+ * finding turns on. Those hang off the engagement rather than a file — the
+ * finding is computed across every asset in the season, not from one upload —
+ * so exactly one of `farFileId` and `engagementId` is set, and `source` says
+ * which kind of row this is. Keeping both in one table is what lets the client
+ * see a single list of what is being asked of them.
  */
 export const mappingAsks = pgTable(
   'mapping_asks',
   {
     id: uuid('id').primaryKey().defaultRandom(),
-    farFileId: uuid('far_file_id')
-      .notNull()
-      .references(() => farFiles.id, { onDelete: 'cascade' }),
-    /** Stable identity across re-proposals; computed in packages/far asks.ts. */
+    /** Set for `source` 'mapping': the upload whose columns raised the question. */
+    farFileId: uuid('far_file_id').references(() => farFiles.id, { onDelete: 'cascade' }),
+    /** Set for `source` 'finding': the season the finding was computed over. */
+    engagementId: uuid('engagement_id').references(() => engagements.id, { onDelete: 'cascade' }),
+    /** 'mapping' | 'finding'. */
+    source: text('source').notNull().default('mapping'),
+    /** The finding key a 'finding' ask settles. Null on a mapping ask. */
+    subject: text('subject'),
+    /**
+     * Stable identity across re-proposals; computed in packages/far asks.ts.
+     * A finding ask has a stable identity already — `finding:<key>` — so the
+     * same rewording rule holds for free: change the wording of the question a
+     * finding asks and the answer already given stays attached to it.
+     */
     fingerprint: text('fingerprint').notNull(),
     question: text('question').notNull(),
     why: text('why').notNull(),
@@ -425,7 +442,12 @@ export const mappingAsks = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [uniqueIndex('mapping_asks_unique').on(table.farFileId, table.fingerprint)],
+  (table) => [
+    uniqueIndex('mapping_asks_unique').on(table.farFileId, table.fingerprint),
+    // Postgres treats NULLs as distinct in a unique index, so the index above
+    // constrains nothing once `farFileId` is null. Finding asks get their own.
+    uniqueIndex('mapping_asks_finding_unique').on(table.engagementId, table.fingerprint),
+  ],
 ).enableRLS();
 
 /**
@@ -1847,6 +1869,71 @@ export type AccountNote = typeof accountNotes.$inferSelect;
 export type ClientRow = typeof clients.$inferSelect;
 export type NewClientRow = typeof clients.$inferInsert;
 export type ClientLocationRow = typeof clientLocations.$inferSelect;
+/**
+ * The assistant: a conversation, and the turns inside it.
+ *
+ * Two tables rather than one because this surface is multi-turn. Ask-the-graph
+ * stores an exchange and nothing else, which is right for a question asked
+ * once about one engagement; here a preparer works a thread — narrows, follows
+ * up, asks the same question about a second client — and the thread is the
+ * thing they come back to.
+ *
+ * A turn is immutable, the same rule the drafting tables follow. `tool_calls`
+ * freezes what every lookup actually returned at the moment it ran, next to
+ * the answer that leaned on it. Re-running the same question next week may
+ * legitimately answer differently — a filing was recorded, a notice arrived —
+ * and a stored turn has to keep meaning what it meant when it was written.
+ */
+export const assistantConversations = pgTable(
+  'assistant_conversations',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Taken from the first question. Never model-written. */
+    title: text('title').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Moved by each new turn, so the list sorts by activity rather than birth. */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('assistant_conversations_updated_idx').on(table.updatedAt)],
+).enableRLS();
+
+export const assistantTurns = pgTable(
+  'assistant_turns',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => assistantConversations.id, { onDelete: 'cascade' }),
+    question: text('question').notNull(),
+    /** Where the preparer was standing. See AssistantScopeSchema. */
+    scope: jsonb('scope'),
+    /** Every lookup, its arguments and its result, frozen. See AssistantToolCallSchema. */
+    toolCalls: jsonb('tool_calls').notNull(),
+    /** The answer, citations already validated. See AssistantAnswerSchema. */
+    answer: jsonb('answer').notNull(),
+    /** 'model' or 'fallback' — an assembled answer is never presented as a written one. */
+    source: text('source').notNull(),
+    model: text('model'),
+    /**
+     * Which clients this turn read. Not a foreign key: a turn survives the
+     * engagement it discussed, and a hard reference would either block a
+     * deletion or silently null itself out. It exists so client deletion can
+     * find these rows at all — a turn holds register figures and filed values,
+     * confidential under Tax Code 22.27, and no cascade reaches a table that
+     * hangs off a conversation rather than off a client.
+     */
+    clientIds: uuid('client_ids')
+      .array()
+      .notNull()
+      .default(sql`'{}'::uuid[]`),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('assistant_turns_conversation_idx').on(table.conversationId, table.createdAt),
+    index('assistant_turns_clients_idx').using('gin', table.clientIds),
+  ],
+).enableRLS();
+
 export type ClientFilingProfileRow = typeof clientFilingProfiles.$inferSelect;
 export type EngagementRow = typeof engagements.$inferSelect;
 export type FarFileRow = typeof farFiles.$inferSelect;
@@ -1887,3 +1974,7 @@ export type FilingAgentRow = typeof filingAgent.$inferSelect;
 export type NewFilingAgentRow = typeof filingAgent.$inferInsert;
 export type AgentAppointmentRow = typeof agentAppointments.$inferSelect;
 export type NewAgentAppointmentRow = typeof agentAppointments.$inferInsert;
+export type AssistantConversationRow = typeof assistantConversations.$inferSelect;
+export type NewAssistantConversationRow = typeof assistantConversations.$inferInsert;
+export type AssistantTurnRow = typeof assistantTurns.$inferSelect;
+export type NewAssistantTurnRow = typeof assistantTurns.$inferInsert;

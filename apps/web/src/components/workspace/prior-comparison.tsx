@@ -11,7 +11,7 @@ import type {
 import type { FindingKind } from '@tangible/types';
 import { cn } from '@/lib/cn';
 import { count, money, moneyExact, plural } from '@/lib/format';
-import { Badge, Card, CardHeader, EmptyState } from '@/components/ui/primitives';
+import { Badge, Card, CardHeader, EmptyState, Stat } from '@/components/ui/primitives';
 import { Tooltip } from '@/components/ui/tooltip';
 
 /**
@@ -25,7 +25,10 @@ import { Tooltip } from '@/components/ui/tooltip';
  * only the refund half of a comparison is being sold to rather than advised.
  */
 
-const KIND_META: Record<FindingKind, { label: string; tone: 'good' | 'accent' | 'warning'; help: string }> = {
+const KIND_META: Record<
+  FindingKind,
+  { label: string; tone: 'good' | 'accent' | 'warning'; help: string }
+> = {
   measured: {
     label: 'measured',
     tone: 'good',
@@ -43,7 +46,10 @@ const KIND_META: Record<FindingKind, { label: string; tone: 'good' | 'accent' | 
   },
 };
 
-const VERDICT_META: Record<CategoryVerdict, { label: string; tone: 'neutral' | 'good' | 'warning' | 'critical' }> = {
+const VERDICT_META: Record<
+  CategoryVerdict,
+  { label: string; tone: 'neutral' | 'good' | 'warning' | 'critical' }
+> = {
   agrees: { label: 'agrees', tone: 'good' },
   'over-reported': { label: 'over-reported', tone: 'warning' },
   'under-reported': { label: 'under-reported', tone: 'critical' },
@@ -64,8 +70,8 @@ export function PriorComparisonView({ comparison }: { comparison: RegisterCompar
             <>
               Every compared dollar lands in exactly one bucket below, so the columns add back to
               the totals. Property acquired after January 1, {comparison.taxYear} and property the
-              register dates as disposed before it are held out by name rather than netted in —
-              a plain subtraction reports the calendar as a finding.
+              register dates as disposed before it are held out by name rather than netted in — a
+              plain subtraction reports the calendar as a finding.
               {comparison.scheduleTaxYear !== null ? (
                 <>
                   {' '}
@@ -148,7 +154,7 @@ function Decomposition({ comparison }: { comparison: RegisterComparison }) {
       key: 'reallocated',
       label: 'Wrong category',
       value: reallocatedCost,
-      className: 'bg-[var(--color-series-1)]',
+      className: 'bg-[var(--color-accent)]',
     },
     {
       key: 'over',
@@ -281,15 +287,7 @@ function Values({ comparison }: { comparison: RegisterComparison }) {
 }
 
 function Figure({ label, value, sub }: { label: string; value: string; sub: string }) {
-  return (
-    <div>
-      <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
-        {label}
-      </p>
-      <p className="tabular mt-0.5 text-2xl font-semibold tracking-tight">{value}</p>
-      <p className="tabular mt-0.5 text-xs text-[var(--color-ink-muted)]">{sub}</p>
-    </div>
-  );
+  return <Stat size="lg" label={label} value={value} note={sub} />;
 }
 
 // ---------------------------------------------------------------------------
@@ -303,7 +301,12 @@ function FindingRow({ finding }: { finding: ComparisonFinding }) {
   const detailCount = finding.assets.length + finding.cells.length;
 
   return (
-    <li className={cn('px-5 py-4', exposure ? 'bg-[color-mix(in_oklab,var(--color-critical)_4%,transparent)]' : '')}>
+    <li
+      className={cn(
+        'px-5 py-4',
+        exposure ? 'bg-[color-mix(in_oklab,var(--color-critical)_4%,transparent)]' : '',
+      )}
+    >
       <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
@@ -342,7 +345,7 @@ function FindingRow({ finding }: { finding: ComparisonFinding }) {
           >
             {money(finding.value ?? finding.cost)}
           </p>
-          <p className="text-[11px] text-[var(--color-ink-muted)]">
+          <p className="text-xs text-[var(--color-ink-muted)]">
             {finding.value === null
               ? 'of cost · no schedule to value it'
               : `of value · ${money(finding.cost)} of cost`}
@@ -355,7 +358,7 @@ function FindingRow({ finding }: { finding: ComparisonFinding }) {
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
-            className="mt-2 inline-flex cursor-pointer items-center gap-1 rounded text-[11px] text-[var(--color-ink-secondary)] outline-none hover:text-[var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]"
+            className="mt-2 inline-flex cursor-pointer items-center gap-1 rounded text-xs text-[var(--color-ink-secondary)] outline-none hover:text-[var(--color-ink)] focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]"
           >
             <ChevronDown
               size={12}
@@ -372,7 +375,7 @@ function FindingRow({ finding }: { finding: ComparisonFinding }) {
                 <div className="overflow-x-auto rounded-md border border-[var(--color-hairline)]">
                   <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-[var(--color-hairline)] bg-[var(--color-plane)] text-[10px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+                      <tr className="text-2xs border-b border-[var(--color-hairline)] bg-[var(--color-plane)] tracking-wide text-[var(--color-ink-muted)] uppercase">
                         <th className="px-3 py-1.5 text-left font-medium">Register asset</th>
                         <th className="px-3 py-1.5 text-right font-medium">Acquired</th>
                         <th className="px-3 py-1.5 text-right font-medium">Cost</th>
@@ -414,7 +417,7 @@ function CellTable({ cells }: { cells: ComparisonFinding['cells'] }) {
     <div className="overflow-x-auto rounded-md border border-[var(--color-hairline)]">
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-[var(--color-hairline)] bg-[var(--color-plane)] text-[10px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+          <tr className="text-2xs border-b border-[var(--color-hairline)] bg-[var(--color-plane)] tracking-wide text-[var(--color-ink-muted)] uppercase">
             <th className="px-3 py-1.5 text-left font-medium">Category</th>
             <th className="px-3 py-1.5 text-right font-medium">Acquired</th>
             <th className="px-3 py-1.5 text-right font-medium">Register</th>
@@ -476,7 +479,7 @@ function CategoryTable({ comparison }: { comparison: RegisterComparison }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[var(--color-hairline)] bg-[var(--color-plane)] text-[10px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+            <tr className="text-2xs border-b border-[var(--color-hairline)] bg-[var(--color-plane)] tracking-wide text-[var(--color-ink-muted)] uppercase">
               <th className="px-5 py-2 text-left font-medium">Category</th>
               <th className="px-3 py-2 text-right font-medium">Register</th>
               <th className="px-3 py-2 text-right font-medium">Return</th>
@@ -628,8 +631,12 @@ function OutOfScope({ comparison }: { comparison: RegisterComparison }) {
       )}
 
       {unsettled.length > 0 ? (
-        <div className="flex items-start gap-2 border-t border-[var(--color-hairline)] bg-[color-mix(in_oklab,var(--color-warning)_8%,transparent)] px-5 py-3">
-          <Scale size={14} strokeWidth={2} className="mt-0.5 shrink-0" />
+        <div className="flex items-start gap-2 border-t border-[var(--color-hairline)] bg-[var(--color-warning-soft)] px-5 py-3">
+          <Scale
+            size={14}
+            strokeWidth={2}
+            className="mt-0.5 shrink-0 text-[var(--color-warning)]"
+          />
           <p className="text-xs leading-relaxed">
             {money(unsettled.reduce((sum, b) => sum + b.reported, 0))} of the return is still in the
             mapping queue. Settle it before this comparison goes anywhere: an unread line is not
@@ -640,9 +647,8 @@ function OutOfScope({ comparison }: { comparison: RegisterComparison }) {
 
       <div className="border-t border-[var(--color-hairline)] px-5 py-3">
         <p className="tabular text-xs text-[var(--color-ink-muted)]">
-          {count(comparison.coverage.comparedAssetCount)} of{' '}
-          {count(comparison.coverage.assetCount)} register{' '}
-          {plural(comparison.coverage.assetCount, 'asset')} compared ·{' '}
+          {count(comparison.coverage.comparedAssetCount)} of {count(comparison.coverage.assetCount)}{' '}
+          register {plural(comparison.coverage.assetCount, 'asset')} compared ·{' '}
           {count(comparison.coverage.comparedLineCount)}{' '}
           {plural(comparison.coverage.comparedLineCount, 'line')} of the return placed
           {comparison.coverage.unvaluableAssetCount > 0
@@ -669,7 +675,7 @@ function AsideList({
   return (
     <div className="bg-[var(--color-surface)] px-5 py-4">
       <div className="flex items-baseline justify-between gap-4">
-        <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+        <p className="text-2xs font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
           {title}
         </p>
         <p className="tabular text-sm font-semibold">{moneyExact(total)}</p>

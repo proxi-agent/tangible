@@ -11,7 +11,7 @@ import { count } from '@/lib/format';
 import { ClientStatusBadge } from '@/components/workspace/badges';
 import { Button, TextInput } from '@/components/ui/controls';
 import { DataTable } from '@/components/ui/data-table';
-import { Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { Card, CardHeader, ErrorState, PageHeader, Skeleton } from '@/components/ui/primitives';
 
 const dateFormat = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
 
@@ -65,50 +65,67 @@ export default function ClientsPage() {
     },
   });
 
+  const clients = data ?? [];
+  const shown = clients.filter((row) =>
+    row.name.toLowerCase().includes(needle.trim().toLowerCase()),
+  );
+
   return (
     <div className="space-y-6">
+      <PageHeader
+        title="Clients"
+        description="The companies whose fixed asset registers we ingest. Every engagement, upload, and asset hangs off a client, so a company gets added here before anything else can happen to it."
+        actions={
+          <form
+            className="flex w-full items-center gap-2 sm:w-auto"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (name.trim()) create.mutate();
+            }}
+          >
+            <TextInput
+              placeholder="New client name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="min-w-0 flex-1 sm:w-56 sm:flex-none"
+            />
+            <Button variant="primary" type="submit" disabled={!name.trim() || create.isPending}>
+              <Plus size={15} strokeWidth={2} />
+              Add
+            </Button>
+          </form>
+        }
+      />
+
+      {create.error ? (
+        <p className="text-xs text-[var(--color-critical)]">
+          {create.error instanceof Error ? create.error.message : String(create.error)}
+        </p>
+      ) : null}
+
       <Card>
         <CardHeader
-          title="Clients"
-          description="The companies whose fixed asset registers we ingest — every engagement, upload, and asset hangs off a client."
+          title="The book"
+          description={
+            isLoading
+              ? undefined
+              : needle.trim()
+                ? `${count(shown.length)} of ${count(clients.length)} ${clients.length === 1 ? 'client' : 'clients'}`
+                : `${count(clients.length)} ${clients.length === 1 ? 'client' : 'clients'}`
+          }
           action={
-            <form
-              className="flex items-center gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                if (name.trim()) create.mutate();
-              }}
-            >
+            // Only once the list is long enough to lose a name in. A search box
+            // over four rows is furniture; over forty it is how the page works.
+            clients.length > 5 ? (
               <TextInput
-                placeholder="New client name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-56"
+                placeholder="Find a client…"
+                value={needle}
+                onChange={(e) => setNeedle(e.target.value)}
+                className="h-8 w-56"
               />
-              <Button variant="primary" type="submit" disabled={!name.trim() || create.isPending}>
-                <Plus size={15} strokeWidth={2} />
-                Add
-              </Button>
-            </form>
+            ) : null
           }
         />
-        {create.error ? (
-          <p className="px-5 pt-3 text-xs text-[var(--color-critical)]">
-            {create.error instanceof Error ? create.error.message : String(create.error)}
-          </p>
-        ) : null}
-        {/* Only once the list is long enough to lose a name in. A search box
-            over four rows is furniture; over forty it is how the page works. */}
-        {(data?.length ?? 0) > 5 ? (
-          <div className="border-b border-[var(--color-hairline)] px-5 py-3">
-            <TextInput
-              placeholder="Find a client…"
-              value={needle}
-              onChange={(e) => setNeedle(e.target.value)}
-              className="h-8 w-64"
-            />
-          </div>
-        ) : null}
         {error ? (
           <ErrorState error={error} />
         ) : isLoading ? (
@@ -120,13 +137,14 @@ export default function ClientsPage() {
         ) : (
           <DataTable
             columns={COLUMNS}
-            data={(data ?? []).filter((row) =>
-              row.name.toLowerCase().includes(needle.trim().toLowerCase()),
-            )}
+            data={shown}
             getRowId={(row) => row.id}
             empty={
               needle.trim()
-                ? { title: 'No client matches', children: `Nothing on the book matches “${needle.trim()}”.` }
+                ? {
+                    title: 'No client matches',
+                    children: `Nothing on the book matches “${needle.trim()}”.`,
+                  }
                 : {
                     title: 'No clients yet',
                     children:

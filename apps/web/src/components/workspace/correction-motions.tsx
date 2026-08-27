@@ -13,6 +13,7 @@ import { api } from '@/lib/api';
 import { day, moneyExact } from '@/lib/format';
 import { Button, Field, Select, TextArea, TextInput } from '@/components/ui/controls';
 import { Badge } from '@/components/ui/primitives';
+import { today } from '@/lib/today';
 
 /**
  * The motions actually brought on a year, and the way to bring another.
@@ -39,19 +40,16 @@ const OUTCOME_LABEL: Record<CorrectionMotionOutcome, string> = {
   withdrawn: 'withdrawn',
 };
 
-export function Motions({ year, engagementId }: { year: OpenYear; engagementId: string }) {
+/** The motions already on file for a year, or nothing at all if there are none. */
+export function FiledMotions({ year, engagementId }: { year: OpenYear; engagementId: string }) {
   const live = year.motions.filter((motion) => motion.status === 'recorded');
+  if (live.length === 0) return null;
   return (
-    <div className="space-y-2">
-      {live.length > 0 ? (
-        <ul className="space-y-2">
-          {live.map((motion) => (
-            <Filed key={motion.id} motion={motion} engagementId={engagementId} />
-          ))}
-        </ul>
-      ) : null}
-      <Bring year={year} engagementId={engagementId} />
-    </div>
+    <ul className="space-y-2">
+      {live.map((motion) => (
+        <Filed key={motion.id} motion={motion} engagementId={engagementId} />
+      ))}
+    </ul>
   );
 }
 
@@ -65,30 +63,30 @@ export function Motions({ year, engagementId }: { year: OpenYear; engagementId: 
 function Filed({ motion, engagementId }: { motion: CorrectionMotion; engagementId: string }) {
   return (
     <li className="space-y-1.5 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-2.5">
-      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[11px]">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 text-xs">
         <Badge tone={motion.standing.live ? 'accent' : 'neutral'}>
           {ROUTE_LABEL[motion.route]}
         </Badge>
         <span className="text-[var(--color-ink-secondary)]">
-          {motion.standing.live ? 'pending' : OUTCOME_LABEL[motion.outcome as CorrectionMotionOutcome]}
+          {motion.standing.live
+            ? 'pending'
+            : OUTCOME_LABEL[motion.outcome as CorrectionMotionOutcome]}
         </span>
         {motion.standing.reduction !== null && motion.standing.reduction > 0 ? (
           <span className="tabular text-[var(--color-good)]">
             −{moneyExact(motion.standing.reduction)}
           </span>
         ) : null}
-        {motion.standing.barsAnother ? (
-          <Badge tone="warning">(c-1) spent</Badge>
-        ) : null}
-        <span className="ml-auto tabular text-[var(--color-ink-muted)]">
+        {motion.standing.barsAnother ? <Badge tone="warning">(c-1) spent</Badge> : null}
+        <span className="tabular ml-auto text-[var(--color-ink-muted)]">
           filed {day(motion.filedOn)}
         </span>
       </div>
-      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+      <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
         {motion.standing.standing}
       </p>
       {motion.groundsNote ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
+        <p className="text-xs leading-relaxed text-[var(--color-ink-muted)]">
           {motion.groundsNote}
         </p>
       ) : null}
@@ -106,7 +104,7 @@ function Filed({ motion, engagementId }: { motion: CorrectionMotion; engagementI
 
 function Check({ check }: { check: NoticeCheck }) {
   return (
-    <li className="flex gap-2 text-[11px] leading-relaxed">
+    <li className="flex gap-2 text-xs leading-relaxed">
       <Badge tone={CHECK_TONE[check.severity]}>{check.severity}</Badge>
       <span
         className={
@@ -129,12 +127,12 @@ function Check({ check }: { check: NoticeCheck }) {
  * recording, and the check on the way out says so rather than the form refusing
  * it.
  */
-function Bring({ year, engagementId }: { year: OpenYear; engagementId: string }) {
+export function RecordMotion({ year, engagementId }: { year: OpenYear; engagementId: string }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const first = year.outlook.routes.find((route) => route.open)?.key ?? 'c';
   const [route, setRoute] = useState<CorrectionRouteKey>(first);
-  const [filedOn, setFiledOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [filedOn, setFiledOn] = useState(() => today());
   const [claimedValue, setClaimedValue] = useState('');
   const [paidOn, setPaidOn] = useState('');
   const [grounds, setGrounds] = useState('');
@@ -168,7 +166,7 @@ function Bring({ year, engagementId }: { year: OpenYear; engagementId: string })
 
   if (!open) {
     return (
-      <Button className="h-7 px-2.5 text-xs" onClick={() => setOpen(true)}>
+      <Button size="sm" onClick={() => setOpen(true)}>
         Record a 25.25 motion
       </Button>
     );
@@ -177,7 +175,7 @@ function Bring({ year, engagementId }: { year: OpenYear; engagementId: string })
   const roll = year.rolledValue;
 
   return (
-    <div className="space-y-2.5 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-3">
+    <div className="w-full space-y-2.5 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-3">
       <div className="flex flex-wrap items-end gap-2.5">
         <Field
           label="Route"
@@ -195,7 +193,10 @@ function Bring({ year, engagementId }: { year: OpenYear; engagementId: string })
             ))}
           </Select>
         </Field>
-        <Field label="Filed" help="The day the motion went to the district, not the day it was drafted.">
+        <Field
+          label="Filed"
+          help="The day the motion went to the district, not the day it was drafted."
+        >
           <TextInput
             type="date"
             value={filedOn}
@@ -246,7 +247,7 @@ function Bring({ year, engagementId }: { year: OpenYear; engagementId: string })
         </Button>
       </div>
       {send.error ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+        <p className="text-xs leading-relaxed text-[var(--color-critical)]">
           {send.error instanceof Error ? send.error.message : String(send.error)}
         </p>
       ) : null}
@@ -270,7 +271,7 @@ function Update({ motion, engagementId }: { motion: CorrectionMotion; engagement
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [outcome, setOutcome] = useState<CorrectionMotionOutcome | ''>('');
-  const [outcomeOn, setOutcomeOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [outcomeOn, setOutcomeOn] = useState(() => today());
   const [correctedValue, setCorrectedValue] = useState('');
   const [orderReference, setOrderReference] = useState('');
   const [hearingOn, setHearingOn] = useState(motion.hearingScheduledFor ?? '');
@@ -306,7 +307,7 @@ function Update({ motion, engagementId }: { motion: CorrectionMotion; engagement
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="cursor-pointer text-[11px] font-medium text-[var(--color-ink-secondary)] hover:underline"
+          className="cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline"
         >
           Record what has happened
         </button>
@@ -334,7 +335,10 @@ function Update({ motion, engagementId }: { motion: CorrectionMotion; engagement
           </Select>
         </Field>
         {outcome ? (
-          <Field label="Date" help="The day it ended. 25.25(g) counts sixty days from a determination.">
+          <Field
+            label="Date"
+            help="The day it ended. 25.25(g) counts sixty days from a determination."
+          >
             <TextInput
               type="date"
               value={outcomeOn}
@@ -421,7 +425,7 @@ function Update({ motion, engagementId }: { motion: CorrectionMotion; engagement
         </Button>
       </div>
       {send.error ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+        <p className="text-xs leading-relaxed text-[var(--color-critical)]">
           {send.error instanceof Error ? send.error.message : String(send.error)}
         </p>
       ) : null}
@@ -457,7 +461,7 @@ function Void({ motion, engagementId }: { motion: CorrectionMotion; engagementId
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="cursor-pointer text-[11px] text-[var(--color-ink-muted)] hover:underline"
+        className="cursor-pointer text-xs text-[var(--color-ink-muted)] hover:underline"
       >
         Recorded in error
       </button>
@@ -485,7 +489,7 @@ function Void({ motion, engagementId }: { motion: CorrectionMotion; engagementId
         </Button>
       </div>
       {send.error ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+        <p className="text-xs leading-relaxed text-[var(--color-critical)]">
           {send.error instanceof Error ? send.error.message : String(send.error)}
         </p>
       ) : null}

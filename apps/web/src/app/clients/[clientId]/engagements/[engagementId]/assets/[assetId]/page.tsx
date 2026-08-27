@@ -1,18 +1,22 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState, type ReactNode } from 'react';
-import type {
-  AssetAppraisalState,
-  AssetEvent,
-  AssetProfile,
-} from '@tangible/types';
+import type { AssetAppraisalState, AssetEvent, AssetProfile } from '@tangible/types';
 import { api } from '@/lib/api';
 import { moneyExact, percent } from '@/lib/format';
-import { Badge, Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
+import {
+  Badge,
+  BackLink,
+  Card,
+  CardHeader,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  Skeleton,
+  Stat as SharedStat,
+} from '@/components/ui/primitives';
 import { Button } from '@/components/ui/controls';
 import { InfoTip } from '@/components/ui/tooltip';
 
@@ -62,11 +66,14 @@ export default function AssetProfilePage() {
   if (isLoading || !data) {
     return (
       <div className="space-y-5">
-        <Skeleton className="h-4 w-40" />
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-40" />
+          <Skeleton className="h-6 w-96 max-w-full" />
+          <Skeleton className="h-3.5 w-full max-w-lg" />
+        </div>
         <Card>
           <div className="space-y-3 p-5">
-            <Skeleton className="h-6 w-96 max-w-full" />
-            <Skeleton className="h-3.5 w-64" />
+            <Skeleton className="h-4 w-44" />
             <div className="grid grid-cols-2 gap-3 pt-2 sm:grid-cols-4">
               {[0, 1, 2, 3].map((cell) => (
                 <div key={cell} className="space-y-1.5">
@@ -102,15 +109,7 @@ export default function AssetProfilePage() {
 
   return (
     <div className="space-y-5">
-      <Link
-        href={backHref}
-        className="inline-flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-      >
-        <ArrowLeft size={13} strokeWidth={2} />
-        Back to the register
-      </Link>
-
-      <HeroCard profile={data} />
+      <HeroCard profile={data} back={<BackLink href={backHref}>Back to the register</BackLink>} />
 
       <div className="grid gap-5 lg:grid-cols-2">
         <ClassificationCard profile={data} />
@@ -132,14 +131,7 @@ export default function AssetProfilePage() {
 }
 
 function Stat({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="min-w-0">
-      <div className="text-[11px] font-medium uppercase tracking-wide text-[var(--color-ink-secondary)]">
-        {label}
-      </div>
-      <div className="mt-0.5 truncate text-sm tabular-nums">{children}</div>
-    </div>
-  );
+  return <SharedStat label={label} value={children} size="sm" />;
 }
 
 function dash(value: string | number | null | undefined): ReactNode {
@@ -147,71 +139,123 @@ function dash(value: string | number | null | undefined): ReactNode {
   return String(value);
 }
 
-function HeroCard({ profile }: { profile: AssetProfile }) {
+function HeroCard({ profile, back }: { profile: AssetProfile; back: ReactNode }) {
   const { asset } = profile;
   const methodLabel = MATCH_METHOD_LABEL[profile.matchMethod] ?? profile.matchMethod;
   const methodWhy = MATCH_METHOD_WHY[profile.matchMethod];
 
   return (
+    <>
+      {/* The asset's name is the page's name, at page level like every other
+          screen's — it had been the first line inside the first card, which
+          made the page open on a card rather than on a title, and put the back
+          link and the heading in two different places. */}
+      <PageHeader
+        back={back}
+        title={asset.description ?? 'Untitled asset'}
+        meta={
+          <>
+            {asset.isDisposed ? <Badge tone="critical">Disposed</Badge> : null}
+            {profile.isAbsent ? (
+              <Badge tone="warning">
+                Not in latest import
+                <InfoTip
+                  content="Present in an earlier register, missing from the newest one. Absence is not a disposal — the client may simply have exported a narrower file — so it stays on the books until someone says otherwise."
+                  size={12}
+                  className="ml-1 align-text-bottom"
+                />
+              </Badge>
+            ) : null}
+          </>
+        }
+        description={
+          <>
+            {asset.assetTag ? <>Tag {asset.assetTag} · </> : null}
+            {methodLabel}
+            {methodWhy ? (
+              <InfoTip content={methodWhy} size={12} className="ml-1 align-text-bottom" />
+            ) : null}
+            {/* When it arrived, not which file it arrived in. The file names
+                had been printed here in full — twice, since a re-import of the
+                same workbook still counts as a later batch — which wrapped the
+                title's subtitle onto three lines to say something the
+                Snapshots card below already says per import, with the exact
+                file beside each one. */}
+            {profile.firstSeen?.appliedAt ? (
+              <> · on the register since {when(profile.firstSeen.appliedAt)}</>
+            ) : null}
+            {profile.lastSeen?.appliedAt &&
+            profile.lastSeen.batchId !== profile.firstSeen?.batchId &&
+            // A re-import on the same day is a second batch but not a second
+            // date, and printing it says "since 20 Aug, last read 20 Aug".
+            when(profile.lastSeen.appliedAt) !== when(profile.firstSeen?.appliedAt ?? '') ? (
+              <>, last read {when(profile.lastSeen.appliedAt)}</>
+            ) : null}
+          </>
+        }
+      />
+      <RegisterCard asset={asset} />
+    </>
+  );
+}
+
+/**
+ * The register row, with the blanks moved out of the way.
+ *
+ * Sixteen fields in a fixed grid meant a page that opened on twelve em-dashes:
+ * a register that carries a cost, a date and a location was rendered as a wall
+ * of nothing with four facts hidden in it. What the client left blank is still
+ * worth knowing — it is why half this page has to be inferred — so it is named
+ * in full underneath rather than dropped. It is just no longer the first thing
+ * the eye lands on.
+ */
+function RegisterCard({ asset }: { asset: AssetProfile['asset'] }) {
+  const fields: { label: string; value: string }[] = [
+    { label: 'Original cost', value: moneyExact(asset.originalCost) },
+    { label: 'Accum. depreciation', value: moneyExact(asset.accumulatedDepreciation) },
+    { label: 'Net book value', value: moneyExact(asset.netBookValue) },
+    { label: 'Acquired', value: asset.acquisitionDate ?? String(dash(asset.acquisitionYear)) },
+    { label: 'In service', value: String(dash(asset.inServiceDate)) },
+    { label: 'Register category', value: String(dash(asset.category)) },
+    { label: 'GL account', value: String(dash(asset.glAccount)) },
+    { label: 'Quantity', value: String(dash(asset.quantity)) },
+    { label: 'Serial number', value: String(dash(asset.serialNumber)) },
+    { label: 'Entity', value: String(dash(asset.entity)) },
+    { label: 'Department', value: String(dash(asset.department)) },
+    { label: 'Vendor', value: String(dash(asset.vendor)) },
+    { label: 'Useful life', value: String(dash(asset.usefulLife)) },
+    { label: 'Depreciation method', value: String(dash(asset.depreciationMethod)) },
+    { label: 'Register location', value: String(dash(asset.location)) },
+    { label: 'Disposal date', value: String(dash(asset.disposalDate)) },
+  ];
+  const carried = fields.filter((field) => field.value !== '—');
+  const blank = fields.filter((field) => field.value === '—');
+
+  return (
     <Card>
-      <div className="p-5">
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="text-lg font-semibold tracking-tight">
-            {asset.description ?? 'Untitled asset'}
-          </h1>
-          {asset.isDisposed ? <Badge tone="critical">Disposed</Badge> : null}
-          {profile.isAbsent ? (
-            <Badge tone="warning">
-              Not in latest import
-              <InfoTip
-                content="Present in an earlier register, missing from the newest one. Absence is not a disposal — the client may simply have exported a narrower file — so it stays on the books until someone says otherwise."
-                size={12}
-                className="ml-1 align-text-bottom"
-              />
-            </Badge>
-          ) : null}
+      <CardHeader
+        title="What the register says"
+        description="The row as the client's own fixed asset register carries it."
+      />
+      {carried.length > 0 ? (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-3 p-5 sm:grid-cols-4">
+          {carried.map((field) => (
+            <Stat key={field.label} label={field.label}>
+              {field.value}
+            </Stat>
+          ))}
         </div>
-        <p className="mt-1 text-xs text-[var(--color-ink-secondary)]">
-          {asset.assetTag ? <>Tag {asset.assetTag} · </> : null}
-          {methodLabel}
-          {methodWhy ? (
-            <InfoTip content={methodWhy} size={12} className="ml-1 align-text-bottom" />
-          ) : null}
-          {profile.firstSeen ? (
-            <>
-              {' '}
-              · first seen in {profile.firstSeen.fileName ?? 'an early import'}
-              {profile.firstSeen.appliedAt ? ` (${when(profile.firstSeen.appliedAt)})` : ''}
-            </>
-          ) : null}
-          {profile.lastSeen && profile.lastSeen.batchId !== profile.firstSeen?.batchId ? (
-            <>
-              , last in {profile.lastSeen.fileName ?? 'a later import'}
-              {profile.lastSeen.appliedAt ? ` (${when(profile.lastSeen.appliedAt)})` : ''}
-            </>
-          ) : null}
+      ) : (
+        <p className="px-5 py-4 text-sm text-[var(--color-ink-secondary)]">
+          The register carries nothing on this row but a description.
         </p>
-        <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
-          <Stat label="Original cost">{moneyExact(asset.originalCost)}</Stat>
-          <Stat label="Accum. depreciation">{moneyExact(asset.accumulatedDepreciation)}</Stat>
-          <Stat label="Net book value">{moneyExact(asset.netBookValue)}</Stat>
-          <Stat label="Acquired">
-            {asset.acquisitionDate ?? dash(asset.acquisitionYear)}
-          </Stat>
-          <Stat label="In service">{dash(asset.inServiceDate)}</Stat>
-          <Stat label="Register category">{dash(asset.category)}</Stat>
-          <Stat label="GL account">{dash(asset.glAccount)}</Stat>
-          <Stat label="Quantity">{dash(asset.quantity)}</Stat>
-          <Stat label="Serial number">{dash(asset.serialNumber)}</Stat>
-          <Stat label="Entity">{dash(asset.entity)}</Stat>
-          <Stat label="Department">{dash(asset.department)}</Stat>
-          <Stat label="Vendor">{dash(asset.vendor)}</Stat>
-          <Stat label="Useful life">{dash(asset.usefulLife)}</Stat>
-          <Stat label="Depreciation method">{dash(asset.depreciationMethod)}</Stat>
-          <Stat label="Register location">{dash(asset.location)}</Stat>
-          <Stat label="Disposal date">{dash(asset.disposalDate)}</Stat>
-        </div>
-      </div>
+      )}
+      {blank.length > 0 ? (
+        <p className="border-t border-[var(--color-hairline)] px-5 py-3 text-xs leading-relaxed text-[var(--color-ink-muted)]">
+          <span className="font-medium">Left blank in the register:</span>{' '}
+          {blank.map((field) => field.label.toLowerCase()).join(', ')}.
+        </p>
+      ) : null}
     </Card>
   );
 }
@@ -252,7 +296,7 @@ function ClassificationCard({ profile }: { profile: AssetProfile }) {
               {c.status === 'needs-review' ? 'Needs review' : null}
               {c.status === 'confirmed' ? 'Confirmed' : null}
             </Badge>
-            <span className="text-xs tabular-nums text-[var(--color-ink-secondary)]">
+            <span className="text-xs text-[var(--color-ink-secondary)] tabular-nums">
               {percent(c.confidence, 0)} confident
             </span>
           </div>
@@ -312,14 +356,16 @@ function CalcStep({ label, value, note }: { label: string; value: string; note?:
     <div className="flex items-baseline justify-between gap-4 px-5 py-2.5">
       <div className="text-xs text-[var(--color-ink-secondary)]">
         {label}
-        {note ? <span className="ml-1.5 text-[11px] opacity-80">{note}</span> : null}
+        {note ? <span className="ml-1.5 text-xs opacity-80">{note}</span> : null}
       </div>
       <div className="text-sm font-medium tabular-nums">{value}</div>
     </div>
   );
 }
 
-const APPRAISAL_STATE_COPY: Partial<Record<AssetAppraisalState['state'], { title: string; body: string }>> = {
+const APPRAISAL_STATE_COPY: Partial<
+  Record<AssetAppraisalState['state'], { title: string; body: string }>
+> = {
   disposed: {
     title: 'Not appraised — disposed',
     body: 'Disposed assets carry no value into the rendition; the disposal itself is what the return reports.',
@@ -458,7 +504,9 @@ function FindingsCard({ profile }: { profile: AssetProfile }) {
             <li key={`${f.setId}-${f.key}`} className="px-5 py-3">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="text-sm font-medium">{f.title}</span>
-                <Badge tone={f.kind === 'saving' ? 'good' : f.kind === 'risk' ? 'warning' : 'neutral'}>
+                <Badge
+                  tone={f.kind === 'saving' ? 'good' : f.kind === 'risk' ? 'warning' : 'neutral'}
+                >
                   {f.kind}
                 </Badge>
               </div>
@@ -486,11 +534,7 @@ function HistoryCard({ events }: { events: AssetEvent[] }) {
         help="Material events are the ones that change what the return says — cost moves, disposals, reclassifications. Routine ones are bookkeeping drift like another year of book depreciation."
         action={
           routineCount > 0 ? (
-            <Button
-              className="h-7 px-2.5 text-xs"
-              variant="ghost"
-              onClick={() => setShowRoutine((v) => !v)}
-            >
+            <Button size="sm" variant="ghost" onClick={() => setShowRoutine((v) => !v)}>
               {showRoutine ? 'Hide' : 'Show'} {routineCount} routine
             </Button>
           ) : undefined
@@ -513,7 +557,9 @@ function HistoryCard({ events }: { events: AssetEvent[] }) {
                   {e.actor ? ` · ${e.actor}` : ''}
                 </div>
               </div>
-              {e.significance === 'material' ? <Badge tone="accent">material</Badge> : (
+              {e.significance === 'material' ? (
+                <Badge tone="accent">material</Badge>
+              ) : (
                 <Badge tone="neutral">routine</Badge>
               )}
             </li>
@@ -535,7 +581,7 @@ function VersionsCard({ profile }: { profile: AssetProfile }) {
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[var(--color-hairline)] text-left text-[11px] font-medium uppercase tracking-wide text-[var(--color-ink-secondary)]">
+            <tr className="text-2xs border-b border-[var(--color-hairline)] text-left font-medium tracking-wide text-[var(--color-ink-secondary)] uppercase">
               <th className="px-5 py-2.5">Import</th>
               <th className="px-3 py-2.5">Cell</th>
               <th className="px-3 py-2.5 text-right">Cost</th>
@@ -554,16 +600,20 @@ function VersionsCard({ profile }: { profile: AssetProfile }) {
                     {when(v.createdAt)}
                   </span>
                 </td>
-                <td className="whitespace-nowrap px-3 py-2.5 text-xs text-[var(--color-ink-secondary)]">
+                <td className="px-3 py-2.5 text-xs whitespace-nowrap text-[var(--color-ink-secondary)]">
                   {v.sourceSheet} · row {v.sourceRow + 1}
                 </td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{moneyExact(v.originalCost)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {moneyExact(v.originalCost)}
+                </td>
                 <td className="px-3 py-2.5 text-right tabular-nums">
                   {moneyExact(v.accumulatedDepreciation)}
                 </td>
-                <td className="px-3 py-2.5 text-right tabular-nums">{moneyExact(v.netBookValue)}</td>
+                <td className="px-3 py-2.5 text-right tabular-nums">
+                  {moneyExact(v.netBookValue)}
+                </td>
                 <td className="max-w-40 truncate px-3 py-2.5">{dash(v.category)}</td>
-                <td className="whitespace-nowrap px-5 py-2.5">
+                <td className="px-5 py-2.5 whitespace-nowrap">
                   {v.isCurrent ? (
                     <Badge tone="accent">current</Badge>
                   ) : v.batchStatus === 'superseded' ? (
@@ -601,7 +651,10 @@ function RawCard({
       />
       <dl className="grid grid-cols-1 gap-x-6 gap-y-2 p-5 sm:grid-cols-2 lg:grid-cols-3">
         {entries.map(([key, value]) => (
-          <div key={key} className="flex items-baseline justify-between gap-3 border-b border-dotted border-[var(--color-hairline)] pb-1">
+          <div
+            key={key}
+            className="flex items-baseline justify-between gap-3 border-b border-dotted border-[var(--color-hairline)] pb-1"
+          >
             <dt className="truncate text-xs text-[var(--color-ink-secondary)]" title={key}>
               {/^\d+$/.test(key) ? `Column ${Number(key) + 1}` : key}
             </dt>

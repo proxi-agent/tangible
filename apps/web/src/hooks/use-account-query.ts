@@ -1,7 +1,7 @@
 'use client';
 
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import type { AccountQuery, SegmentKey } from '@tangible/types';
 
 const PAGE_SIZE = 50;
@@ -91,7 +91,19 @@ export function useAccountQuery(jurisdictionId: string, taxYear: number) {
     (query.hasAgent !== undefined ? 1 : 0) +
     (query.includeExempt ? 1 : 0);
 
+  /**
+   * A counter that goes up every time the filters are cleared.
+   *
+   * The free-text boxes are uncontrolled — they have to be, or every keystroke
+   * would round-trip through the URL and lose the caret — so clearing the query
+   * left the typed word sitting in a box that was no longer filtering on it.
+   * The page keys the filter grid on this, which remounts the boxes so they end
+   * up saying what the results are actually showing.
+   */
+  const [cleared, setCleared] = useState(0);
+
   const reset = useCallback(() => {
+    setCleared((n) => n + 1);
     const params = new URLSearchParams();
     if (searchParams.get('jurisdictionId')) {
       params.set('jurisdictionId', searchParams.get('jurisdictionId')!);
@@ -100,5 +112,5 @@ export function useAccountQuery(jurisdictionId: string, taxYear: number) {
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   }, [pathname, router, searchParams]);
 
-  return { query, update, toggleSegment, reset, activeFilterCount, pageSize: PAGE_SIZE };
+  return { query, update, toggleSegment, reset, cleared, activeFilterCount, pageSize: PAGE_SIZE };
 }

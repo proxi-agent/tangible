@@ -29,9 +29,26 @@ export async function GET(
     });
   } catch (error) {
     if (error instanceof HttpError) {
-      return Response.json({ error: error.message }, { status: error.status });
+      return Response.json(
+        { statusCode: error.status, message: error.message },
+        { status: error.status },
+      );
     }
+    /**
+     * `message`, not `error`: the envelope the rest of the API returns and the
+     * only key the client reads. And the raw text only off the deployment —
+     * whatever threw building a workbook wrote its sentence for the log, and
+     * that is where it goes.
+     */
+    console.error('[export]', error);
     const message = error instanceof Error ? error.message : 'Could not build the workbook.';
-    return Response.json({ error: message }, { status: 500 });
+    return Response.json(
+      {
+        statusCode: 500,
+        message:
+          process.env.NODE_ENV === 'production' ? 'The workbook could not be built.' : message,
+      },
+      { status: 500 },
+    );
   }
 }

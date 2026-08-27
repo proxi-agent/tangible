@@ -3,6 +3,7 @@ import { eq, inArray, sql, type SQL } from 'drizzle-orm';
 import type { PgColumn, PgTable } from 'drizzle-orm/pg-core';
 import { deletionWarnings } from '@tangible/filing';
 import type { DeletionCounts, DeletionPreview, DeletionReceipt } from '@tangible/types';
+import { purgeClientTurns } from '@/lib/assistant/store';
 import { removeFarFiles } from '@/lib/far-storage';
 import { HttpError } from '@/lib/route';
 import { fetchClient } from '@/lib/workspace';
@@ -100,6 +101,7 @@ async function countsFor(clientId: string): Promise<{
     correctionMotions,
     appointments,
     memoryRows,
+    assistantTurns,
   ] = await Promise.all([
     tally(schema.clientLocations, eq(schema.clientLocations.clientId, clientId)),
     tally(schema.assets, eq(schema.assets.clientId, clientId)),
@@ -113,6 +115,10 @@ async function countsFor(clientId: string): Promise<{
     scoped(schema.correctionMotions, schema.correctionMotions.engagementId),
     tally(schema.agentAppointments, eq(schema.agentAppointments.clientId, clientId)),
     scoped(schema.classificationMemory, schema.classificationMemory.sourceEngagementId),
+    tally(
+      schema.assistantTurns,
+      sql`${schema.assistantTurns.clientIds} @> ARRAY[${clientId}]::uuid[]`,
+    ),
   ]);
 
   return {
@@ -131,6 +137,7 @@ async function countsFor(clientId: string): Promise<{
       correctionMotions,
       appointments,
       memoryRows,
+      assistantTurns,
     },
   };
 }
@@ -214,6 +221,12 @@ export async function deleteClient(
     await tx.delete(schema.clientLocations).where(eq(schema.clientLocations.clientId, clientId));
     await tx.delete(schema.clients).where(eq(schema.clients.id, clientId));
   });
+
+  // Outside the transaction and after it, like the bucket: these rows hang off
+  // conversations rather than off the client, so they are found by a scan
+  // rather than carried away by a cascade, and a conversation left empty by the
+  // scan is deleted with them.
+  await purgeClientTurns(clientId);
 
   const sweep = await removeFarFiles(storagePaths);
 

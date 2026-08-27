@@ -2,7 +2,7 @@
 
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { AlertTriangle, History } from 'lucide-react';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type {
   FindingDispositionStatus,
   FindingKind,
@@ -10,11 +10,10 @@ import type {
   StoredFinding,
 } from '@tangible/types';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/cn';
 import { count, moneyExact, plural } from '@/lib/format';
 import { FindingDispositionBadge, FindingEffectBadge } from '@/components/workspace/badges';
-import { Button, TextInput } from '@/components/ui/controls';
-import { Badge, Card, CardHeader } from '@/components/ui/primitives';
+import { Segmented, TextInput } from '@/components/ui/controls';
+import { Badge, Callout, Card, CardHeader, PageHeader, Stat } from '@/components/ui/primitives';
 import { Tooltip } from '@/components/ui/tooltip';
 
 /**
@@ -52,9 +51,22 @@ const CHOICES: { value: FindingDispositionStatus; label: string; help: string }[
   },
 ];
 
-export function FindingSetView({ set }: { set: FindingSet }) {
+export function FindingSetView({ set, back }: { set: FindingSet; back?: ReactNode }) {
+  const committed = new Date(set.committedAt);
   return (
     <div className="space-y-5">
+      {/* The version's own name is the page's name. It had been a line of grey
+          type three quarters of the way down the first card, which is where
+          you look for a footnote, not for what you are reading. */}
+      <PageHeader
+        back={back}
+        title={set.label ?? 'Committed version'}
+        meta={<Badge tone="neutral">tax year {set.taxYear}</Badge>}
+        description={`Committed ${committed.toLocaleDateString()} at ${committed.toLocaleTimeString(
+          [],
+          { hour: 'numeric', minute: '2-digit' },
+        )}${set.committedBy ? ` by ${set.committedBy}` : ''}. Every figure below was frozen at that moment.`}
+      />
       <Headline set={set} />
       <Card>
         <CardHeader
@@ -78,13 +90,10 @@ function Headline({ set }: { set: FindingSet }) {
     <Card>
       <div className="space-y-4 px-5 py-5">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-          <span className="text-xs tracking-wide text-[var(--color-ink-muted)] uppercase">
-            {set.headline.label}
-          </span>
+          <span className="eyebrow">{set.headline.label}</span>
           <span className="text-3xl font-semibold tracking-tight tabular-nums">
             {moneyExact(set.headline.value)}
           </span>
-          <Badge tone="neutral">tax year {set.taxYear}</Badge>
         </div>
 
         {set.headline.caveat ? (
@@ -93,16 +102,12 @@ function Headline({ set }: { set: FindingSet }) {
           </p>
         ) : null}
 
-        <p className="text-xs text-[var(--color-ink-secondary)]">
-          {set.label ? <span className="text-[var(--color-ink)]">{set.label} — </span> : null}
-          committed {committed.toLocaleDateString()} at{' '}
-          {committed.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-          {set.committedBy ? ` by ${set.committedBy}` : ''}
-        </p>
-
         <div className="flex flex-wrap gap-x-6 gap-y-2 text-xs">
           <Figure label="Findings" value={count(set.findingCount)} />
-          <Figure label="Decided" value={`${count(set.decidedCount)} of ${count(set.findingCount)}`} />
+          <Figure
+            label="Decided"
+            value={`${count(set.decidedCount)} of ${count(set.findingCount)}`}
+          />
           <Figure label="Cost involved" value={moneyExact(set.totalCost)} />
           <Figure label="Value effect" value={moneyExact(set.totalValue)} />
           {set.exposureCount > 0 ? (
@@ -114,19 +119,12 @@ function Headline({ set }: { set: FindingSet }) {
         </div>
 
         {set.isStale ? (
-          <div className="flex items-start gap-2 rounded-md border border-[color-mix(in_oklab,var(--color-warning)_40%,transparent)] bg-[color-mix(in_oklab,var(--color-warning)_10%,transparent)] px-3 py-2.5">
-            <AlertTriangle
-              size={14}
-              strokeWidth={2}
-              className="mt-0.5 shrink-0 text-[var(--color-warning)]"
-            />
-            <p className="text-xs leading-relaxed">
-              The register, the classifications or the return’s mapping have changed since this was
-              committed. Nothing here is wrong — it is what was said on{' '}
-              {committed.toLocaleDateString()} — but the live report no longer matches it. Commit a
-              fresh version before sending this one out.
-            </p>
-          </div>
+          <Callout tone="warning" icon={AlertTriangle}>
+            The register, the classifications or the return’s mapping have changed since this was
+            committed. Nothing here is wrong — it is what was said on{' '}
+            {committed.toLocaleDateString()} — but the live report no longer matches it. Commit a
+            fresh version before sending this one out.
+          </Callout>
         ) : null}
       </div>
     </Card>
@@ -134,12 +132,7 @@ function Headline({ set }: { set: FindingSet }) {
 }
 
 function Figure({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="text-[11px] text-[var(--color-ink-muted)]">{label}</div>
-      <div className="font-medium tabular-nums">{value}</div>
-    </div>
-  );
+  return <Stat size="sm" label={label} value={value} />;
 }
 
 function FindingRow({ finding, setId }: { finding: StoredFinding; setId: string }) {
@@ -174,7 +167,10 @@ function FindingRow({ finding, setId }: { finding: StoredFinding; setId: string 
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-1.5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-sm font-medium">{finding.title}</span>
+            {/* The finding's name, and the only thing on the row a reader
+                scanning for one of them is looking for — it had been a bare
+                span, so a page of eight findings announced one heading. */}
+            <h3 className="text-sm font-semibold tracking-[-0.006em]">{finding.title}</h3>
             <FindingEffectBadge effect={finding.effect} />
             <Tooltip title={finding.kind} content={KIND_HELP[finding.kind]}>
               <Badge tone="neutral" className="cursor-help">
@@ -183,10 +179,14 @@ function FindingRow({ finding, setId }: { finding: StoredFinding; setId: string 
             </Tooltip>
             {disposition ? <FindingDispositionBadge status={disposition.status} /> : null}
           </div>
-          <p className="max-w-2xl text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+          {/* What the finding is, at body size: it is the sentence the firm
+              reads before deciding, and it had been set in the same 13px grey
+              as the statutory footnote under it — three tiers of type within
+              a pixel of each other, which is a grey wall rather than a rank. */}
+          <p className="max-w-2xl text-sm leading-relaxed text-[var(--color-ink-secondary)]">
             {finding.summary}
           </p>
-          <p className="max-w-2xl text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
+          <p className="max-w-2xl text-xs leading-relaxed text-[var(--color-ink-muted)]">
             {finding.basis}
             {finding.assumption ? ` Assumes: ${finding.assumption}` : ''}
           </p>
@@ -194,7 +194,7 @@ function FindingRow({ finding, setId }: { finding: StoredFinding; setId: string 
 
         <div className="shrink-0 text-right text-xs">
           <div className="font-medium tabular-nums">{moneyExact(finding.value)}</div>
-          <div className="text-[11px] text-[var(--color-ink-muted)] tabular-nums">
+          <div className="text-xs text-[var(--color-ink-muted)] tabular-nums">
             {moneyExact(finding.cost)} cost · {count(finding.assetCount)}{' '}
             {plural(finding.assetCount, 'asset')}
           </div>
@@ -202,34 +202,26 @@ function FindingRow({ finding, setId }: { finding: StoredFinding; setId: string 
       </div>
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <div className="inline-flex rounded-md border border-[var(--color-hairline)] p-0.5">
-          {CHOICES.map((choice) => (
-            <button
-              key={choice.value}
-              type="button"
-              title={choice.help}
-              disabled={decide.isPending}
-              aria-pressed={disposition?.status === choice.value}
-              onClick={() =>
-                decide.mutate({
-                  // Pressing the current choice clears it. Undecided has to be
-                  // reachable, or a mis-click becomes a permanent record of a
-                  // decision nobody made.
-                  status: disposition?.status === choice.value ? null : choice.value,
-                  note: note.trim() || null,
-                })
-              }
-              className={cn(
-                'cursor-pointer rounded px-2.5 py-1 text-xs font-medium transition-colors disabled:cursor-not-allowed',
-                disposition?.status === choice.value
-                  ? 'bg-[color-mix(in_oklab,var(--color-series-1)_14%,transparent)] text-[var(--color-ink)]'
-                  : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]',
-              )}
-            >
-              {choice.label}
-            </button>
-          ))}
-        </div>
+        {/* The same segmented control every other screen uses. `undecided` is
+            not one of the choices, so nothing reads as pressed until somebody
+            decides; pressing the pressed one clears it back to that, because a
+            mis-click must not become a permanent record of a decision nobody
+            made. */}
+        <Segmented<FindingDispositionStatus | 'undecided'>
+          ariaLabel="What was decided about this finding"
+          options={CHOICES.map((choice) => ({
+            value: choice.value,
+            label: choice.label,
+            title: choice.help,
+          }))}
+          value={disposition?.status ?? 'undecided'}
+          onChange={(chosen) =>
+            decide.mutate({
+              status: disposition?.status === chosen ? null : (chosen as FindingDispositionStatus),
+              note: note.trim() || null,
+            })
+          }
+        />
 
         <TextInput
           value={note}
@@ -243,12 +235,13 @@ function FindingRow({ finding, setId }: { finding: StoredFinding; setId: string 
           }}
           disabled={!disposition}
           placeholder={disposition ? 'Why — one line' : 'Decide first, then say why'}
-          className="h-8 max-w-md flex-1 text-xs"
+          compact
+          className="max-w-md flex-1"
           aria-label="Why this was decided"
         />
 
         {disposition ? (
-          <span className="text-[11px] text-[var(--color-ink-muted)]">
+          <span className="text-xs text-[var(--color-ink-muted)]">
             {new Date(disposition.decidedAt).toLocaleDateString()}
             {disposition.decidedBy ? ` · ${disposition.decidedBy}` : ''}
           </span>
@@ -273,15 +266,16 @@ function Carried({ finding }: { finding: StoredFinding }) {
   if (!disposition) return null;
 
   return (
-    <div className="mt-2 flex items-start gap-1.5 text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
+    <div className="mt-2 flex items-start gap-1.5 text-xs leading-relaxed text-[var(--color-ink-muted)]">
       <History size={12} strokeWidth={2} className="mt-0.5 shrink-0" />
       <span>
         Carried from an earlier version.
         {disposition.hasMovedSinceDecision ? (
           <span className="text-[var(--color-warning)]">
             {' '}
-            The numbers have moved since — decided against {moneyExact(disposition.decidedValue)} on{' '}
-            {moneyExact(disposition.decidedCost)} of cost, now {moneyExact(finding.value)} on{' '}
+            The numbers have moved since — decided against {moneyExact(
+              disposition.decidedValue,
+            )} on {moneyExact(disposition.decidedCost)} of cost, now {moneyExact(finding.value)} on{' '}
             {moneyExact(finding.cost)}. Worth confirming it still holds.
           </span>
         ) : null}

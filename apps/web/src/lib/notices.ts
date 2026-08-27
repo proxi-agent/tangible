@@ -31,6 +31,7 @@ import { engagementFilings } from '@/lib/filings';
 import { clientMotions, motionKey, spentBy } from '@/lib/motions';
 import { HttpError, notFound } from '@/lib/route';
 import { engagementReturns } from '@/lib/sites';
+import { today as todayIso } from '@/lib/today';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -195,7 +196,6 @@ export async function updateNotice(
   if (!decorated) throw new HttpError(500, 'The notice was not updated.');
   return decorated;
 }
-
 
 /**
  * Write down how a protest ended.
@@ -412,7 +412,7 @@ async function decorate(
     // this firm filed last season.
     clientMotions(engagement.clientId),
   ]);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
 
   const filed = new Map<string, CorrectionMotion[]>();
   for (const motion of motions) {
@@ -488,7 +488,9 @@ async function decorate(
               // ending, so a route we call open is open.
               historyKnown: true,
               // 25.25(c-1)(3): our own earlier motion, where there was one.
-              priorMotion: spentBy(filed.get(motionKey(row.accountId, row.taxYear, row.locationId)) ?? []),
+              priorMotion: spentBy(
+                filed.get(motionKey(row.accountId, row.taxYear, row.locationId)) ?? [],
+              ),
             },
             today,
           )

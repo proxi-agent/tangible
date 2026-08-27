@@ -4,7 +4,7 @@ import { LogIn } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
 import { Button, Field, TextInput } from '@/components/ui/controls';
-import { Card } from '@/components/ui/primitives';
+import { Callout, Card } from '@/components/ui/primitives';
 import { authConfigured, getSupabaseBrowser } from '@/lib/supabase-browser';
 
 export default function LoginPage() {
@@ -13,6 +13,21 @@ export default function LoginPage() {
       <LoginForm />
     </Suspense>
   );
+}
+
+/**
+ * Where to land after signing in, when the session expired mid-task.
+ *
+ * A session that lapses while a tab sits open sends the practitioner here from
+ * wherever they were; landing them back on the client list loses the return
+ * they had half-recorded. Only same-origin *paths* are honoured — a `next` of
+ * `https://elsewhere.example` or the protocol-relative `//elsewhere.example`
+ * would make this login page an open redirect, which is worth exactly as much
+ * to a phisher as a stolen password.
+ */
+function safeNext(value: string | null): string | null {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+  return value;
 }
 
 function LoginForm() {
@@ -50,13 +65,13 @@ function LoginForm() {
     }
     // Full navigation, not a router push: the middleware reads the fresh
     // cookies on the next request, and a soft transition would race it.
-    window.location.assign('/clients');
+    window.location.assign(safeNext(params.get('next')) ?? '/clients');
   }
 
   return (
     <Shell>
       {rejection ? (
-        <div className="mb-4 rounded-md border border-[color-mix(in_oklab,var(--color-critical)_35%,transparent)] bg-[color-mix(in_oklab,var(--color-critical)_10%,transparent)] px-3 py-2 text-xs leading-relaxed">
+        <Callout tone="critical" className="mb-4">
           {rejection === 'noallowlist' ? (
             <>
               This workspace has no <code>AUTH_ALLOWED_EMAILS</code> allowlist, so no account can be
@@ -76,7 +91,7 @@ function LoginForm() {
           >
             Sign out
           </button>
-        </div>
+        </Callout>
       ) : null}
 
       <form onSubmit={submit} className="flex flex-col gap-4">
@@ -115,12 +130,17 @@ function LoginForm() {
 function Shell({ children }: { children: React.ReactNode }) {
   return (
     <div className="grid min-h-[70vh] place-items-center px-6">
-      <Card className="w-full max-w-sm p-6">
-        <div className="mb-5 flex items-center gap-2">
-          <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--color-series-1)] text-[13px] font-bold text-white">
-            T
-          </span>
-          <span className="text-sm font-semibold tracking-tight">Tangible</span>
+      <Card raised className="w-full max-w-sm p-6">
+        <div className="mb-5">
+          <div className="flex items-center gap-2">
+            <span className="grid h-7 w-7 place-items-center rounded-md bg-[var(--color-accent)] text-xs font-bold text-[var(--color-on-accent)]">
+              T
+            </span>
+            <span className="text-sm font-semibold tracking-tight">Tangible</span>
+          </div>
+          {/* The card had a wordmark and no heading, so the page announced the
+              product and never said what it was asking for. */}
+          <h1 className="mt-4 text-xl font-semibold tracking-tight">Sign in</h1>
         </div>
         {children}
       </Card>

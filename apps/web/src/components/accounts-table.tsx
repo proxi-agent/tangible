@@ -14,6 +14,7 @@ import { cn } from '@/lib/cn';
 import { count, moneyExact } from '@/lib/format';
 import { Badge } from '@/components/ui/primitives';
 import { DataTable, type ColumnMeta } from '@/components/ui/data-table';
+import { StateClassCell } from '@/components/state-class';
 import { Tooltip } from '@/components/ui/tooltip';
 
 /**
@@ -31,6 +32,7 @@ export function AccountsTable({
   onSortChange,
   onOffsetChange,
   scopeQuery,
+  loading,
 }: {
   accounts: AccountSeries[];
   query: AccountQuery;
@@ -38,6 +40,8 @@ export function AccountsTable({
   onSortChange: (sortBy: AccountSortField, sortDir: 'asc' | 'desc') => void;
   onOffsetChange: (offset: number) => void;
   scopeQuery: string;
+  /** First page still in flight — skeleton rows rather than "nothing matches". */
+  loading?: boolean;
 }) {
   const columns = useMemo<ColumnDef<AccountSeries, unknown>[]>(
     () => [
@@ -54,8 +58,8 @@ export function AccountsTable({
             href={`/accounts/${encodeURIComponent(row.original.accountId)}?${scopeQuery}`}
             className={cn(
               'block truncate font-medium underline-offset-2',
-              'hover:text-[var(--color-series-1)] hover:underline',
-              'focus-visible:text-[var(--color-series-1)] focus-visible:underline outline-none',
+              'hover:text-[var(--color-accent)] hover:underline',
+              'outline-none focus-visible:text-[var(--color-accent)] focus-visible:underline',
             )}
             title={row.original.ownerName ?? undefined}
           >
@@ -94,9 +98,7 @@ export function AccountsTable({
         meta: {
           help: "The state's category code for the property. L1 is ordinary commercial equipment, L2 industrial; other codes cover dealers, utilities and pipelines, which are appraised under different rules.",
         } satisfies ColumnMeta,
-        cell: ({ row }) => (
-          <span className="text-[var(--color-ink-secondary)]">{row.original.stateClass ?? '—'}</span>
-        ),
+        cell: ({ row }) => <StateClassCell stateClass={row.original.stateClass} />,
       },
       {
         id: 'latestAssessedValue',
@@ -183,6 +185,7 @@ export function AccountsTable({
     <DataTable
       columns={columns}
       data={accounts}
+      loading={loading}
       getRowId={(account) => account.accountId}
       sorting={sorting}
       onSortingChange={(next) => {
@@ -193,6 +196,7 @@ export function AccountsTable({
         if (!SORTABLE.has(first.id)) return;
         onSortChange(first.id as AccountSortField, first.desc ? 'desc' : 'asc');
       }}
+      maxHeight="max(26rem, calc(100vh - 20rem))"
       pagination={{ offset: query.offset, limit: query.limit, total }}
       onOffsetChange={onOffsetChange}
       empty={{

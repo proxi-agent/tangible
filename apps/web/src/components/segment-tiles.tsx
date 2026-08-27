@@ -48,9 +48,7 @@ export function SegmentTiles({
 
         return (
           <section key={tier}>
-            <h2 className="text-[11px] font-semibold tracking-wider text-[var(--color-ink-muted)] uppercase">
-              {TIER_LABELS[tier]}
-            </h2>
+            <h2 className="eyebrow">{TIER_LABELS[tier]}</h2>
             <p className="mb-2.5 text-xs text-[var(--color-ink-secondary)]">{TIER_BLURBS[tier]}</p>
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {inTier.map((definition) => {
@@ -62,9 +60,9 @@ export function SegmentTiles({
                     key={definition.key}
                     href={`/accounts?${scopeQuery}&segments=${definition.key}`}
                     className={cn(
-                      'card group flex cursor-pointer flex-col p-4 outline-none transition-all',
-                      'hover:-translate-y-0.5 hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)] hover:shadow-md hover:shadow-black/5',
-                      'focus-visible:border-[var(--color-series-1)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_30%,transparent)]',
+                      'card group flex cursor-pointer flex-col p-4 transition-all outline-none',
+                      'hover:-translate-y-0.5 hover:border-[color-mix(in_oklab,var(--color-accent)_45%,transparent)] hover:shadow-md hover:shadow-black/5',
+                      'focus-visible:border-[var(--color-accent)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
                     )}
                   >
                     <div className="flex items-start justify-between gap-2">
@@ -75,7 +73,7 @@ export function SegmentTiles({
                           content={definition.caveat}
                           className="mt-0.5 shrink-0"
                         >
-                          <span className="cursor-help text-[var(--color-ink-muted)] transition-colors group-hover:text-[var(--color-series-1)]">
+                          <span className="cursor-help text-[var(--color-ink-muted)] transition-colors group-hover:text-[var(--color-accent)]">
                             <Info size={13} strokeWidth={2} />
                             <span className="sr-only">{definition.caveat}</span>
                           </span>
@@ -90,33 +88,37 @@ export function SegmentTiles({
                       </span>
                     </p>
 
-                    <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-                      <div className="flex justify-between gap-2">
-                        <dt className="text-[var(--color-ink-secondary)]">Penalties/yr</dt>
-                        <dd className="tabular font-medium">
-                          {money(metric.estimatedAnnualPenalty)}
-                        </dd>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <dt className="text-[var(--color-ink-secondary)]">Equipment value</dt>
-                        <dd className="tabular font-medium">{money(metric.totalAssessedValue)}</dd>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <dt className="text-[var(--color-ink-secondary)]">Typical penalty</dt>
-                        <dd className="tabular font-medium">{money(metric.medianAnnualPenalty)}</dd>
-                      </div>
-                      <div className="flex justify-between gap-2">
-                        <dt className="text-[var(--color-ink-secondary)]">Of the market</dt>
-                        <dd className="tabular font-medium">{percent(metric.shareOfTaxable)}</dd>
-                      </div>
+                    {/* One column of pairs, not two. Against a third-width tile
+                        two columns leave each pair about 110px, which will not
+                        hold "Equipment value" beside "$100.5B" — the label
+                        wrapped to two lines and the rows stopped lining up.
+                        Stacked, the four figures form a single right-aligned
+                        column that can be read straight down. */}
+                    <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 text-xs">
+                      <dt className="text-[var(--color-ink-secondary)]">Penalties/yr</dt>
+                      <dd className="tabular text-right font-medium">
+                        {money(metric.estimatedAnnualPenalty)}
+                      </dd>
+                      <dt className="text-[var(--color-ink-secondary)]">Equipment value</dt>
+                      <dd className="tabular text-right font-medium">
+                        {money(metric.totalAssessedValue)}
+                      </dd>
+                      <dt className="text-[var(--color-ink-secondary)]">Typical penalty</dt>
+                      <dd className="tabular text-right font-medium">
+                        {money(metric.medianAnnualPenalty)}
+                      </dd>
+                      <dt className="text-[var(--color-ink-secondary)]">Of the market</dt>
+                      <dd className="tabular text-right font-medium">
+                        {percent(metric.shareOfTaxable)}
+                      </dd>
                     </dl>
 
-                    <p className="mt-3 border-t border-[var(--color-hairline)] pt-2.5 text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+                    <p className="mt-3 border-t border-[var(--color-hairline)] pt-2.5 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
                       {definition.description}
                     </p>
 
                     {/* The whole tile is a link; this is the part that says so. */}
-                    <p className="mt-2.5 inline-flex items-center gap-1 text-[11px] font-medium text-[var(--color-ink-muted)] transition-colors group-hover:text-[var(--color-series-1)]">
+                    <p className="mt-2.5 inline-flex items-center gap-1 text-xs font-medium text-[var(--color-ink-muted)] transition-colors group-hover:text-[var(--color-accent)]">
                       See these businesses
                       <ArrowRight
                         size={12}

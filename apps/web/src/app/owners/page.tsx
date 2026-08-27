@@ -1,15 +1,16 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { X } from 'lucide-react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { OwnerSortFieldSchema, SortDirectionSchema, type SegmentKey } from '@tangible/types';
-import { Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { Card, CardHeader, ErrorState, PageHeader, Skeleton } from '@/components/ui/primitives';
 import { OwnersTable } from '@/components/owners-table';
-import { ChipGroup, Field, Select, TextInput } from '@/components/ui/controls';
+import { Button, ChipGroup, Field, Select, TextInput } from '@/components/ui/controls';
 import { useScope } from '@/hooks/use-scope';
 import { api } from '@/lib/api';
-import { count } from '@/lib/format';
+import { count, money, plural } from '@/lib/format';
 
 const PAGE_SIZE = 50;
 
@@ -116,14 +117,57 @@ function Owners() {
   });
 
   const total = owners.data?.total ?? 0;
+  const page = owners.data?.items ?? [];
+
+  /**
+   * How far the reader has moved from where the page opened. The twin accounts
+   * page has had this since it shipped, and the reason applies here too: a
+   * filter set narrow enough to return nothing looks identical to a county with
+   * nothing in it, and the way out is a button that says how many choices are
+   * standing between the reader and the whole list.
+   */
+  const narrowed =
+    (segments.join(',') === defaultSegment ? 0 : 1) +
+    (minAccounts === 2 ? 0 : 1) +
+    (search ? 1 : 0);
+
+  /**
+   * The text boxes below are uncontrolled — they have to be, or every keystroke
+   * would round-trip through the URL and lose the caret. That makes clearing
+   * the filters a half-move: the query goes but the typed word stays sitting in
+   * a box that is no longer filtering on it. Bumping this remounts them, so the
+   * boxes end up saying what the results are actually showing.
+   */
+  const [cleared, setCleared] = useState(0);
+
+  const reset = () => {
+    update({ segments: undefined, minAccounts: undefined, search: undefined });
+    setCleared((n) => n + 1);
+  };
+
+  // The page's own totals, said in the two units this page is about: what the
+  // penalties come to, and how many locations one conversation would cover.
+  const pagePenalty = page.reduce((sum, owner) => sum + owner.estimatedAnnualPenalty, 0);
+  const pageLocations = page.reduce((sum, owner) => sum + owner.accountCount, 0);
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        title="Multi-account owners"
+        description="The same businesses as the accounts page, rolled up to the entity that answers the phone. A business with twelve locations carries twelve penalties, and one conversation covers all of them — which makes the entity, not the account, the unit worth contacting."
+      />
+
       <Card>
         <CardHeader
-          title="Multi-account owners"
-          description="The same businesses as the accounts page, rolled up to the entity that answers the phone."
-          help="A business with twelve locations carries twelve penalties, and one conversation covers all of them — which makes the entity, not the account, the unit worth contacting."
+          title="Filters"
+          help="Narrow the list with the buttons — hover any of them to see what it means. Picking several narrows further: an owner has to satisfy every one of the chosen filters."
+          action={
+            narrowed > 0 ? (
+              <Button variant="ghost" onClick={reset}>
+                <X size={14} /> Clear {narrowed}
+              </Button>
+            ) : null
+          }
         />
         <div className="space-y-4 p-5">
           {segmentDefs.data ? (
@@ -147,7 +191,7 @@ function Owners() {
             <Skeleton className="h-7 w-full" />
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div key={cleared} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Field
               label="Search owner"
               help="Matches part of a business name. Case does not matter."
@@ -175,19 +219,24 @@ function Owners() {
       </Card>
 
       <Card>
-        <CardHeader title={owners.data ? `${count(total)} owners` : 'Owners'} />
+        <CardHeader
+          title={owners.data ? `${count(total)} owners` : 'Owners'}
+          description={
+            page.length > 0
+              ? `${money(pagePenalty)} in annual penalties across the ${count(page.length)} ${plural(page.length, 'owner')} on this page, covering ${count(pageLocations)} ${plural(pageLocations, 'location')}`
+              : undefined
+          }
+        />
 
         {owners.error ? (
           <ErrorState error={owners.error} />
-        ) : owners.isPending ? (
-          <div className="space-y-2 p-5">
-            {Array.from({ length: 8 }, (_, i) => (
-              <Skeleton key={i} className="h-9 w-full" />
-            ))}
-          </div>
         ) : (
+          /* The table draws its own loading state — skeleton rows beneath the
+             real column headings — rather than a stack of bars that says
+             nothing about what is arriving. */
           <OwnersTable
-            owners={owners.data.items}
+            loading={owners.isPending}
+            owners={owners.data?.items ?? []}
             total={total}
             offset={offset}
             limit={PAGE_SIZE}

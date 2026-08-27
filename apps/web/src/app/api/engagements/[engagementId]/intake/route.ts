@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { desc, eq } from 'drizzle-orm';
 import { isAiConfigured, peekDocument, triageFiles, type TriageFileInput } from '@tangible/ai';
 import { parseWorkbook, summarizeWorkbook } from '@tangible/far';
-import { FAR_UPLOAD_MAX_BYTES } from '@tangible/types';
+import { FAR_REQUEST_MAX_BYTES, FAR_UPLOAD_MAX_BYTES } from '@tangible/types';
 import { mediaTypeFor } from '@/lib/priors';
 import { HttpError, handle } from '@/lib/route';
 import { uploadFarFile } from '@/lib/far-storage';
@@ -41,7 +41,10 @@ export function POST(
       throw new HttpError(400, "Send files as multipart form-data under the 'files' field.");
     }
     if (files.length > MAX_FILES) {
-      throw new HttpError(400, `That is ${files.length} files; the limit per drop is ${MAX_FILES}.`);
+      throw new HttpError(
+        400,
+        `That is ${files.length} files; the limit per drop is ${MAX_FILES}.`,
+      );
     }
     for (const file of files) {
       if (file.size === 0) throw new HttpError(400, `"${file.name}" is empty.`);
@@ -51,6 +54,31 @@ export function POST(
           `"${file.name}" is ${(file.size / 1024 / 1024).toFixed(1)} MB; the limit is ${FAR_UPLOAD_MAX_BYTES / 1024 / 1024} MB.`,
         );
       }
+    }
+
+    /**
+     * Twenty files each under the per-file ceiling is still twenty files, and
+     * every one of them is read into memory below. The per-file check alone
+     * permits a drop no serverless platform would have accepted.
+     *
+     * The ceiling is genuinely different in the two places this runs, so the
+     * check is too. Deployed, the platform rejects the body at the edge and
+     * this line mostly documents why; on a laptop there is no such limit and
+     * capping at the platform's number would refuse ten-megabyte registers
+     * that work perfectly well today.
+     */
+    const cap =
+      process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME
+        ? FAR_REQUEST_MAX_BYTES
+        : FAR_UPLOAD_MAX_BYTES;
+    const total = files.reduce((sum, file) => sum + file.size, 0);
+    if (total > cap) {
+      throw new HttpError(
+        413,
+        `That drop totals ${(total / 1024 / 1024).toFixed(1)} MB across ${files.length} files; ` +
+          `one drop can carry ${(cap / 1024 / 1024).toFixed(1)} MB. Send them in smaller batches — ` +
+          `triage reads whichever files arrive together, so keep related ones in the same drop.`,
+      );
     }
 
     const staged = await Promise.all(

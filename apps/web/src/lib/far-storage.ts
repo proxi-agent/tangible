@@ -1,6 +1,6 @@
 import 'server-only';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, normalize } from 'node:path';
+import { dirname, join, normalize, sep } from 'node:path';
 import { resolveDataPath } from '@tangible/analytics';
 import { getSupabaseAdmin } from '@tangible/db';
 
@@ -25,9 +25,35 @@ function supabaseConfigured(): boolean {
 function localPath(path: string): string {
   const root = resolveDataPath('./data/uploads');
   const resolved = normalize(join(root, path));
-  if (!resolved.startsWith(root))
+  /**
+   * The separator matters. A bare `startsWith(root)` also accepts every
+   * *sibling* whose name merely begins with the root's — `data/uploads-old`,
+   * `data/uploads.bak` — so a path of `../uploads-old/x` would satisfy the
+   * check while landing outside the directory this is guarding. Comparing
+   * against `root + sep` is the difference between "inside it" and "starts
+   * like it".
+   */
+  if (resolved !== root && !resolved.startsWith(root + sep))
     throw new Error(`Refusing storage path outside the upload root: ${path}`);
   return resolved;
+}
+
+/**
+ * Serverless filesystems are read-only outside `/tmp`, and `/tmp` does not
+ * survive to the next request — so the local-disk fallback cannot store a FAR
+ * in a deployment, it can only appear to. Without this the upload fails on
+ * `mkdir` with `EROFS: read-only file system`, which reads like a bug in the
+ * app rather than a missing environment variable.
+ */
+function requireStorage(): void {
+  if (supabaseConfigured()) return;
+  if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    throw new Error(
+      'File storage is not configured for this deployment. Set SUPABASE_URL and ' +
+        'SUPABASE_SERVICE_ROLE_KEY — the local-disk fallback only works on a developer ' +
+        'machine, because a serverless filesystem is read-only and does not persist.',
+    );
+  }
 }
 
 let ensured: Promise<void> | null = null;
@@ -54,6 +80,7 @@ export async function uploadFarFile(
   data: Uint8Array,
   contentType: string | null,
 ): Promise<void> {
+  requireStorage();
   if (!supabaseConfigured()) {
     const target = localPath(path);
     await mkdir(dirname(target), { recursive: true });

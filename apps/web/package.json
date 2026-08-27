@@ -23,6 +23,7 @@
     "@tangible/findings": "workspace:*",
     "@tangible/graph": "workspace:*",
     "@tangible/ingest": "workspace:*",
+    "@tangible/knowledge": "workspace:*",
     "@tangible/savings": "workspace:*",
     "@tangible/types": "workspace:*",
     "@tangible/valuation": "workspace:*",

@@ -54,7 +54,7 @@ export function CorrectionRoutes({
         />
       </button>
 
-      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+      <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
         {outlook.standing}
       </p>
 
@@ -92,14 +92,12 @@ function Route({ route }: { route: CorrectionRoute }) {
           </span>
         ) : null}
       </div>
-      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
-        {route.grounds}
-      </p>
+      <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">{route.grounds}</p>
       {route.barred ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-ink-muted)]">{route.barred}</p>
+        <p className="text-xs leading-relaxed text-[var(--color-ink-muted)]">{route.barred}</p>
       ) : null}
       {route.open && route.cost ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-warning)]">{route.cost}</p>
+        <p className="text-xs leading-relaxed text-[var(--color-warning)]">{route.cost}</p>
       ) : null}
     </li>
   );

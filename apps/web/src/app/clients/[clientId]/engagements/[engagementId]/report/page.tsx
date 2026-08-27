@@ -1,11 +1,9 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
-import { Card, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { BackLink, Card, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { CommitFindings } from '@/components/workspace/commit-findings';
 import { SavingsReportView } from '@/components/workspace/savings-report';
 
@@ -21,21 +19,44 @@ export default function SavingsReportPage() {
     queryKey: ['engagement-savings', engagementId],
     queryFn: () => api.savings(engagementId),
   });
+  // Separate query on purpose: an answer arriving should not make the report
+  // itself flicker, and the report renders perfectly well before it lands.
+  const asks = useQuery({
+    queryKey: ['engagement-asks', engagementId],
+    queryFn: () => api.engagementAsks(engagementId),
+  });
 
   if (error) return <ErrorState error={error} />;
   // The back link, then the report card taking shape under it.
   if (isLoading || !data) {
     return (
-      <div className="space-y-5">
-        <Skeleton className="h-4 w-44" />
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <Skeleton className="h-4 w-44" />
+          <Skeleton className="h-6 w-full max-w-96" />
+          <Skeleton className="h-3.5 w-full max-w-2xl" />
+        </div>
         <Card>
-          <div className="space-y-2 p-5">
-            <Skeleton className="h-5 w-80" />
-            <Skeleton className="h-3.5 w-full max-w-lg" />
+          {/* The placeholders wrap and reflow exactly as the figures they stand
+              in for do. A skeleton that keeps a fixed three-across row is a
+              promise about the shape arriving, and on a phone it was a false
+              one: the third figure hung off the right edge, and the page it
+              was previewing does not do that. */}
+          <div className="flex flex-wrap gap-x-8 gap-y-4 border-b border-[var(--color-hairline)] px-5 py-5">
+            {[0, 1, 2].map((figure) => (
+              <div key={figure} className="space-y-2">
+                <Skeleton className="h-2.5 w-28" />
+                <Skeleton className="h-7 w-24" />
+              </div>
+            ))}
           </div>
-          <div className="space-y-3 px-5 pb-5">
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-20 w-full" />
+          <div className="grid grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2].map((figure) => (
+              <div key={figure} className="space-y-2 px-5 py-4">
+                <Skeleton className="h-2.5 w-24" />
+                <Skeleton className="h-5 w-20" />
+              </div>
+            ))}
           </div>
         </Card>
       </div>
@@ -43,20 +64,23 @@ export default function SavingsReportPage() {
   }
 
   return (
-    <div className="space-y-5">
-      <Link
-        href={`/clients/${clientId}/engagements/${engagementId}`}
-        className="inline-flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-      >
-        <ArrowLeft size={13} strokeWidth={2} />
-        Back to the engagement
-      </Link>
-      <SavingsReportView report={data} />
-      {data.findings.length > 0 ? (
-        <div className="flex justify-end">
+    <SavingsReportView
+      report={data}
+      asks={asks.data?.items ?? []}
+      back={
+        <BackLink href={`/clients/${clientId}/engagements/${engagementId}`}>
+          Back to the engagement
+        </BackLink>
+      }
+      // Committing sits with the title rather than at the foot of the report,
+      // where a reader who scrolled the findings had to scroll back up to find
+      // anything else — and where it was the one action on the page with no
+      // header to belong to.
+      actions={
+        data.findings.length > 0 ? (
           <CommitFindings clientId={clientId} engagementId={engagementId} source="savings" />
-        </div>
-      ) : null}
-    </div>
+        ) : null
+      }
+    />
   );
 }

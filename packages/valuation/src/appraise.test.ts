@@ -322,3 +322,26 @@ describe('totalPortfolio', () => {
     expect(totals.marketValue).toBeCloseTo(71_422 + 7_000 + 800, 0);
   });
 });
+
+describe('a schedule that was extracted wrong', () => {
+  /**
+   * The failure this guards is not a crash — it is a number. With no index
+   * factors published, the clamp used to reach for `Math.max()` of an empty
+   * list, multiply the cost by `undefined`, and hand back `NaN` as a market
+   * value. Nothing downstream rejects `NaN`: it fails every threshold
+   * comparison silently and prints as a blank. A rendition is sworn to, so the
+   * schedule saying nothing has to read as a gap, not as a value.
+   */
+  it('reports a gap rather than a NaN value when no index factors are published', () => {
+    // Furniture and fixtures is an indexed category, so this actually reaches
+    // the index lookup — an unindexed one would pass whatever the clamp did.
+    const empty = { ...S, indexFactors: {} };
+    const result = appraise(
+      { categoryKey: 'furniture-fixtures', originalCost: 10_000, acquisitionYear: 2020 },
+      empty,
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.gap.detail).toMatch(/index/i);
+  });
+});

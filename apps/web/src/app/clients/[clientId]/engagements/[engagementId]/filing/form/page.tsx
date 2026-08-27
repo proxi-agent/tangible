@@ -1,8 +1,10 @@
-import Link from 'next/link';
+import { Download } from 'lucide-react';
 import type { FormAudience } from '@tangible/filing';
 import type { EngagementReturns, RenditionBasis } from '@tangible/types';
 import { buildEngagementForm } from '@/lib/rendition';
-import { Copy, FormSheet, Omissions } from '@/components/workspace/form-sheet';
+import { buttonClasses } from '@/components/ui/controls';
+import { BackLink } from '@/components/ui/primitives';
+import { Copy, CopyTrack, FormSheet, Omissions } from '@/components/workspace/form-sheet';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -59,14 +61,11 @@ export default async function FormPage({
   return (
     <div className="mx-auto max-w-[850px] pb-16">
       <div className="mb-6 flex flex-wrap items-center gap-3 print:hidden">
-        <Link
-          href={`/clients/${clientId}/engagements/${engagementId}/filing`}
-          className="text-sm text-[var(--color-ink-muted)] underline-offset-4 hover:underline"
-        >
-          ← Back to the draft
-        </Link>
+        <BackLink href={`/clients/${clientId}/engagements/${engagementId}/filing`}>
+          Back to the draft
+        </BackLink>
         {multi ? (
-          <div className="flex items-center gap-1 rounded-md border border-[var(--color-hairline)] p-0.5 text-[13px]">
+          <CopyTrack label="Which site's return">
             {owed.returns.map((entry) => (
               <Copy
                 key={entry.locationId}
@@ -75,31 +74,34 @@ export default async function FormPage({
                 label={entry.label}
               />
             ))}
-          </div>
+          </CopyTrack>
         ) : null}
-        <div className="ml-auto flex items-center gap-3">
+        <div className="ml-auto flex items-center gap-2">
           {printed.blocked === null ? (
+            // A real `<a>`, not a `LinkButton`: routing a download through the
+            // client router loses the browser's own save behaviour.
             <a
               href={
                 `/api/engagements/${engagementId}/rendition/pdf?basis=${basis}&filedByAgent=${filedByAgent}` +
                 (target ? `&location=${encodeURIComponent(target.locationId)}` : '')
               }
-              className="rounded-md border border-[var(--color-hairline)] px-2.5 py-1.5 text-[13px] hover:bg-[var(--color-surface-raised)]"
+              className={buttonClasses('secondary', 'sm')}
             >
+              <Download size={13} strokeWidth={2} />
               Download Form 50-144
             </a>
           ) : (
             <span
-              className="rounded-md border border-[var(--color-hairline)] px-2.5 py-1.5 text-[13px] text-[var(--color-ink-muted)]"
+              className="inline-flex h-7 items-center rounded-[var(--radius-control)] border border-[var(--color-hairline)] px-2.5 text-xs text-[var(--color-ink-muted)]"
               title={printed.blocked}
             >
               No {printed.revision} PDF for {form.taxYear}
             </span>
           )}
-          <div className="flex items-center gap-1 rounded-md border border-[var(--color-hairline)] p-0.5 text-[13px]">
+          <CopyTrack label="Which copy of this return">
             <Copy href={href('file')} active={audience === 'file'} label="File copy" />
             <Copy href={href('district')} active={audience === 'district'} label="District copy" />
-          </div>
+          </CopyTrack>
         </div>
       </div>
 
@@ -142,7 +144,9 @@ export default async function FormPage({
       <FormSheet
         form={form}
         subtitle={`${form.formRevision} · Tax year ${form.taxYear} · ${clientName}${
-          multi && target ? ` · ${target.label}, return ${returnOrdinal(owed, target.locationId)}` : ''
+          multi && target
+            ? ` · ${target.label}, return ${returnOrdinal(owed, target.locationId)}`
+            : ''
         }${audience === 'file' ? ' · file copy, not for filing' : ''}`}
       />
     </div>
@@ -160,4 +164,3 @@ function returnOrdinal(owed: EngagementReturns, locationId: string): string {
   const index = owed.returns.findIndex((r) => r.locationId === locationId);
   return `${index + 1} of ${owed.returns.length}`;
 }
-

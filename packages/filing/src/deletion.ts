@@ -30,6 +30,11 @@ export function deletionWarnings(counts: DeletionCounts): string[] {
       `${plural(counts.memoryRows, 'learned classification')} drawn from this client's register will be removed — they hold the client's own description text. Other clients lose the benefit of those confirmations.`,
     );
   }
+  if (counts.assistantTurns > 0) {
+    warnings.push(
+      `${plural(counts.assistantTurns, 'assistant answer')} that named this client will be removed, and any thread left with nothing in it goes too. Answers quote the record, so they carry the same confidentiality as the record does.`,
+    );
+  }
   if (counts.storageObjects > 0) {
     warnings.push(
       `${plural(counts.storageObjects, 'uploaded file')} will be removed from the private bucket after the rows are gone. A file the bucket refuses is named on the receipt rather than assumed gone.`,

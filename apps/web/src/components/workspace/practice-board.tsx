@@ -5,12 +5,33 @@ import { AlertTriangle, CalendarClock, Copy, Gavel, MapPinOff } from 'lucide-rea
 import Link from 'next/link';
 import { useState } from 'react';
 import { appraisalDistrictName } from '@tangible/filing/districts';
-import type { PracticeResult, PracticeReturn, PracticeSeason, RolloverPlan, SeasonHold } from '@tangible/types';
+import type {
+  PracticeResult,
+  PracticeReturn,
+  PracticeSeason,
+  RolloverPlan,
+  SeasonHold,
+} from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, day, dayShort, money, moneyExact, plural } from '@/lib/format';
-import { Button, ChipGroup, LinkButton, type ChipOption } from '@/components/ui/controls';
-import { Badge, Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
+import {
+  Button,
+  ChipGroup,
+  LinkButton,
+  Segmented,
+  type ChipOption,
+} from '@/components/ui/controls';
+import {
+  Badge,
+  Card,
+  CardHeader,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  Skeleton,
+} from '@/components/ui/primitives';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
+import { daysUntil } from '@/lib/today';
 
 /**
  * The season across the whole book.
@@ -41,22 +62,31 @@ export function PracticeBoard() {
   // sentence, and a few worklist rows — not one grey slab on the landing page.
   if (!season.data) {
     return (
-      <Card>
-        <div className="space-y-2 p-5">
-          <Skeleton className="h-5 w-72" />
-          <Skeleton className="h-3.5 w-full max-w-xl" />
-        </div>
-        <ul className="divide-y divide-[var(--color-hairline)]">
-          {[0, 1, 2].map((row) => (
-            <li key={row} className="px-5 py-4">
-              <Skeleton className="h-4 w-full max-w-md" />
-            </li>
-          ))}
-        </ul>
-        <div className="border-t border-[var(--color-hairline)] px-5 py-3.5">
-          <Skeleton className="h-3.5 w-56" />
-        </div>
-      </Card>
+      <div className="space-y-6">
+        {/* The title is known before the data is; printing it straight away
+            means the page names itself while it loads instead of showing a
+            grey bar where its own name goes. */}
+        <PageHeader
+          title="Season"
+          description="Every return the firm owes this year, across every client — sorted by what is stuck and then by what is due next."
+        />
+        <Card>
+          <div className="space-y-2 p-5">
+            <Skeleton className="h-5 w-72" />
+            <Skeleton className="h-3.5 w-full max-w-xl" />
+          </div>
+          <ul className="divide-y divide-[var(--color-hairline)]">
+            {[0, 1, 2].map((row) => (
+              <li key={row} className="px-5 py-4">
+                <Skeleton className="h-4 w-full max-w-md" />
+              </li>
+            ))}
+          </ul>
+          <div className="border-t border-[var(--color-hairline)] px-5 py-3.5">
+            <Skeleton className="h-3.5 w-56" />
+          </div>
+        </Card>
+      </div>
     );
   }
 
@@ -76,11 +106,19 @@ export function PracticeBoard() {
 
   return (
     <div className="space-y-6">
+      {/* The board had no title of its own — it opened on a sentence about how
+          many returns are still out, which is the news, not the name of the
+          place. The name goes above it, and the year picker with it: the year
+          governs every card on the page, not just the first one. */}
+      <PageHeader
+        title="Season"
+        description="Every return the firm owes this year, across every client — sorted by what is stuck and then by what is due next."
+        actions={<YearPicker season={data} chosen={year ?? data.taxYear} onChoose={setYear} />}
+      />
       <Card>
         <CardHeader
           title={heading(data)}
           description={<Calendar season={data} outstanding={outstanding} />}
-          action={<YearPicker season={data} chosen={year ?? data.taxYear} onChoose={setYear} />}
         />
         {data.returns.length === 0 ? (
           <div className="px-5 pb-5">
@@ -151,7 +189,9 @@ export function PracticeBoard() {
  */
 function Scoreboard({ result, taxYear }: { result: PracticeResult; taxYear: number }) {
   if (result.siteCount === 0) return null;
-  const started = result.clients.some((client) => client.settledCount > 0 || client.noticedCount > 0 || client.standingCount > 0);
+  const started = result.clients.some(
+    (client) => client.settledCount > 0 || client.noticedCount > 0 || client.standingCount > 0,
+  );
   if (!started && result.reductionCount === 0) return null;
 
   return (
@@ -160,7 +200,7 @@ function Scoreboard({ result, taxYear }: { result: PracticeResult; taxYear: numb
       <div className="overflow-x-auto">
         <table className="w-full text-xs">
           <thead>
-            <tr className="border-b border-[var(--color-hairline)] text-left text-[11px] text-[var(--color-ink-muted)]">
+            <tr className="border-b border-[var(--color-hairline)] text-left text-xs text-[var(--color-ink-muted)]">
               <th className="px-5 py-2 font-medium">Client</th>
               <th className="px-3 py-2 text-right font-medium">
                 <Tooltip content="Sites finished for the year — settled by agreement, order, or silence — over sites on the book.">
@@ -227,14 +267,22 @@ function ClientRow({ client }: { client: PracticeResult['clients'][number] }) {
  * A partial sum says so. $500,000 noticed over two of three sites presented
  * bare is a number a partner repeats to a client and then corrects.
  */
-function Sum({ value, counted, of: siteCount }: { value: number | null; counted: number; of: number }) {
+function Sum({
+  value,
+  counted,
+  of: siteCount,
+}: {
+  value: number | null;
+  counted: number;
+  of: number;
+}) {
   if (value === null) return <span className="text-[var(--color-ink-muted)]">—</span>;
   const partial = counted < siteCount;
   return (
     <span>
       {moneyExact(value)}
       {partial ? (
-        <span className="ml-1 text-[10px] text-[var(--color-ink-muted)]">
+        <span className="ml-1 text-xs text-[var(--color-ink-muted)]">
           ({counted} of {siteCount})
         </span>
       ) : null}
@@ -250,15 +298,19 @@ function Sum({ value, counted, of: siteCount }: { value: number | null; counted:
  * client's.
  */
 function Taken({ value }: { value: number | null }) {
-  if (value === null || value === 0) return <span className="text-[var(--color-ink-muted)]">—</span>;
-  if (value > 0) return <span className="font-medium text-[var(--color-good)]">−{moneyExact(value)}</span>;
-  return <span className="font-medium text-[var(--color-critical)]">+{moneyExact(Math.abs(value))}</span>;
+  if (value === null || value === 0)
+    return <span className="text-[var(--color-ink-muted)]">—</span>;
+  if (value > 0)
+    return <span className="font-medium text-[var(--color-good)]">−{moneyExact(value)}</span>;
+  return (
+    <span className="font-medium text-[var(--color-critical)]">+{moneyExact(Math.abs(value))}</span>
+  );
 }
 
 function BookTotals({ result }: { result: PracticeResult }) {
   return (
     <tfoot>
-      <tr className="border-t border-[var(--color-hairline)] text-[11px]">
+      <tr className="border-t border-[var(--color-hairline)] text-xs">
         <td className="px-5 py-2.5 text-[var(--color-ink-muted)]">
           {result.clients.length} {plural(result.clients.length, 'client')}
         </td>
@@ -308,7 +360,8 @@ function heading(season: PracticeSeason): string {
   const { sites, left } = owed(season);
   if (sites === 0) return `Filing season ${season.taxYear}`;
   if (left === 0) return `${count(sites)} ${plural(sites, 'return')} filed for ${season.taxYear}`;
-  if (left === sites) return `${count(sites)} ${plural(sites, 'return')} to file for ${season.taxYear}`;
+  if (left === sites)
+    return `${count(sites)} ${plural(sites, 'return')} to file for ${season.taxYear}`;
   return `${count(left)} of ${count(sites)} returns still to file for ${season.taxYear}`;
 }
 
@@ -330,22 +383,16 @@ function YearPicker({
 }) {
   if (season.years.length < 2) return null;
   return (
-    <div className="flex items-center gap-1">
-      {season.years.map((year) => (
-        <button
-          key={year}
-          type="button"
-          onClick={() => onChoose(year)}
-          className={`tabular cursor-pointer rounded px-2 py-1 text-xs font-medium ${
-            year === chosen
-              ? 'bg-[var(--color-ink)] text-[var(--color-surface)]'
-              : 'text-[var(--color-ink-secondary)] hover:underline'
-          }`}
-        >
-          {year}
-        </button>
-      ))}
-    </div>
+    <Segmented<string>
+      ariaLabel="Tax year"
+      size="sm"
+      value={String(chosen)}
+      onChange={(year) => onChoose(Number(year))}
+      options={season.years.map((year) => ({
+        value: String(year),
+        label: <span className="tabular">{year}</span>,
+      }))}
+    />
   );
 }
 
@@ -389,8 +436,8 @@ function Calendar({
       {season.daysToDue >= 0
         ? `, ${count(season.daysToDue)} ${plural(season.daysToDue, 'day')} away`
         : ', which has passed'}
-      . {count(still)} {plural(still, 'return')} across {count(clients)}{' '}
-      {plural(clients, 'client')} {plural(still, 'is', 'are')} still out.{' '}
+      . {count(still)} {plural(still, 'return')} across {count(clients)} {plural(clients, 'client')}{' '}
+      {plural(still, 'is', 'are')} still out.{' '}
       <InfoTip
         size={12}
         className="align-text-bottom"
@@ -589,7 +636,11 @@ function ReturnRow({ entry }: { entry: PracticeReturn }) {
           </span>
         </Tooltip>
         <LinkButton href={href}>
-          {entry.status === 'filed' ? 'The form' : entry.status === 'blocked' ? 'Open it' : 'File it'}
+          {entry.status === 'filed'
+            ? 'The form'
+            : entry.status === 'blocked'
+              ? 'Open it'
+              : 'File it'}
         </LinkButton>
       </div>
       <Detail entry={entry} />
@@ -730,7 +781,10 @@ function Protest({ entry }: { entry: PracticeReturn }) {
       ? 'text-[var(--color-warning)]'
       : 'text-[var(--color-ink-secondary)]';
   return (
-    <Tooltip title={protest.open ? 'The window' : 'The window has closed'} content={protest.standing}>
+    <Tooltip
+      title={protest.open ? 'The window' : 'The window has closed'}
+      content={protest.standing}
+    >
       <span className={`tabular inline-flex items-center gap-1 text-xs ${colour}`}>
         <Gavel size={11} strokeWidth={2} />
         {soonest.what === 'waiver' ? 'waiver by ' : 'protest by '}
@@ -793,12 +847,8 @@ function countdown(days: number): string {
   return `${count(-days)} ${plural(-days, 'day')} overdue`;
 }
 
-/** Whole days from today to an ISO date, UTC on both sides. */
-function countdownDays(iso: string): number {
-  const now = new Date();
-  const from = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-  return Math.round((Date.parse(`${iso}T00:00:00Z`) - from) / 86_400_000);
-}
+/** Whole days from today to an ISO date, on the practice's clock. */
+const countdownDays = daysUntil;
 
 /**
  * Opening the next season, from the board that just finished this one.
@@ -863,14 +913,16 @@ function NextSeason({ taxYear }: { taxYear: number }) {
         }
       />
       {armed ? (
-        <p className="px-5 pb-3 text-[11px] text-[var(--color-ink-secondary)]">
+        <p className="px-5 pb-3 text-xs text-[var(--color-ink-secondary)]">
           This creates a Tax year {plan.toYear} engagement for{' '}
-          {ready.length === 1 ? 'the client listed below' : `each of the ${ready.length} clients listed below`}
+          {ready.length === 1
+            ? 'the client listed below'
+            : `each of the ${ready.length} clients listed below`}
           . The county and SIC code carry over; nothing about {plan.fromYear} changes.
         </p>
       ) : null}
       {ready.length > 0 ? (
-        <ul className="flex flex-wrap gap-x-3 gap-y-1 px-5 pb-4 text-[11px] text-[var(--color-ink-secondary)]">
+        <ul className="flex flex-wrap gap-x-3 gap-y-1 px-5 pb-4 text-xs text-[var(--color-ink-secondary)]">
           {ready.map((entry) => (
             <li key={entry.clientId} className="flex items-baseline gap-1.5">
               <span>{entry.clientName}</span>
@@ -884,7 +936,7 @@ function NextSeason({ taxYear }: { taxYear: number }) {
         </ul>
       ) : null}
       {run.error ? (
-        <p className="px-5 pb-4 text-[11px] text-[var(--color-critical)]">
+        <p className="px-5 pb-4 text-xs text-[var(--color-critical)]">
           {run.error instanceof Error ? run.error.message : String(run.error)}
         </p>
       ) : null}
@@ -901,10 +953,14 @@ function rolloverSummary(plan: RolloverPlan): string {
     );
   }
   if (plan.alreadyOpenCount > 0) {
-    parts.push(`${plan.alreadyOpenCount} already ${plural(plan.alreadyOpenCount, 'has', 'have')} it open`);
+    parts.push(
+      `${plan.alreadyOpenCount} already ${plural(plan.alreadyOpenCount, 'has', 'have')} it open`,
+    );
   }
   if (plan.archivedCount > 0) {
-    parts.push(`${plan.archivedCount} archived ${plural(plan.archivedCount, 'stays', 'stay')} behind`);
+    parts.push(
+      `${plan.archivedCount} archived ${plural(plan.archivedCount, 'stays', 'stay')} behind`,
+    );
   }
   return `${worked} ${plural(worked, 'client was', 'clients were')} worked in ${plan.fromYear}. ${parts.join('; ')}.`;
 }

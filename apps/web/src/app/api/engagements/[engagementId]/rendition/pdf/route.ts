@@ -1,6 +1,6 @@
 import { RenditionRequestSchema } from '@tangible/types';
 import { buildEngagementFormPdf } from '@/lib/rendition';
-import { params as queryParams } from '@/lib/route';
+import { formFailure, params as queryParams } from '@/lib/route';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -49,7 +49,6 @@ export async function GET(
     // year does not match the pinned revision's printed ladder, or the form has
     // been republished with different field names. Neither is a 500 — they are
     // statements about which piece of paper this is.
-    const message = error instanceof Error ? error.message : 'Could not build the form.';
-    return Response.json({ error: message }, { status: 409 });
+    return formFailure(error);
   }
 }

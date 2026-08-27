@@ -7,7 +7,7 @@ import type { EngagementDetail, FilingSeason } from '@tangible/types';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { count, plural } from '@/lib/format';
-import { Card } from '@/components/ui/primitives';
+import { Card, TextLink } from '@/components/ui/primitives';
 
 /**
  * The engagement's spine: the pipeline every season walks, and where this one
@@ -48,10 +48,22 @@ export function EngagementPipeline({
       <ol className="flex flex-wrap items-center gap-x-1 gap-y-2">
         {steps.map((step, index) => (
           <li key={step.id} className="flex items-center gap-1">
+            {/* The rule between steps is drawn only where the row is one row.
+                On a phone the six chips wrap onto three lines and every wrapped
+                line began with a dash hanging off its left edge, pointing at
+                nothing. The chips are still in order without it. */}
             {index > 0 ? (
-              <span aria-hidden className="mx-1 h-px w-4 bg-[var(--color-hairline)]" />
+              <span
+                aria-hidden
+                className="mx-1 hidden h-px w-4 bg-[var(--color-hairline)] sm:block"
+              />
             ) : null}
-            <StepChip step={step} active={step === current} tabHref={tabHref} filingHref={filingHref} />
+            <StepChip
+              step={step}
+              active={step === current}
+              tabHref={tabHref}
+              filingHref={filingHref}
+            />
           </li>
         ))}
       </ol>
@@ -59,8 +71,7 @@ export function EngagementPipeline({
         {current ? (
           <>
             <span className="font-medium text-[var(--color-ink)]">Next: </span>
-            {current.detail}{' '}
-            <Action step={current} tabHref={tabHref} filingHref={filingHref} />
+            {current.detail} <Action step={current} tabHref={tabHref} filingHref={filingHref} />
           </>
         ) : season.data ? (
           'Every stage is done — the returns are out and the answers are recorded.'
@@ -86,11 +97,11 @@ function StepChip({
   const body = (
     <span
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium',
+        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium',
         step.state === 'done'
           ? 'border-transparent text-[var(--color-ink-muted)]'
           : active
-            ? 'border-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)] bg-[color-mix(in_oklab,var(--color-series-1)_10%,transparent)] text-[var(--color-ink)]'
+            ? 'border-[color-mix(in_oklab,var(--color-accent)_35%,transparent)] bg-[color-mix(in_oklab,var(--color-accent)_10%,transparent)] text-[var(--color-ink)]'
             : 'border-transparent text-[var(--color-ink-muted)]',
       )}
     >
@@ -101,7 +112,7 @@ function StepChip({
           aria-hidden
           className={cn(
             'inline-block size-1.5 rounded-full',
-            active ? 'bg-[var(--color-series-1)]' : 'bg-[var(--color-hairline)]',
+            active ? 'bg-[var(--color-accent)]' : 'bg-[var(--color-hairline)]',
           )}
         />
       )}
@@ -130,17 +141,13 @@ function Action({
   const href = stepHref(step, tabHref, filingHref);
   if (!href) return null;
   return (
-    <Link href={href} scroll={false} className="font-medium text-[var(--color-series-1)] hover:underline">
+    <TextLink href={href} scroll={false}>
       {step.action} →
-    </Link>
+    </TextLink>
   );
 }
 
-function stepHref(
-  step: Step,
-  tabHref: (tab: string) => string,
-  filingHref: string,
-): string | null {
+function stepHref(step: Step, tabHref: (tab: string) => string, filingHref: string): string | null {
   if (step.goes === null) return null;
   return step.goes === 'filing' ? filingHref : tabHref(step.goes);
 }

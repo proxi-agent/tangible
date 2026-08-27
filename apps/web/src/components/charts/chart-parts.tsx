@@ -1,6 +1,7 @@
 'use client';
 
 import type { ReactNode } from 'react';
+import { CardHeader } from '@/components/ui/primitives';
 
 /** Recharts styling constants, kept in one place so every chart reads alike. */
 export const AXIS = {
@@ -58,7 +59,10 @@ export function Legend({ items }: { items: { label: string; color: string }[] })
   return (
     <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
       {items.map((item) => (
-        <li key={item.label} className="flex items-center gap-1.5 text-xs text-[var(--color-ink-secondary)]">
+        <li
+          key={item.label}
+          className="flex items-center gap-1.5 text-xs text-[var(--color-ink-secondary)]"
+        >
           <span
             className="h-2.5 w-2.5 rounded-[3px]"
             style={{ backgroundColor: item.color }}
@@ -85,15 +89,15 @@ export function ChartFrame({
   height?: number;
 }) {
   return (
-    <section className="card flex flex-col p-5">
-      <header className="mb-1">
-        <h3 className="text-sm font-semibold tracking-tight">{title}</h3>
-        {subtitle ? (
-          <p className="mt-0.5 text-xs text-[var(--color-ink-secondary)]">{subtitle}</p>
-        ) : null}
-      </header>
-      {legend ? <div className="mb-3">{legend}</div> : <div className="mb-3" />}
-      <div style={{ height }}>{children}</div>
+    // A chart is a card like any other, and its title had been an `h3` two
+    // steps down the scale from the `h2` on the card beside it — a hierarchy
+    // that said, wrongly, that the chart was a subsection of something.
+    <section className="card flex flex-col">
+      <CardHeader title={title} description={subtitle} />
+      <div className="flex flex-1 flex-col p-5">
+        {legend ? <div className="mb-3">{legend}</div> : null}
+        <div style={{ height }}>{children}</div>
+      </div>
     </section>
   );
 }

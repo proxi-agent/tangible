@@ -3,14 +3,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
-  ArrowLeft,
   Check,
   ChevronDown,
   ChevronRight,
   CircleCheck,
   Sparkles,
 } from 'lucide-react';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { classificationOptions, lineMappingLabel } from '@tangible/classification';
@@ -36,7 +34,17 @@ import {
 import { CommitFindings } from '@/components/workspace/commit-findings';
 import { PriorComparisonView } from '@/components/workspace/prior-comparison';
 import { Button, ChipGroup, Select, type ChipOption } from '@/components/ui/controls';
-import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
+import {
+  BackLink,
+  Card,
+  CardHeader,
+  EmptyState,
+  ErrorState,
+  PageHeader,
+  Skeleton,
+  Stat,
+  StatCell,
+} from '@/components/ui/primitives';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
 
 /**
@@ -119,25 +127,16 @@ export default function PriorDocumentPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-center gap-3">
-        <Link
-          href={`/clients/${clientId}/engagements/${engagementId}`}
-          className="flex items-center gap-1.5 text-sm text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-        >
-          <ArrowLeft size={14} strokeWidth={2} />
-          Engagement
-        </Link>
-        <div className="min-w-0 flex-1">
-          <h1 className="truncate text-lg font-semibold tracking-tight">
-            {document.originalFilename}
-          </h1>
-          <p className="text-xs text-[var(--color-ink-muted)]">
-            {isRendition ? 'Rendition as filed' : 'Notice of appraised value'}
-            {document.extractionModel ? ` · read by ${document.extractionModel}` : ''}
-          </p>
-        </div>
-        <PriorDocumentStatusBadge status={document.status} />
-      </div>
+      <PageHeader
+        back={
+          <BackLink href={`/clients/${clientId}/engagements/${engagementId}`}>Engagement</BackLink>
+        }
+        title={<span className="block truncate">{document.originalFilename}</span>}
+        meta={<PriorDocumentStatusBadge status={document.status} />}
+        description={`${isRendition ? 'Rendition as filed' : 'Notice of appraised value'}${
+          document.extractionModel ? ` · read by ${document.extractionModel}` : ''
+        }`}
+      />
 
       <IdentityCard
         document={document}
@@ -289,7 +288,7 @@ function IdentityCard({
         title="What the document says it is"
         description="Read off the form itself and shown against the engagement, because a return whose figures all add up can still be the wrong year or the wrong location."
       />
-      <div className="grid grid-cols-1 gap-px bg-[var(--color-hairline)] sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-px overflow-hidden sm:grid-cols-4">
         {rows.map((row) => {
           const mismatch =
             row.expected !== null &&
@@ -297,7 +296,7 @@ function IdentityCard({
             row.onForm.trim().toLowerCase() !== row.expected.trim().toLowerCase();
           return (
             <div key={row.label} className="bg-[var(--color-surface)] px-4 py-3">
-              <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+              <p className="text-2xs font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
                 {row.label}
               </p>
               <p
@@ -366,7 +365,7 @@ function FootingCard({ document }: { document: PriorDocument }) {
         help="Comparing the two is a real test — a total derived by summing our own lines would agree by construction and prove nothing."
       />
 
-      <div className="grid grid-cols-2 gap-px border-y border-[var(--color-hairline)] bg-[var(--color-hairline)] sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px overflow-hidden border-y border-[var(--color-hairline)] sm:grid-cols-4">
         <Tile label="Lines read" value={count(footing.lineCount)} />
         <Tile label="Sum of those lines" value={moneyExact(footing.derivedTotal)} />
         <Tile label="Printed on the form" value={moneyExact(footing.statedTotal)} />
@@ -400,9 +399,9 @@ function FootingCard({ document }: { document: PriorDocument }) {
           and one in a filed return may be worth more than the register. */}
       {errors.length > 0 ? (
         <p className="border-t border-[var(--color-hairline)] px-5 py-3 text-xs text-[var(--color-ink-secondary)]">
-          A return whose totals do not add up is kept as filed, discrepancies and all — the error may be the
-          client&rsquo;s rather than ours, and that is a finding. What it withholds is the right to
-          be treated as a settled baseline until someone has looked at the page.
+          A return whose totals do not add up is kept as filed, discrepancies and all — the error
+          may be the client&rsquo;s rather than ours, and that is a finding. What it withholds is
+          the right to be treated as a settled baseline until someone has looked at the page.
         </p>
       ) : null}
     </Card>
@@ -453,21 +452,9 @@ function Tile({
   tone?: 'good' | 'warning' | 'critical';
 }) {
   return (
-    <div className="bg-[var(--color-surface)] px-4 py-2.5">
-      <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
-        {label}
-      </p>
-      <p
-        className={cn(
-          'tabular mt-0.5 text-base font-semibold',
-          tone === 'good' ? 'text-[var(--color-good)]' : '',
-          tone === 'warning' ? 'text-[var(--color-warning)]' : '',
-          tone === 'critical' ? 'text-[var(--color-critical)]' : '',
-        )}
-      >
-        {value}
-      </p>
-    </div>
+    <StatCell>
+      <Stat label={label} value={value} tone={tone ?? 'default'} />
+    </StatCell>
   );
 }
 
@@ -614,7 +601,10 @@ function WordingCard({ documentId, lines }: { documentId: string; lines: MappedP
               title="Re-read every wording"
               content="Discards the machine readings and asks again from scratch. Anything a reviewer confirmed is kept — a human decision is never overwritten by a re-run."
             >
-              <Button variant="ghost" onClick={() => run.mutate(true)} disabled={run.isPending}>
+              {/* Secondary, not ghost. With nothing left unread this is the only
+                  control in the header, and as a ghost it read as a caption
+                  rather than as the re-run it is. */}
+              <Button variant="secondary" onClick={() => run.mutate(true)} disabled={run.isPending}>
                 Re-read all
               </Button>
             </Tooltip>
@@ -630,7 +620,7 @@ function WordingCard({ documentId, lines }: { documentId: string; lines: MappedP
         }
       />
 
-      <div className="grid grid-cols-2 gap-px border-y border-[var(--color-hairline)] bg-[var(--color-hairline)] sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-px overflow-hidden border-y border-[var(--color-hairline)] sm:grid-cols-5">
         <Tile label="Distinct wordings" value={count(groups.length)} />
         <Tile
           label="Waiting on you"
@@ -749,6 +739,22 @@ function WordingRow({ group, documentId }: { group: WordingGroup; documentId: st
   });
 
   const settled = mapping.status !== 'needs-review' && !group.divided;
+  // The reviewer has picked something other than what is on record, so there is
+  // an edit waiting to be written.
+  const changed = choice !== (mapping.categoryKey ?? '');
+  /**
+   * A row a person has already confirmed, still showing the category they
+   * confirmed it as, has nothing left to record: pressing the button would
+   * rewrite the same decision with the same words. It had one anyway, so a
+   * clean return opened on six identical full-width buttons, each labelled
+   * "Change" for a change that was not pending — and the one wording actually
+   * waiting on an answer had to compete with five no-ops for the eye.
+   *
+   * Auto-accepted rows keep theirs even unchanged, because confirming one is a
+   * real move: it is what promotes a model's reading to a person's and writes
+   * it back to memory.
+   */
+  const recordable = Boolean(choice) && (changed || mapping.status !== 'confirmed');
   const description = OPTIONS.find((option) => option.key === choice)?.description;
   const years = group.lines
     .map((line) => line.yearAcquired)
@@ -765,7 +771,7 @@ function WordingRow({ group, documentId }: { group: WordingGroup; documentId: st
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-baseline gap-2">
           <Tooltip title={`Schedule ${group.schedule}`} content={SCHEDULE_NAMES[group.schedule]}>
-            <span className="rounded border border-[var(--color-hairline)] px-1.5 py-0.5 text-[11px] font-semibold text-[var(--color-ink-secondary)]">
+            <span className="rounded border border-[var(--color-hairline)] px-1.5 py-0.5 text-xs font-semibold text-[var(--color-ink-secondary)]">
               {group.schedule}
             </span>
           </Tooltip>
@@ -878,34 +884,39 @@ function WordingRow({ group, documentId }: { group: WordingGroup; documentId: st
             : (description ?? 'Pick the category these words refer to.')}
         </p>
 
-        <label className="flex items-center gap-2 text-xs text-[var(--color-ink-secondary)]">
-          <input
-            type="checkbox"
-            checked={remember}
-            onChange={(event) => setRemember(event.target.checked)}
-          />
-          Remember these words
-          <InfoTip
-            title="Remember these words"
-            content="Controllers in one industry write their schedules the same way, so this reading replays on the next client who files these words — no model call, no second question."
-            size={11}
-          />
-        </label>
+        {recordable ? (
+          <>
+            <label className="flex items-center gap-2 text-xs text-[var(--color-ink-secondary)]">
+              <input
+                type="checkbox"
+                checked={remember}
+                onChange={(event) => setRemember(event.target.checked)}
+              />
+              Remember these words
+              <InfoTip
+                title="Remember these words"
+                content="Controllers in one industry write their schedules the same way, so this reading replays on the next client who files these words — no model call, no second question."
+                size={11}
+              />
+            </label>
 
-        {/* Settled rows get the quieter button. Every wording on a clean return
-            is already decided, and a page of primary buttons would put the same
-            weight on re-confirming them as on the one that needs an answer. */}
-        <Button
-          variant={settled ? 'secondary' : 'primary'}
-          onClick={() => decide.mutate()}
-          disabled={!choice || decide.isPending}
-        >
-          {decide.isPending
-            ? 'Recording…'
-            : settled
-              ? `Change for ${count(group.lines.length)} ${plural(group.lines.length, 'line')}`
-              : `Confirm for ${count(group.lines.length)} ${plural(group.lines.length, 'line')}`}
-        </Button>
+            {/* Settled rows get the quieter button. Every wording on a clean
+                return is already decided, and a page of primary buttons would
+                put the same weight on re-confirming them as on the one that
+                needs an answer. */}
+            <Button
+              variant={settled && !changed ? 'secondary' : 'primary'}
+              onClick={() => decide.mutate()}
+              disabled={decide.isPending}
+            >
+              {decide.isPending
+                ? 'Recording…'
+                : changed
+                  ? `Change for ${count(group.lines.length)} ${plural(group.lines.length, 'line')}`
+                  : `Confirm for ${count(group.lines.length)} ${plural(group.lines.length, 'line')}`}
+            </Button>
+          </>
+        ) : null}
 
         {decide.error ? (
           <p className="text-xs text-[var(--color-critical)]">
@@ -984,7 +995,7 @@ function ReconciliationCard({ basis, document }: { basis: MappedBasis; document:
       ) : (
         <>
           <div className="px-5 py-4">
-            <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+            <p className="text-2xs font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
               Placed — comparable against the register
             </p>
             {byCategory.length === 0 ? (
@@ -1018,7 +1029,7 @@ function ReconciliationCard({ basis, document }: { basis: MappedBasis; document:
 
           {basis.unplaced.length > 0 ? (
             <div className="border-t border-[var(--color-hairline)] px-5 py-4">
-              <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+              <p className="text-2xs font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
                 Carried, not compared
               </p>
               <ul className="mt-2 divide-y divide-[var(--color-hairline)]">
@@ -1116,7 +1127,7 @@ function NoticeCard({ extracted }: { extracted: ExtractedNotice | null }) {
         help="The roll carries assessed values for the four Texas counties we hold, but a notice carries two things the roll does not: the protest deadline actually printed on it, and whether the value was set without a rendition on file."
       />
 
-      <div className="grid grid-cols-2 gap-px border-y border-[var(--color-hairline)] bg-[var(--color-hairline)] sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px overflow-hidden border-y border-[var(--color-hairline)] sm:grid-cols-4">
         <Tile label="Appraised" value={moneyExact(extracted.appraisedValue)} />
         <Tile label="Assessed" value={moneyExact(extracted.assessedValue)} />
         <Tile label="Prior year" value={moneyExact(extracted.priorYearValue)} />

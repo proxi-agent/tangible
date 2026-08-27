@@ -13,6 +13,7 @@ import { METHOD_LABEL } from '@/lib/filing-methods';
 import { day, dayShort } from '@/lib/format';
 import { Button, Field, Select, TextArea, TextInput } from '@/components/ui/controls';
 import { Badge } from '@/components/ui/primitives';
+import { today } from '@/lib/today';
 
 /**
  * What was asked of the district for one return, and what came back.
@@ -117,7 +118,7 @@ function Recorded({
           {dayShort(extension.extendedTo)}
         </span>
       </div>
-      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+      <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
         {extension.standing}
         {extension.reason ? ` Cause given: ${extension.reason}` : ''}
         {extension.answerNote ? ` The district said: ${extension.answerNote}` : ''}
@@ -154,7 +155,7 @@ function Answer({
 }) {
   const queryClient = useQueryClient();
   const [outcome, setOutcome] = useState<Outcome | null>(null);
-  const [answeredOn, setAnsweredOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [answeredOn, setAnsweredOn] = useState(() => today());
   const [note, setNote] = useState('');
 
   const answer = useMutation({
@@ -184,8 +185,8 @@ function Answer({
             onClick={() => setOutcome(entry.value)}
             className={
               entry.value === 'void'
-                ? 'cursor-pointer text-[11px] text-[var(--color-ink-muted)] hover:text-[var(--color-critical)]'
-                : 'cursor-pointer text-[11px] font-medium text-[var(--color-ink-secondary)] hover:underline'
+                ? 'cursor-pointer text-xs text-[var(--color-ink-muted)] hover:text-[var(--color-critical)]'
+                : 'cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline'
             }
           >
             {entry.label}
@@ -198,7 +199,7 @@ function Answer({
   return (
     <div className="space-y-2 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-2.5">
       {outcome === 'void' ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+        <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
           Voiding keeps the row and marks it as never having happened. Use it where the request went
           out against the wrong site or was never sent at all — not where the district said no.
         </p>
@@ -241,7 +242,7 @@ function Answer({
         </Button>
       </div>
       {answer.error ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+        <p className="text-xs leading-relaxed text-[var(--color-critical)]">
           {answer.error instanceof Error ? answer.error.message : String(answer.error)}
         </p>
       ) : null}
@@ -265,7 +266,7 @@ function RequestForm({
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<ExtensionKind>('standard');
-  const [requestedOn, setRequestedOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [requestedOn, setRequestedOn] = useState(() => today());
   const [method, setMethod] = useState<FilingMethod>('certified-mail');
   const [confirmation, setConfirmation] = useState('');
   // The cap, not a guess: 22.23(b) allows fifteen further days and no more, so
@@ -365,7 +366,7 @@ function RequestForm({
       {kind === 'additional' ? (
         <div className="space-y-3">
           {!hasStandard ? (
-            <p className="rounded-md border border-[var(--color-warning)] bg-[var(--color-surface)] p-2.5 text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+            <p className="rounded-md border border-[var(--color-warning)] bg-[var(--color-surface)] p-2.5 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
               No standard extension stands for this site. The further fifteen days run from May 15,
               so a record of them alone claims a date nothing supports — record the request that
               bought May 15 first, unless this really is what happened.
@@ -410,7 +411,7 @@ function RequestForm({
           {send.isPending ? 'Recording…' : 'Record the request'}
         </Button>
         <Button onClick={() => setOpen(false)}>Never mind</Button>
-        <p className="text-[11px] text-[var(--color-ink-muted)]">
+        <p className="text-xs text-[var(--color-ink-muted)]">
           {kind === 'standard'
             ? `Moves this return to ${day(extendedDueOn)} if it went out in time.`
             : 'Moves nothing until the district grants it.'}

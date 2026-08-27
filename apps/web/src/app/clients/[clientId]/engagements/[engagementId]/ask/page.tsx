@@ -1,7 +1,6 @@
 'use client';
 
-import { ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
+import { BackLink } from '@/components/ui/primitives';
 import { useParams } from 'next/navigation';
 import { AskGraph } from '@/components/workspace/ask-graph';
 
@@ -16,15 +15,14 @@ export default function AskPage() {
   const { clientId, engagementId } = useParams<{ clientId: string; engagementId: string }>();
 
   return (
-    <div className="space-y-5">
-      <Link
-        href={`/clients/${clientId}/engagements/${engagementId}`}
-        className="inline-flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-      >
-        <ArrowLeft size={13} strokeWidth={2} />
-        Back to the engagement
-      </Link>
-      <AskGraph clientId={clientId} engagementId={engagementId} />
-    </div>
+    <AskGraph
+      clientId={clientId}
+      engagementId={engagementId}
+      back={
+        <BackLink href={`/clients/${clientId}/engagements/${engagementId}`}>
+          Back to the engagement
+        </BackLink>
+      }
+    />
   );
 }

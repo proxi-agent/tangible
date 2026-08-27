@@ -57,6 +57,13 @@ export type FindingEffect = (typeof FINDING_EFFECTS)[number];
 /** One row backing a finding, so the claim can be checked line by line. */
 export const FindingEvidenceSchema = z.object({
   assetId: z.string(),
+  /**
+   * The register's own identifier for the row, where it had one. Our `assetId`
+   * is a uuid we minted; it means nothing to the person who exported the file,
+   * and a client asked to check a claim against it cannot. The tag is how they
+   * find the line in their own system.
+   */
+  assetTag: z.string().nullable(),
   description: z.string().nullable(),
   acquisitionYear: z.number().int().nullable(),
   originalCost: z.number().nullable(),
@@ -85,6 +92,17 @@ export const SavingsFindingSchema = z.object({
   basis: z.string(),
   /** For modeled findings, the assumption. For screening, what settles it. */
   assumption: z.string().nullable(),
+  /**
+   * The one question that settles a screening finding, addressed to the
+   * taxpayer and phrased to be forwarded verbatim. Null on measured and
+   * modeled findings: those are settled by the record, not by asking.
+   *
+   * It lives on the finding rather than in the UI because the engine is what
+   * knows why the finding is unpriced — `assumption` says what would settle it
+   * in the firm's own words, and this is the same thing said to the person who
+   * holds the fact.
+   */
+  question: z.string().nullable(),
   evidence: z.array(FindingEvidenceSchema),
 });
 

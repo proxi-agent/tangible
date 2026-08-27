@@ -1,5 +1,11 @@
 import { classificationLabel, isExclusion, isValuable } from '@tangible/classification';
-import { FINDING_EFFECTS, type ClassificationStatus, type FindingEffect, type FindingEvidence, type FindingKind } from '@tangible/types';
+import {
+  FINDING_EFFECTS,
+  type ClassificationStatus,
+  type FindingEffect,
+  type FindingEvidence,
+  type FindingKind,
+} from '@tangible/types';
 import { appraise, type DepreciationSchedule, type LifeClass } from '@tangible/valuation';
 import {
   rollupMapped,
@@ -48,6 +54,8 @@ import {
 
 export interface RegisterAsset {
   id: string;
+  /** The register's own handle for the asset, where it carried one. */
+  assetTag: string | null;
   description: string | null;
   acquisitionYear: number | null;
   originalCost: number | null;
@@ -635,8 +643,7 @@ export function compareRegister(input: CompareRegisterInput): RegisterComparison
       reportedValue: catReportedValue,
       verdict,
       yearsDisagree:
-        verdict === 'agrees' &&
-        group.some((c) => Math.abs(c.difference) > AGREEMENT_TOLERANCE),
+        verdict === 'agrees' && group.some((c) => Math.abs(c.difference) > AGREEMENT_TOLERANCE),
       cells: group.sort((a, b) => (b.yearAcquired ?? 0) - (a.yearAcquired ?? 0)),
     });
   }
@@ -664,7 +671,9 @@ export function compareRegister(input: CompareRegisterInput): RegisterComparison
     registerValue: registerValue === null ? null : round(registerValue),
     reportedValue: reportedValue === null ? null : round(reportedValue),
     valueDifference:
-      registerValue === null || reportedValue === null ? null : round(reportedValue - registerValue),
+      registerValue === null || reportedValue === null
+        ? null
+        : round(reportedValue - registerValue),
     unpricedRegisterCost: round(unpricedRegisterCost),
     unpricedReportedCost: round(unpricedReportedCost),
     categories,
@@ -696,6 +705,7 @@ export function compareRegister(input: CompareRegisterInput): RegisterComparison
 function evidence(asset: RegisterAsset, value: number | null): FindingEvidence {
   return {
     assetId: asset.id,
+    assetTag: asset.assetTag,
     description: asset.description,
     acquisitionYear: asset.acquisitionYear,
     originalCost: asset.originalCost,
@@ -900,8 +910,7 @@ function findingsFor(comparison: RegisterComparison, ctx: FindingContext): Compa
       .filter((year): year is number => year !== null);
     const keys = [...ctx.netOverByCell.keys(), ...ctx.netUnderByCell.keys()].filter(
       (key) =>
-        material(key) &&
-        movedYears.includes(ctx.publicCells.get(key)?.yearAcquired ?? Number.NaN),
+        material(key) && movedYears.includes(ctx.publicCells.get(key)?.yearAcquired ?? Number.NaN),
     );
 
     findings.push({
@@ -912,7 +921,16 @@ function findingsFor(comparison: RegisterComparison, ctx: FindingContext): Compa
       cost: round(comparison.reallocatedCost),
       value,
       summary:
-        `${money(comparison.reallocatedCost)} of cost sits in one category on the register and a different one on the return, within the same year${movedYears.length === 1 ? ` — ${movedYears[0]}` : movedYears.length > 1 ? ` — ${movedYears.slice().sort((a, b) => b - a).join(', ')}` : ''}. The total is right; the schedule it is depreciating on is not.` +
+        `${money(comparison.reallocatedCost)} of cost sits in one category on the register and a different one on the return, within the same year${
+          movedYears.length === 1
+            ? ` — ${movedYears[0]}`
+            : movedYears.length > 1
+              ? ` — ${movedYears
+                  .slice()
+                  .sort((a, b) => b - a)
+                  .join(', ')}`
+              : ''
+        }. The total is right; the schedule it is depreciating on is not.` +
         (value === null
           ? ''
           : value > 0

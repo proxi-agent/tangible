@@ -198,7 +198,7 @@ function SiteRow({
               setMoving(false);
               onPlace(e.target.value);
             }}
-            className="h-8 text-xs"
+            compact
           >
             <option value="">{locations.length === 0 ? 'No locations yet' : 'Place at...'}</option>
             {locations.map((location) => (

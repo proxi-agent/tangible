@@ -59,6 +59,23 @@ export async function handle<T>(fn: () => Promise<T>): Promise<Response> {
 
     const message = error instanceof Error ? error.message : String(error);
 
+    /**
+     * A path parameter that is not a UUID is a wrong address, not a fault.
+     *
+     * Every id in this app is a uuid column, so `/clients/not-a-uuid` reaches
+     * Postgres and comes back as 22P02 `invalid input syntax for type uuid`.
+     * Untranslated that is a 500 carrying a database error message — the app
+     * reporting itself broken, and leaking its schema, because someone edited
+     * the address bar or followed a stale link. It is the same answer as an id
+     * that is well-formed and simply gone.
+     */
+    if (isBadUuid(error)) {
+      return NextResponse.json(
+        { statusCode: 404, message: 'No record with that id.' },
+        { status: 404 },
+      );
+    }
+
     if (isLockConflict(message)) {
       return NextResponse.json(
         {
@@ -71,9 +88,78 @@ export async function handle<T>(fn: () => Promise<T>): Promise<Response> {
       );
     }
 
-    console.error('[api]', message);
-    return NextResponse.json({ statusCode: 500, message }, { status: 500 });
+    /**
+     * Anything reaching here is a fault rather than a caller error, and its
+     * message was written for whoever reads the logs — a connection string, a
+     * constraint name, a stack-shaped sentence from a driver. Deployed, that
+     * goes to the log and the caller gets the fact that it failed; locally the
+     * message is the whole point, so it still comes through.
+     */
+    console.error('[api]', error);
+    return NextResponse.json(
+      {
+        statusCode: 500,
+        message: process.env.NODE_ENV === 'production' ? 'Something went wrong.' : message,
+      },
+      { status: 500 },
+    );
   }
+}
+
+/**
+ * Postgres 22P02 is `invalid_text_representation` — the class of error a
+ * malformed uuid, enum or number produces when it is compared against a typed
+ * column. postgres.js surfaces the SQLSTATE on the error object.
+ */
+function isBadUuid(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === '22P02' && /uuid/i.test(error instanceof Error ? error.message : '');
+}
+
+/**
+ * What a failed form download should say.
+ *
+ * The three PDF routes each caught everything and answered 409, on the reading
+ * that a form failing to build is the form refusing to print something
+ * misleading. That is true of the fillers' own refusals — a tax year outside
+ * the pinned revision's ladder, an appointment naming more sites than Step 2
+ * has rows — and false of everything else that can throw on the way there.
+ *
+ * Two cases were being mislabelled. An `HttpError` already carries the right
+ * status, so a request for an appointment that does not exist was answering
+ * 409 instead of 404. And a blank Comptroller form missing from the deployment
+ * throws `ENOENT`, which as a 409 reads as though the form had examined the
+ * data and objected to it — sending whoever debugs it to look at the client's
+ * numbers instead of at the build. That one is a 500, because it is.
+ *
+ * The envelope is `message`, not `error`: that is what the client's
+ * `errorMessage` reads, and these routes were the only ones returning the
+ * other shape — so their sentences reached the user as raw JSON.
+ */
+export function formFailure(error: unknown): Response {
+  if (error instanceof HttpError) {
+    return NextResponse.json(
+      { statusCode: error.status, message: error.message },
+      { status: error.status },
+    );
+  }
+
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 'ENOENT' || code === 'EACCES') {
+    console.error('[form] the blank Comptroller form could not be read', error);
+    return NextResponse.json(
+      {
+        statusCode: 500,
+        message:
+          'The blank Comptroller form is not available in this deployment, so the filled ' +
+          'version cannot be produced. Nothing is wrong with the return itself.',
+      },
+      { status: 500 },
+    );
+  }
+
+  const message = error instanceof Error ? error.message : 'Could not build the form.';
+  return NextResponse.json({ statusCode: 409, message }, { status: 409 });
 }
 
 /**

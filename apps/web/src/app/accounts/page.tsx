@@ -6,7 +6,7 @@ import { Suspense } from 'react';
 import type { AccountQuery, SegmentKey } from '@tangible/types';
 import { AccountsTable } from '@/components/accounts-table';
 import { Button, ChipGroup, Field, Select, TextInput } from '@/components/ui/controls';
-import { Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { Card, CardHeader, ErrorState, PageHeader, Skeleton } from '@/components/ui/primitives';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useAccountQuery } from '@/hooks/use-account-query';
 import { useScope } from '@/hooks/use-scope';
@@ -49,10 +49,8 @@ export default function AccountsPage() {
 function Accounts() {
   const scope = useScope();
   const { jurisdictionId, taxYear } = scope;
-  const { query, update, toggleSegment, reset, activeFilterCount, pageSize } = useAccountQuery(
-    jurisdictionId,
-    taxYear,
-  );
+  const { query, update, toggleSegment, reset, cleared, activeFilterCount, pageSize } =
+    useAccountQuery(jurisdictionId, taxYear);
   const enabled = Boolean(jurisdictionId);
   const scopeQuery = scope.linkQuery;
 
@@ -82,10 +80,14 @@ function Accounts() {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        title="Accounts"
+        description="One row per business location, as the county recorded it. Narrow the roll with the filters below, then export the whole matching result — not just the page you can see."
+      />
+
       <Card>
         <CardHeader
           title="Filters"
-          description="Each account below is one business location's equipment, as the county recorded it."
           help="Narrow the list with the buttons — hover any of them to see what it means. Picking several narrows further: an account has to satisfy every one of the chosen filters."
           action={
             activeFilterCount > 0 ? (
@@ -112,7 +114,7 @@ function Accounts() {
             <Skeleton className="h-7 w-full" />
           )}
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div key={cleared} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
             <Field
               label="Search owner or account"
               help="Matches part of a business name or an account number. Case does not matter."
@@ -124,7 +126,10 @@ function Accounts() {
               />
             </Field>
 
-            <Field label="City" help="Where the equipment sits — not where the owner is headquartered.">
+            <Field
+              label="City"
+              help="Where the equipment sits — not where the owner is headquartered."
+            >
               <Select
                 value={query.cities[0] ?? ''}
                 onChange={(e) => update({ cities: e.target.value ? [e.target.value] : [] })}
@@ -211,15 +216,13 @@ function Accounts() {
 
         {accounts.error ? (
           <ErrorState error={accounts.error} />
-        ) : accounts.isPending ? (
-          <div className="space-y-2 p-5">
-            {Array.from({ length: 8 }, (_, i) => (
-              <Skeleton key={i} className="h-9 w-full" />
-            ))}
-          </div>
         ) : (
+          /* The table draws its own loading state — skeleton rows beneath the
+             real column headings — rather than a stack of bars that says
+             nothing about what is arriving. */
           <AccountsTable
-            accounts={accounts.data.items}
+            loading={accounts.isPending}
+            accounts={accounts.data?.items ?? []}
             query={query}
             total={total}
             onSortChange={handleSort}

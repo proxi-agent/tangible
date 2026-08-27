@@ -99,6 +99,7 @@ export async function buildSavingsAnalysis(engagementId: string): Promise<Saving
 
   const assets: SavingsAsset[] = rows.map(({ asset, locationId, classification }) => ({
     id: asset.assetId,
+    assetTag: asset.assetTag,
     description: asset.description,
     acquisitionYear: asset.acquisitionYear,
     originalCost: asset.originalCost,
@@ -168,6 +169,7 @@ export async function buildComparisonAnalysis(documentId: string): Promise<Compa
 
   const assets: RegisterAsset[] = rows.map(({ asset, classification }) => ({
     id: asset.assetId,
+    assetTag: asset.assetTag,
     description: asset.description,
     acquisitionYear: asset.acquisitionYear,
     originalCost: asset.originalCost,

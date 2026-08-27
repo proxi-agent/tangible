@@ -1,7 +1,7 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Check, Sparkles } from 'lucide-react';
+import { AlertTriangle, Check, Sparkles } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
@@ -14,7 +14,7 @@ import type {
   NormalizationResult,
   SheetMapping,
   SheetSummary,
-  MappingAskRecord,
+  AskRecord,
   UpdateAskRequest,
 } from '@tangible/types';
 import { CANONICAL_ASSET_FIELDS, CANONICAL_FIELD_INFO } from '@tangible/types';
@@ -23,7 +23,17 @@ import { cn } from '@/lib/cn';
 import { count, moneyExact, percent, plural } from '@/lib/format';
 import { FarFileStatusBadge } from '@/components/workspace/badges';
 import { Button, Select } from '@/components/ui/controls';
-import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+import {
+  Badge,
+  BackLink,
+  Callout,
+  Card,
+  CardHeader,
+  ErrorState,
+  PageHeader,
+  Skeleton,
+  Stat as SharedStat,
+} from '@/components/ui/primitives';
 import { InfoTip } from '@/components/ui/tooltip';
 
 /**
@@ -175,38 +185,51 @@ export default function MappingReviewPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <Link
-          href={`/clients/${clientId}/engagements/${engagementId}`}
-          className="flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-        >
-          <ArrowLeft size={13} strokeWidth={2} />
-          Engagement
-        </Link>
-        <h1 className="text-lg font-semibold tracking-tight">{file.originalFilename}</h1>
-        <FarFileStatusBadge status={file.status} />
-      </div>
+      <PageHeader
+        back={
+          <BackLink href={`/clients/${clientId}/engagements/${engagementId}`}>Engagement</BackLink>
+        }
+        title={file.originalFilename}
+        meta={<FarFileStatusBadge status={file.status} />}
+      />
 
       {file.proposal ? (
-        <Card className="px-5 py-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0 flex-1">
-              <p className="flex items-center gap-1.5 text-sm font-medium">
-                <Sparkles size={14} strokeWidth={2} className="text-[var(--color-series-1)]" />
-                Proposed by {file.proposalModel ?? 'AI'} · self-rated confidence{' '}
-                {percent(file.proposal.confidence, 0)}
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
-                {file.proposal.rationale}
-              </p>
-              {file.proposal.verification ? (
-                <Verification verification={file.proposal.verification} />
-              ) : null}
-              <Asks fileId={fileId} fallback={file.proposal.asks ?? []} />
-            </div>
-            <Button onClick={() => propose.mutate({ auto: false })} disabled={proposePending}>
-              {proposePending ? 'Proposing…' : 'Re-propose'}
-            </Button>
+        /* The densest screen in the app carried no section headings at all: it
+           opened cold on a confidence percentage, leaving the reader to infer
+           from the prose that this block is a machine's reading of the workbook
+           and everything below it is theirs to correct. */
+        <Card>
+          <CardHeader
+            title="How the workbook was read"
+            description="What the model made of the sheet names and the first rows — how sure it is, what it checked itself against, and anything it still needs from the client."
+            action={
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => propose.mutate({ auto: false })}
+                disabled={proposePending}
+              >
+                {proposePending ? 'Proposing…' : 'Re-propose'}
+              </Button>
+            }
+          />
+          <div className="p-5">
+            <p className="flex items-center gap-1.5 text-sm font-medium">
+              <Sparkles size={14} strokeWidth={2} className="text-[var(--color-accent)]" />
+              {file.proposalModel ?? 'AI'} · self-rated confidence{' '}
+              {percent(file.proposal.confidence, 0)}
+            </p>
+            {/* The longest unbroken prose in the app, and it had the full
+                width of a full-bleed card to run in — a hundred and fifty
+                characters a line, on the one paragraph a reviewer has to read
+                closely because it is the model saying what it assumed. */}
+            <p className="mt-1 max-w-[74ch] text-sm leading-relaxed text-[var(--color-ink-secondary)]">
+              {file.proposal.rationale}
+            </p>
+            {file.proposal.verification ? (
+              <Verification verification={file.proposal.verification} />
+            ) : null}
+            <Asks fileId={fileId} fallback={file.proposal.asks ?? []} />
           </div>
         </Card>
       ) : proposePending ? (
@@ -216,7 +239,7 @@ export default function MappingReviewPage() {
       ) : null}
 
       {heldProposal ? (
-        <div className="flex flex-wrap items-center gap-3 rounded-md border border-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)] bg-[color-mix(in_oklab,var(--color-series-1)_8%,transparent)] px-4 py-2.5 text-xs leading-relaxed">
+        <div className="flex flex-wrap items-center gap-3 rounded-md border border-[color-mix(in_oklab,var(--color-accent)_35%,transparent)] bg-[color-mix(in_oklab,var(--color-accent)_8%,transparent)] px-4 py-2.5 text-xs leading-relaxed">
           <span className="min-w-0 flex-1">
             A proposed mapping arrived while you were editing, so your work was kept. Applying it
             replaces every column selection below.
@@ -236,38 +259,44 @@ export default function MappingReviewPage() {
       ) : null}
 
       {aiNotice ? (
-        <div className="rounded-md border border-[color-mix(in_oklab,var(--color-warning)_40%,transparent)] bg-[color-mix(in_oklab,var(--color-warning)_12%,transparent)] px-4 py-2.5 text-xs leading-relaxed">
+        <Callout tone="warning" icon={AlertTriangle}>
           {aiNotice} You can still map every column by hand below.
-        </div>
+        </Callout>
       ) : null}
-
-      <div className="flex flex-wrap items-center gap-1.5">
-        {summaries.map((s, index) => {
-          const m = mapping.sheets.find((sheet) => sheet.sheetName === s.name);
-          const active = index === activeSheet;
-          return (
-            <button
-              key={s.name}
-              type="button"
-              onClick={() => setActiveSheet(index)}
-              className={cn(
-                'cursor-pointer rounded-md border px-3 py-1.5 text-sm transition-colors outline-none',
-                'focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
-                active
-                  ? 'border-[var(--color-series-1)] bg-[color-mix(in_oklab,var(--color-series-1)_10%,transparent)] font-medium'
-                  : 'border-[var(--color-hairline)] hover:bg-[var(--color-plane)]',
-                m && !m.include && 'opacity-50',
-              )}
-            >
-              {s.name}
-              {m && !m.include ? ' (excluded)' : ''}
-            </button>
-          );
-        })}
-      </div>
 
       {summary && sheetMapping ? (
         <Card>
+          <CardHeader
+            title="Column mapping"
+            description="Point each of the workbook's columns at the field it fills. One field takes one column, and a sheet left out contributes no assets."
+          />
+          {/* The sheet switcher floated loose above the card it switches, so on
+              a workbook with a rollforward tab it read as page navigation
+              rather than as the tab bar of this one grid. */}
+          <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--color-hairline)] px-5 py-3">
+            {summaries.map((s, index) => {
+              const m = mapping.sheets.find((sheet) => sheet.sheetName === s.name);
+              const active = index === activeSheet;
+              return (
+                <button
+                  key={s.name}
+                  type="button"
+                  onClick={() => setActiveSheet(index)}
+                  className={cn(
+                    'cursor-pointer rounded-md border px-3 py-1.5 text-sm transition-colors outline-none',
+                    'focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
+                    active
+                      ? 'border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_10%,transparent)] font-medium'
+                      : 'border-[var(--color-hairline)] hover:bg-[var(--color-plane)]',
+                    m && !m.include && 'opacity-50',
+                  )}
+                >
+                  {s.name}
+                  {m && !m.include ? ' (excluded)' : ''}
+                </button>
+              );
+            })}
+          </div>
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-b border-[var(--color-hairline)] px-5 py-3 text-sm">
             <Toggle
               checked={sheetMapping.include}
@@ -275,7 +304,7 @@ export default function MappingReviewPage() {
               label="Include this sheet"
               help="Excluded sheets — summaries, rollforwards, notes — contribute no assets."
             />
-            <label className="flex items-center gap-1.5 text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+            <label className="text-2xs flex items-center gap-1.5 font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
               Header row
               <Select
                 value={sheetMapping.headerRow === null ? 'none' : String(sheetMapping.headerRow)}
@@ -284,7 +313,7 @@ export default function MappingReviewPage() {
                     headerRow: e.target.value === 'none' ? null : Number(e.target.value),
                   })
                 }
-                className="h-8 w-24 text-[13px]"
+                className="h-8 w-24 text-xs"
               >
                 <option value="none">none</option>
                 {summary.preview.map((_, i) => (
@@ -314,7 +343,7 @@ export default function MappingReviewPage() {
             <table className="w-full border-collapse text-xs">
               <thead>
                 <tr className="border-b border-[var(--color-hairline)]">
-                  <th className="w-10 px-2 py-2 text-right text-[10px] text-[var(--color-ink-muted)]">
+                  <th className="w-10 px-2 py-2 text-right text-xs text-[var(--color-ink-muted)]">
                     #
                   </th>
                   {Array.from({ length: Math.min(summary.colCount, 40) }, (_, index) => (
@@ -337,10 +366,10 @@ export default function MappingReviewPage() {
                       className={cn(
                         'border-b border-[var(--color-hairline)] last:border-0',
                         isHeader &&
-                          'bg-[color-mix(in_oklab,var(--color-series-1)_10%,transparent)] font-medium',
+                          'bg-[color-mix(in_oklab,var(--color-accent)_10%,transparent)] font-medium',
                       )}
                     >
-                      <td className="tabular px-2 py-1.5 text-right text-[10px] text-[var(--color-ink-muted)]">
+                      <td className="tabular px-2 py-1.5 text-right text-xs text-[var(--color-ink-muted)]">
                         {rowIndex + 1}
                       </td>
                       {Array.from({ length: Math.min(summary.colCount, 40) }, (_, colIndex) => (
@@ -357,17 +386,14 @@ export default function MappingReviewPage() {
         </Card>
       ) : null}
 
-      <Card className="px-5 py-4">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {checklist.map((item) => (
-              <Badge key={item.label} tone={item.ok ? 'good' : 'warning'}>
-                {item.ok ? <Check size={11} strokeWidth={3} className="mr-1" /> : null}
-                {item.label}
-              </Badge>
-            ))}
-          </div>
-          <div className="ml-auto flex items-center gap-2">
+      {/* The one act on the page that rewrites data, and it had been a bare
+          strip of chips with a button pushed to the right of them — nothing
+          said what confirming does, or that doing it twice is safe. */}
+      <Card>
+        <CardHeader
+          title="Confirm the mapping"
+          description="Confirming normalizes every included sheet into assets. Doing it again replaces them wholesale — there is no partial state."
+          action={
             <Button
               variant="primary"
               disabled={confirm.isPending || !mapping.sheets.some((s) => s.include)}
@@ -379,19 +405,29 @@ export default function MappingReviewPage() {
                   ? 'Re-confirm & replace assets'
                   : 'Confirm mapping & import assets'}
             </Button>
+          }
+        />
+        <div className="px-5 py-4">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {checklist.map((item) => (
+              <Badge key={item.label} tone={item.ok ? 'good' : 'warning'}>
+                {item.ok ? <Check size={11} strokeWidth={3} className="mr-1" /> : null}
+                {item.label}
+              </Badge>
+            ))}
           </div>
+          {!checklist.every((c) => c.ok) ? (
+            <p className="mt-2 text-xs leading-relaxed text-[var(--color-ink-muted)]">
+              Confirming without the amber fields works — the gaps land as per-row warnings instead
+              of silently guessed values.
+            </p>
+          ) : null}
+          {confirm.error ? (
+            <p className="mt-2 text-xs text-[var(--color-critical)]">
+              {confirm.error instanceof ApiError ? confirm.error.message : String(confirm.error)}
+            </p>
+          ) : null}
         </div>
-        {!checklist.every((c) => c.ok) ? (
-          <p className="mt-2 text-xs leading-relaxed text-[var(--color-ink-muted)]">
-            Confirming without the amber fields works — the gaps land as per-row warnings instead of
-            silently guessed values.
-          </p>
-        ) : null}
-        {confirm.error ? (
-          <p className="mt-2 text-xs text-[var(--color-critical)]">
-            {confirm.error instanceof ApiError ? confirm.error.message : String(confirm.error)}
-          </p>
-        ) : null}
       </Card>
 
       {result ? (
@@ -408,7 +444,7 @@ export default function MappingReviewPage() {
           </div>
           {result.skipped.length > 0 ? (
             <div className="border-t border-[var(--color-hairline)] px-5 py-3">
-              <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+              <p className="text-2xs font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
                 Skipped rows{' '}
                 {result.skippedCount > result.skipped.length
                   ? `(first ${result.skipped.length} of ${result.skippedCount})`
@@ -436,14 +472,7 @@ export default function MappingReviewPage() {
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
-        {label}
-      </p>
-      <p className="tabular mt-0.5 text-lg font-semibold">{value}</p>
-    </div>
-  );
+  return <SharedStat label={label} value={value} size="lg" />;
 }
 
 function Toggle({
@@ -458,12 +487,12 @@ function Toggle({
   help: string;
 }) {
   return (
-    <label className="flex cursor-pointer items-center gap-1.5 text-sm">
+    <label className="flex cursor-pointer items-center gap-1.5 text-sm pointer-coarse:min-h-8">
       <input
         type="checkbox"
         checked={checked}
         onChange={(e) => onChange(e.target.checked)}
-        className="h-3.5 w-3.5 cursor-pointer accent-[var(--color-series-1)]"
+        className="h-3.5 w-3.5 cursor-pointer accent-[var(--color-accent)]"
       />
       {label}
       <InfoTip title={label} content={help} size={12} />
@@ -488,7 +517,7 @@ function FieldSelect({
       className={cn(
         'h-8 w-full text-xs',
         value
-          ? 'border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)] font-medium'
+          ? 'border-[color-mix(in_oklab,var(--color-accent)_45%,transparent)] font-medium'
           : 'text-[var(--color-ink-muted)]',
       )}
     >
@@ -575,7 +604,7 @@ function Verification({ verification }: { verification: MappingVerification }) {
   const failed = verification.checks.filter((check) => !check.ok);
   return (
     <div className="mt-2 space-y-1">
-      <p className="text-[11px] font-medium text-[var(--color-ink-muted)]">
+      <p className="text-xs font-medium text-[var(--color-ink-muted)]">
         {verification.rounds === 1
           ? 'Checked against the full workbook — survived the first proposal.'
           : `Checked against the full workbook — took ${verification.rounds} rounds.`}
@@ -585,7 +614,7 @@ function Verification({ verification }: { verification: MappingVerification }) {
       </p>
       <ul className="space-y-0.5">
         {verification.checks.map((check) => (
-          <li key={check.check} className="flex items-start gap-1.5 text-[11px] leading-relaxed">
+          <li key={check.check} className="flex items-start gap-1.5 text-xs leading-relaxed">
             {check.ok ? (
               <Check
                 size={12}
@@ -642,8 +671,8 @@ function Asks({ fileId, fallback }: { fileId: string; fallback: readonly Mapping
   const answered = ledger.filter((a) => a.status === 'answered').length;
 
   return (
-    <div className="mt-2.5 space-y-1.5 rounded-md border border-[color-mix(in_oklab,var(--color-series-1)_30%,transparent)] bg-[color-mix(in_oklab,var(--color-series-1)_6%,transparent)] px-3 py-2.5">
-      <p className="text-[11px] font-medium">
+    <div className="mt-2.5 space-y-1.5 rounded-md border border-[color-mix(in_oklab,var(--color-accent)_30%,transparent)] bg-[color-mix(in_oklab,var(--color-accent)_6%,transparent)] px-3 py-2.5">
+      <p className="text-xs font-medium">
         {ledger.length > 0
           ? `Questions for the client — ${answered} of ${ledger.length} answered`
           : `${fallback.length === 1 ? 'One question' : `${fallback.length} questions`} for the client — the file cannot answer ${fallback.length === 1 ? 'it' : 'these'}:`}
@@ -661,7 +690,7 @@ function Asks({ fileId, fallback }: { fileId: string; fallback: readonly Mapping
             ))}
           </ul>
           {answered > 0 ? (
-            <p className="text-[11px] text-[var(--color-ink-secondary)]">
+            <p className="text-xs text-[var(--color-ink-secondary)]">
               Answers go back into the next proposal as fact — re-propose to fold them into the
               mapping.
             </p>
@@ -670,7 +699,7 @@ function Asks({ fileId, fallback }: { fileId: string; fallback: readonly Mapping
       ) : (
         <ul className="space-y-1.5">
           {fallback.map((ask, i) => (
-            <li key={i} className="text-[11px] leading-relaxed">
+            <li key={i} className="text-xs leading-relaxed">
               <span className="font-medium">{ask.question}</span>
               {ask.sheetName ? (
                 <span className="text-[var(--color-ink-muted)]"> ({ask.sheetName})</span>
@@ -694,15 +723,21 @@ function AskRow({
   pending,
   onUpdate,
 }: {
-  ask: MappingAskRecord;
+  ask: AskRecord;
   pending: boolean;
   onUpdate: (body: UpdateAskRequest) => void;
 }) {
   const [draft, setDraft] = useState('');
 
   return (
-    <li className="text-[11px] leading-relaxed">
-      <span className={ask.status === 'dismissed' ? 'font-medium text-[var(--color-ink-muted)] line-through' : 'font-medium'}>
+    <li className="text-xs leading-relaxed">
+      <span
+        className={
+          ask.status === 'dismissed'
+            ? 'font-medium text-[var(--color-ink-muted)] line-through'
+            : 'font-medium'
+        }
+      >
         {ask.question}
       </span>
       {ask.sheetName ? (
@@ -740,7 +775,7 @@ function AskRow({
             value={draft}
             onChange={(event) => setDraft(event.target.value)}
             placeholder="The client's answer…"
-            className="min-w-48 flex-1 rounded border border-[var(--color-hairline)] bg-[var(--color-surface)] px-2 py-1 text-[11px] outline-none focus:border-[var(--color-series-1)]"
+            className="min-w-48 flex-1 rounded border border-[var(--color-hairline)] bg-[var(--color-surface)] px-2 py-1 text-xs outline-none focus:border-[var(--color-accent)]"
           />
           <Button
             onClick={() => onUpdate({ status: 'answered', answer: draft })}

@@ -31,6 +31,7 @@ export function OwnersTable({
   onSortChange,
   onOffsetChange,
   scopeQuery,
+  loading,
 }: {
   owners: OwnerRollup[];
   total: number;
@@ -41,6 +42,8 @@ export function OwnersTable({
   onSortChange: (sortBy: OwnerSortField, sortDir: SortDirection) => void;
   onOffsetChange: (offset: number) => void;
   scopeQuery: string;
+  /** First page still in flight — skeleton rows rather than "nothing matches". */
+  loading?: boolean;
 }) {
   const columns = useMemo<ColumnDef<OwnerRollup, unknown>[]>(
     () => [
@@ -55,7 +58,7 @@ export function OwnersTable({
           <>
             <Link
               href={`/accounts?${scopeQuery}&search=${encodeURIComponent(row.original.ownerName)}`}
-              className="block truncate font-medium underline-offset-2 outline-none hover:text-[var(--color-series-1)] hover:underline focus-visible:text-[var(--color-series-1)] focus-visible:underline"
+              className="block truncate font-medium underline-offset-2 outline-none hover:text-[var(--color-accent)] hover:underline focus-visible:text-[var(--color-accent)] focus-visible:underline"
               title={row.original.ownerName}
             >
               {row.original.ownerName}
@@ -144,6 +147,7 @@ export function OwnersTable({
     <DataTable
       columns={columns}
       data={owners}
+      loading={loading}
       getRowId={(owner) => owner.ownerKey}
       sorting={sorting}
       onSortingChange={(next) => {
@@ -152,6 +156,7 @@ export function OwnersTable({
         if (!SORTABLE.has(first.id)) return;
         onSortChange(first.id as OwnerSortField, first.desc ? 'desc' : 'asc');
       }}
+      maxHeight="max(26rem, calc(100vh - 20rem))"
       pagination={{ offset, limit, total }}
       onOffsetChange={onOffsetChange}
       empty={{

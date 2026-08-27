@@ -6,33 +6,34 @@ import {
   cloneElement,
   isValidElement,
   useId,
+  type ComponentProps,
   type ReactElement,
   type ReactNode,
-  type SelectHTMLAttributes,
 } from 'react';
-import type { ComponentProps } from 'react';
+import { FIELD, FIELD_BASE, FIELD_SM } from '@/components/ui/field-styles';
 import { cn } from '@/lib/cn';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
 
-const FIELD_BASE =
-  'rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] px-3 text-sm ' +
-  'text-[var(--color-ink)] outline-none transition-colors ' +
-  'focus-visible:border-[var(--color-series-1)] focus-visible:ring-2 ' +
-  'focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_25%,transparent)]';
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Fields
+ *
+ * The shared look lives in `field-styles`, because `Select` is its own module
+ * and its trigger has to be indistinguishable from the input beside it.
+ * ────────────────────────────────────────────────────────────────────────── */
 
-// Single-line controls are one row tall; a textarea sets its own height from
-// `rows`, so the height cannot live in the shared base.
-const FIELD = `h-9 ${FIELD_BASE}`;
+export { Select } from '@/components/ui/select';
 
 export function Field({
   label,
   help,
   children,
+  className,
 }: {
   label: string;
   /** Plain-language explanation of what this control does to the results. */
   help?: ReactNode;
   children: ReactNode;
+  className?: string;
 }) {
   // The help affordance is a button, and a button nested inside a <label>
   // hijacks clicks meant for the control — so the label points at the control
@@ -43,51 +44,31 @@ export function Field({
     : children;
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div className={cn('flex min-w-0 flex-col gap-1.5', className)}>
       <div className="flex items-center gap-1">
-        <label
-          htmlFor={id}
-          className="cursor-pointer text-[11px] font-medium tracking-wide text-[var(--color-ink-secondary)] uppercase"
-        >
+        <label htmlFor={id} className="eyebrow cursor-pointer">
           {label}
         </label>
         {help ? <InfoTip title={label} content={help} size={12} /> : null}
       </div>
-      {control}
+      {/* The control sits at the bottom of the cell. Across a row of filters the
+          labels are not the same length — "City" beside "Already has a tax
+          agent" — and a label that wraps to two lines would otherwise drag its
+          control down half a line out of step with its neighbours. */}
+      <div className="mt-auto">{control}</div>
     </div>
   );
 }
 
-export function Select({
+export function TextInput({
   className,
-  children,
+  compact,
   ...props
-}: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode }) {
-  return (
-    <select
-      className={cn(
-        FIELD,
-        'cursor-pointer pr-8 hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)]',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </select>
-  );
-}
-
-export function TextInput({ className, ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      className={cn(
-        FIELD,
-        'hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)]',
-        className,
-      )}
-      {...props}
-    />
-  );
+}: React.InputHTMLAttributes<HTMLInputElement> & {
+  /** Inline in a header row rather than stacked in a form. */
+  compact?: boolean;
+}) {
+  return <input className={cn(compact ? FIELD_SM : FIELD, className)} {...props} />;
 }
 
 export function TextArea({
@@ -98,82 +79,117 @@ export function TextArea({
   return (
     <textarea
       rows={rows}
-      className={cn(
-        FIELD_BASE,
-        'py-2 leading-relaxed hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)]',
-        className,
-      )}
+      className={cn(FIELD_BASE, 'py-2 leading-relaxed', className)}
       {...props}
     />
+  );
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Buttons
+ * ────────────────────────────────────────────────────────────────────────── */
+
+export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger' | 'subtle';
+export type ButtonSize = 'sm' | 'md';
+
+const BUTTON_VARIANTS: Record<ButtonVariant, string> = {
+  primary:
+    'border-transparent bg-[var(--color-accent)] text-[var(--color-on-accent)] shadow-[var(--shadow-card)] ' +
+    'hover:bg-[var(--color-accent-hover)]',
+  secondary:
+    'border-[var(--color-hairline-strong)] bg-[var(--color-surface)] text-[var(--color-ink)] ' +
+    'shadow-[var(--shadow-card)] hover:bg-[var(--color-sunken)] ' +
+    'hover:border-[color-mix(in_oklab,var(--color-accent)_40%,var(--color-hairline-strong))]',
+  // Filled with the accent tint rather than the accent — for the affirmative
+  // action on a card that already has a primary button elsewhere on screen.
+  subtle:
+    'border-[color-mix(in_oklab,var(--color-accent)_22%,transparent)] bg-[var(--color-accent-soft)] ' +
+    'text-[var(--color-accent-ink)] hover:border-[color-mix(in_oklab,var(--color-accent)_40%,transparent)]',
+  ghost:
+    'border-transparent bg-transparent text-[var(--color-ink-secondary)] ' +
+    'hover:bg-[var(--color-sunken)] hover:text-[var(--color-ink)]',
+  // Reserved for the irreversible. Nothing that can be undone should wear it,
+  // or the colour stops meaning anything by the time it matters.
+  danger:
+    'border-transparent bg-[var(--color-critical)] text-[var(--color-on-critical)] shadow-[var(--shadow-card)] ' +
+    'hover:brightness-110',
+};
+
+/**
+ * `sm` is 28px tall, which is comfortable under a mouse and two pixels short of
+ * a finger: WCAG 2.5.8 wants 24px as the floor and every platform guideline
+ * wants more. Rather than grow the button everywhere — a table's row actions
+ * would start to shove the row around — it grows only where the pointer is
+ * coarse. A desktop keeps the tight control; a phone gets 36px.
+ */
+const BUTTON_SIZES: Record<ButtonSize, string> = {
+  sm: 'h-7 gap-1.5 px-2.5 text-xs pointer-coarse:h-9 pointer-coarse:px-3',
+  md: 'h-9 gap-1.5 px-3 text-sm',
+};
+
+/**
+ * The button's own classes, for the cases that cannot be a `Button`.
+ *
+ * A download has to stay a real `<a href>` — routing it through `Link` or a
+ * click handler loses the browser's own save behaviour — and both form screens
+ * had therefore hand-rolled a bordered box that only approximated a button. It
+ * sat a pixel off, missed the focus ring, and stopped tracking the real thing
+ * the first time a variant changed. Reach for `Button` or `LinkButton` first;
+ * this is for the third case.
+ */
+export function buttonClasses(
+  variant: ButtonVariant = 'secondary',
+  size: ButtonSize = 'md',
+  className?: string,
+): string {
+  return cn(
+    'inline-flex cursor-pointer items-center justify-center rounded-[var(--radius-control)]',
+    'border font-medium whitespace-nowrap',
+    'transition-[background-color,border-color,transform,box-shadow,color] duration-150 outline-none',
+    'focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
+    // A pressed state you can feel: the click registers visually even when
+    // the result takes a round trip to arrive.
+    'active:scale-[0.98]',
+    'disabled:pointer-events-none disabled:opacity-45 disabled:shadow-none',
+    BUTTON_SIZES[size],
+    BUTTON_VARIANTS[variant],
+    className,
   );
 }
 
 export function Button({
   variant = 'secondary',
+  size = 'md',
   className,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+  variant?: ButtonVariant;
+  size?: ButtonSize;
 }) {
-  const variants = {
-    primary:
-      'bg-[var(--color-series-1)] text-white hover:brightness-110 border-transparent shadow-sm',
-    secondary:
-      'bg-[var(--color-surface)] text-[var(--color-ink)] hover:bg-[var(--color-plane)] ' +
-      'hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)] border-[var(--color-hairline)]',
-    ghost:
-      'bg-transparent text-[var(--color-ink-secondary)] hover:bg-[var(--color-plane)] ' +
-      'hover:text-[var(--color-ink)] border-transparent',
-    // Reserved for the irreversible. Nothing that can be undone should wear it,
-    // or the colour stops meaning anything by the time it matters.
-    danger:
-      'bg-[var(--color-critical)] text-white hover:brightness-110 border-transparent shadow-sm',
-  };
-
-  return (
-    <button
-      className={cn(
-        'inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-md border px-3 text-sm font-medium',
-        'transition-all outline-none focus-visible:ring-2',
-        'focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
-        // A pressed state you can feel: the click registers visually even when
-        // the result takes a round trip to arrive.
-        'active:scale-[0.98]',
-        'disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-[var(--color-surface)] disabled:active:scale-100',
-        variants[variant],
-        className,
-      )}
-      {...props}
-    />
-  );
+  return <button className={buttonClasses(variant, size, className)} {...props} />;
 }
 
 /**
- * A destination dressed as a compact button, for the action a row carries.
+ * A destination dressed as a button.
  *
  * "Open it" and "The form as filed" are the most consequential clicks on their
  * boards, and as bare prose fragments at the far right they read as labels. An
- * action the eye cannot find is an action that does not exist — but a full
- * form-height Button on every row would shout. This is the middle: real button
- * affordance at row scale, still a link underneath so it can be opened in a
- * new tab like any destination.
+ * action the eye cannot find is an action that does not exist. This carries a
+ * real button affordance while staying a link underneath, so it can be opened
+ * in a new tab like any destination.
  */
-export function LinkButton({ className, ...props }: ComponentProps<typeof Link>) {
-  return (
-    <Link
-      className={cn(
-        'inline-flex h-7 items-center gap-1.5 rounded-md border border-[var(--color-hairline)]',
-        'bg-[var(--color-surface)] px-2.5 text-xs font-medium text-[var(--color-ink)]',
-        'transition-all outline-none hover:bg-[var(--color-plane)]',
-        'hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)]',
-        'focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
-        'active:scale-[0.98]',
-        className,
-      )}
-      {...props}
-    />
-  );
+export function LinkButton({
+  className,
+  variant = 'secondary',
+  size = 'sm',
+  ...props
+}: ComponentProps<typeof Link> & { variant?: ButtonVariant; size?: ButtonSize }) {
+  return <Link className={buttonClasses(variant, size, className)} {...props} />;
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Selection
+ * ────────────────────────────────────────────────────────────────────────── */
 
 export interface ChipOption<T extends string> {
   value: T;
@@ -217,7 +233,7 @@ export function ChipGroup<T extends string>({
                     {option.caveat}
                   </p>
                 ) : null}
-                <p className="mt-1.5 text-[10px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+                <p className="eyebrow mt-1.5">
                   {active ? 'Click to remove this filter' : 'Click to add this filter'}
                 </p>
               </>
@@ -228,20 +244,91 @@ export function ChipGroup<T extends string>({
               aria-pressed={active}
               onClick={() => onToggle(option.value)}
               className={cn(
-                'inline-flex cursor-pointer items-center gap-1 rounded-full border py-1 text-xs font-medium',
-                'transition-colors outline-none focus-visible:ring-2',
-                'focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
+                'inline-flex h-7 cursor-pointer items-center gap-1 rounded-full border text-xs font-medium',
+                // Touch bump, height only: the left/right padding below is
+                // deliberately asymmetric to hold the chip's width as it toggles.
+                'pointer-coarse:h-9',
+                'transition-colors outline-none focus-visible:ring-[3px]',
+                'focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
                 // The checkmark occupies real width, so the padding compensates
                 // to keep a chip from jumping sideways as it is toggled.
                 active
-                  ? 'border-[var(--color-series-1)] bg-[color-mix(in_oklab,var(--color-series-1)_14%,transparent)] pr-2.5 pl-2 text-[var(--color-series-1)]'
-                  : 'border-[var(--color-hairline)] bg-[var(--color-surface)] px-2.5 text-[var(--color-ink-secondary)] hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)] hover:bg-[var(--color-plane)] hover:text-[var(--color-ink)]',
+                  ? 'border-[color-mix(in_oklab,var(--color-accent)_35%,transparent)] bg-[var(--color-accent-soft)] pr-2.5 pl-2 text-[var(--color-accent-ink)]'
+                  : 'border-[var(--color-hairline-strong)] bg-[var(--color-surface)] px-2.5 text-[var(--color-ink-secondary)] hover:border-[color-mix(in_oklab,var(--color-accent)_40%,var(--color-hairline-strong))] hover:text-[var(--color-ink)]',
               )}
             >
               {active ? <Check size={12} strokeWidth={3} /> : null}
               {option.label}
             </button>
           </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * A single-choice switch rendered as one connected control.
+ *
+ * Used where a set of buttons was standing in for a radio group — the year
+ * picker, the theme toggle, view switches. The selected option is a raised
+ * pill on a sunken track, so which one is on is legible without reading.
+ */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+  size = 'md',
+  ariaLabel,
+  /** Divides the full width between the options — for a rail or a form row. */
+  grow = false,
+  className,
+}: {
+  options: { value: T; label: ReactNode; title?: string }[];
+  value: T;
+  onChange: (value: T) => void;
+  size?: ButtonSize;
+  ariaLabel: string;
+  grow?: boolean;
+  className?: string;
+}) {
+  return (
+    <div
+      role="radiogroup"
+      aria-label={ariaLabel}
+      className={cn(
+        'inline-flex items-center gap-0.5 rounded-[var(--radius-control)]',
+        'border border-[var(--color-hairline)] bg-[var(--color-sunken)] p-0.5',
+        className,
+      )}
+    >
+      {options.map((option) => {
+        const active = option.value === value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            title={option.title}
+            onClick={() => onChange(option.value)}
+            className={cn(
+              'inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-[calc(var(--radius-control)-2px)]',
+              'font-medium transition-colors outline-none focus-visible:ring-[3px]',
+              'focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
+              // Same touch bump as Button — see BUTTON_SIZES. The 0.5 padding on
+              // the rail means the rail itself ends up 4px taller than the segment.
+              size === 'sm'
+                ? 'h-6 px-2 text-xs pointer-coarse:h-8 pointer-coarse:px-2.5'
+                : 'h-7 px-2.5 text-xs pointer-coarse:h-9 pointer-coarse:px-3',
+              grow && 'flex-1',
+              active
+                ? 'bg-[var(--color-surface)] text-[var(--color-ink)] shadow-[var(--shadow-card)]'
+                : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]',
+            )}
+          >
+            {option.label}
+          </button>
         );
       })}
     </div>

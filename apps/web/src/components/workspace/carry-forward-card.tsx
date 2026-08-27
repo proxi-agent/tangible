@@ -3,13 +3,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight } from 'lucide-react';
 import { useState } from 'react';
-import type {
-  CarryForward,
-  CarryFinding,
-  CarryGroup,
-  CarryVerdict,
-  SiteCoverage,
-} from '@/lib/api';
+import type { CarryForward, CarryFinding, CarryGroup, CarryVerdict, SiteCoverage } from '@/lib/api';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { count, day, money, moneyExact, plural } from '@/lib/format';
@@ -96,23 +90,24 @@ function provenance(data: CarryForward): string {
   );
 }
 
-const EVIDENCE_OF: Record<SiteCoverage['evidence'], { label: string; hint: string; dot: string }> = {
-  itemized: {
-    label: 'asset by asset',
-    hint: 'We filed this site’s prior return, so we know which pieces of property it was built from. Every verdict below is available here.',
-    dot: 'bg-[var(--color-good)]',
-  },
-  aggregate: {
-    label: 'totals only',
-    hint: 'The prior return here is the client’s own, read off the document they uploaded. A rendition reports in aggregate and never names an asset, so property at this site is set apart rather than called new or omitted.',
-    dot: 'bg-[var(--color-series-1)]',
-  },
-  none: {
-    label: 'nothing on file',
-    hint: 'No return was filed through this app for this site, and no prior rendition has been uploaded. Nothing here has been compared — which is not the same as nothing being wrong.',
-    dot: 'bg-[var(--color-warning)]',
-  },
-};
+const EVIDENCE_OF: Record<SiteCoverage['evidence'], { label: string; hint: string; dot: string }> =
+  {
+    itemized: {
+      label: 'asset by asset',
+      hint: 'We filed this site’s prior return, so we know which pieces of property it was built from. Every verdict below is available here.',
+      dot: 'bg-[var(--color-good)]',
+    },
+    aggregate: {
+      label: 'totals only',
+      hint: 'The prior return here is the client’s own, read off the document they uploaded. A rendition reports in aggregate and never names an asset, so property at this site is set apart rather than called new or omitted.',
+      dot: 'bg-[var(--color-accent)]',
+    },
+    none: {
+      label: 'nothing on file',
+      hint: 'No return was filed through this app for this site, and no prior rendition has been uploaded. Nothing here has been compared — which is not the same as nothing being wrong.',
+      dot: 'bg-[var(--color-warning)]',
+    },
+  };
 
 /**
  * What we hold about each site, before any verdict is read.
@@ -194,7 +189,7 @@ function Ledger({ data }: { data: CarryForward }) {
         return (
           <Tooltip key={group.verdict} title={meta.label} content={meta.hint}>
             <div className="cursor-help">
-              <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+              <p className="text-2xs font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
                 {meta.label}
               </p>
               <p className={cn('tabular mt-0.5 text-lg font-semibold', meta.tone)}>
@@ -262,7 +257,7 @@ function Finding({ finding, groups }: { finding: CarryFinding; groups: CarryGrou
             <button
               type="button"
               onClick={() => setOpen((was) => !was)}
-              className="mt-2 -ml-1 inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs text-[var(--color-ink-secondary)] outline-none hover:text-[var(--color-ink)] focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]"
+              className="mt-2 -ml-1 inline-flex cursor-pointer items-center gap-1 rounded px-1 py-0.5 text-xs text-[var(--color-ink-secondary)] outline-none hover:text-[var(--color-ink)] focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]"
               aria-expanded={open}
             >
               <ChevronRight
@@ -297,9 +292,11 @@ function Evidence({ group }: { group: CarryGroup }) {
           {group.sample.map((line) => (
             <tr key={line.assetId}>
               <td className="px-3 py-1.5">
-                <span className="block max-w-80 truncate">{line.description ?? 'No description'}</span>
+                <span className="block max-w-80 truncate">
+                  {line.description ?? 'No description'}
+                </span>
                 {line.assetTag ? (
-                  <span className="text-[11px] text-[var(--color-ink-muted)]">{line.assetTag}</span>
+                  <span className="text-xs text-[var(--color-ink-muted)]">{line.assetTag}</span>
                 ) : null}
               </td>
               <td className="tabular px-3 py-1.5 text-right whitespace-nowrap text-[var(--color-ink-muted)]">
@@ -313,7 +310,7 @@ function Evidence({ group }: { group: CarryGroup }) {
         </tbody>
       </table>
       {group.count > group.sample.length ? (
-        <p className="border-t border-[var(--color-hairline)] px-3 py-1.5 text-[11px] text-[var(--color-ink-muted)]">
+        <p className="border-t border-[var(--color-hairline)] px-3 py-1.5 text-xs text-[var(--color-ink-muted)]">
           The largest {count(group.sample.length)} of {count(group.count)}. The totals above cover
           all of them.
         </p>

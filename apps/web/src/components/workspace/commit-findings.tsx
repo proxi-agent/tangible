@@ -82,7 +82,7 @@ export function CommitFindings({
           Cancel
         </Button>
       </div>
-      <p className="max-w-md text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
+      <p className="max-w-md text-xs leading-relaxed text-[var(--color-ink-muted)]">
         Freezes these figures as they stand and starts a decision log against them. The live report
         keeps moving; this copy does not.
       </p>

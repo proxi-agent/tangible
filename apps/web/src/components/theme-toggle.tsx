@@ -2,14 +2,17 @@
 
 import { Monitor, Moon, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { cn } from '@/lib/cn';
-import { Tooltip } from '@/components/ui/tooltip';
+import { Segmented } from '@/components/ui/controls';
 
 type Theme = 'light' | 'dark' | 'system';
 
 /**
  * Stamps `data-theme` on the root element, which the token layer keys off. The
  * 'system' setting removes the attribute so the OS preference applies.
+ *
+ * Rendered as one connected switch rather than three loose buttons: three
+ * states of a single setting should look like a single control, and in the
+ * sidebar footer there is no room for a label beside each icon.
  */
 export function ThemeToggle() {
   const [theme, setTheme] = useState<Theme>('system');
@@ -26,43 +29,45 @@ export function ThemeToggle() {
     localStorage.setItem('tangible-theme', theme);
   }, [theme]);
 
-  const options: { value: Theme; icon: typeof Sun; label: string; hint: string }[] = [
-    { value: 'light', icon: Sun, label: 'Light', hint: 'Always use the light color scheme.' },
-    { value: 'dark', icon: Moon, label: 'Dark', hint: 'Always use the dark color scheme.' },
-    {
-      value: 'system',
-      icon: Monitor,
-      label: 'System',
-      hint: 'Follow whatever your computer is set to.',
-    },
-  ];
-
   return (
-    <div
-      role="radiogroup"
-      aria-label="Color theme"
-      className="flex items-center gap-0.5 rounded-md border border-[var(--color-hairline)] p-0.5"
-    >
-      {options.map(({ value, icon: Icon, label, hint }) => (
-        <Tooltip key={value} title={label} content={hint}>
-          <button
-            type="button"
-            role="radio"
-            aria-checked={theme === value}
-            aria-label={label}
-            onClick={() => setTheme(value)}
-            className={cn(
-              'cursor-pointer rounded p-1.5 transition-colors outline-none',
-              'focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
-              theme === value
-                ? 'bg-[var(--color-plane)] text-[var(--color-ink)] ring-1 ring-[var(--color-hairline)]'
-                : 'text-[var(--color-ink-muted)] hover:bg-[var(--color-plane)] hover:text-[var(--color-ink)]',
-            )}
-          >
-            <Icon size={14} strokeWidth={2} />
-          </button>
-        </Tooltip>
-      ))}
-    </div>
+    <Segmented<Theme>
+      ariaLabel="Color theme"
+      value={theme}
+      onChange={setTheme}
+      grow
+      className="w-full"
+      options={[
+        {
+          value: 'light',
+          title: 'Always use the light color scheme',
+          label: (
+            <>
+              <Sun size={13} strokeWidth={2} />
+              <span className="sr-only">Light</span>
+            </>
+          ),
+        },
+        {
+          value: 'dark',
+          title: 'Always use the dark color scheme',
+          label: (
+            <>
+              <Moon size={13} strokeWidth={2} />
+              <span className="sr-only">Dark</span>
+            </>
+          ),
+        },
+        {
+          value: 'system',
+          title: 'Follow whatever your computer is set to',
+          label: (
+            <>
+              <Monitor size={13} strokeWidth={2} />
+              <span className="sr-only">System</span>
+            </>
+          ),
+        },
+      ]}
+    />
   );
 }

@@ -15,6 +15,7 @@ import { day, dayShort, moneyExact } from '@/lib/format';
 import { Button, Field, Select, TextArea, TextInput } from '@/components/ui/controls';
 import { Badge } from '@/components/ui/primitives';
 import { CorrectionRoutes } from '@/components/workspace/correction-routes';
+import { today } from '@/lib/today';
 
 /**
  * What the district concluded about one return, and how long there is to argue.
@@ -122,7 +123,7 @@ function Recorded({ notice, engagementId }: { notice: AssessmentNotice; engageme
         </span>
       </div>
 
-      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+      <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
         {protest.standing}
         {notice.protestNote ? ` ${notice.protestNote}` : ''}
         {notice.voidReason ? ` Voided: ${notice.voidReason}` : ''}
@@ -133,7 +134,7 @@ function Recorded({ notice, engagementId }: { notice: AssessmentNotice; engageme
           protested the value in time and let this one pass has still lost 10%
           of the taxes on the property. */}
       {protest.waiverDeadline && !notice.protestFiledOn ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-warning)]">
+        <p className="text-xs leading-relaxed text-[var(--color-warning)]">
           The penalty waiver has to be asked for by {day(protest.waiverDeadline)} — thirty days
           under 22.30(b), with no May 15 beneath it. That is{' '}
           {protest.waiverDeadline < protest.deadline
@@ -153,9 +154,7 @@ function Recorded({ notice, engagementId }: { notice: AssessmentNotice; engageme
           ))}
         </ul>
       ) : null}
-      {notice.note ? (
-        <p className="text-[11px] text-[var(--color-ink-muted)]">{notice.note}</p>
-      ) : null}
+      {notice.note ? <p className="text-xs text-[var(--color-ink-muted)]">{notice.note}</p> : null}
 
       {notice.status === 'active' && notice.appraisedValue !== null && !notice.resolution ? (
         <BriefSection notice={notice} />
@@ -203,14 +202,26 @@ function BriefSection({ notice }: { notice: AssessmentNotice }) {
   return (
     <div className="space-y-2 rounded-md border border-[var(--color-hairline)] p-2.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] font-medium text-[var(--color-ink)]">Protest brief</span>
-        <Button variant="ghost" onClick={() => draft.mutate()} disabled={draft.isPending}>
-          {draft.isPending ? 'Drafting…' : record ? 'Redraft from the record' : 'Draft from the record'}
+        <span className="text-xs font-medium text-[var(--color-ink)]">Protest brief</span>
+        {/* A real button, not a ghost. This is the one action on the panel and
+            it sat as grey prose at the end of the heading row, where it read
+            as part of the title rather than as something to press. */}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => draft.mutate()}
+          disabled={draft.isPending}
+        >
+          {draft.isPending
+            ? 'Drafting…'
+            : record
+              ? 'Redraft from the record'
+              : 'Draft from the record'}
         </Button>
       </div>
 
       {draft.isError ? (
-        <p className="text-[11px] text-[var(--color-critical)]">
+        <p className="text-xs text-[var(--color-critical)]">
           {draft.error instanceof Error ? draft.error.message : 'The draft failed.'}
         </p>
       ) : null}
@@ -218,7 +229,7 @@ function BriefSection({ notice }: { notice: AssessmentNotice }) {
       {record ? (
         <BriefBody record={record} />
       ) : query.isLoading ? null : (
-        <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+        <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
           Every fact the argument needs is already on file — the rendered value, the noticed value,
           the findings behind our number. Drafting assembles them and writes the argument; filing
           the protest stays yours.
@@ -231,7 +242,7 @@ function BriefSection({ notice }: { notice: AssessmentNotice }) {
 function BriefBody({ record }: { record: ProtestBriefRecord }) {
   const { facts, brief } = record;
   return (
-    <div className="space-y-2 text-[11px] leading-relaxed">
+    <div className="space-y-2 text-xs leading-relaxed">
       <p className="text-[var(--color-ink-muted)]">
         Drafted {dayShort(record.createdAt.slice(0, 10))} from the record as it stood then
         {facts.overAssessment !== null ? (
@@ -303,7 +314,7 @@ function Values({ notice }: { notice: AssessmentNotice }) {
   if (figures.length === 0) return null;
 
   return (
-    <div className="flex flex-wrap gap-x-5 gap-y-1 text-[11px]">
+    <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs">
       {figures.map((figure) => (
         <span key={figure.label} className="text-[var(--color-ink-secondary)]">
           {figure.label}{' '}
@@ -318,7 +329,7 @@ function Values({ notice }: { notice: AssessmentNotice }) {
 
 function Check({ check }: { check: NoticeCheck }) {
   return (
-    <li className="flex gap-2 text-[11px] leading-relaxed">
+    <li className="flex gap-2 text-xs leading-relaxed">
       <Badge tone={CHECK_TONE[check.severity]}>{check.severity}</Badge>
       <span
         className={
@@ -343,7 +354,7 @@ function Check({ check }: { check: NoticeCheck }) {
 function Close({ notice, engagementId }: { notice: AssessmentNotice; engagementId: string }) {
   const queryClient = useQueryClient();
   const [outcome, setOutcome] = useState<'protested' | 'void' | null>(null);
-  const [filedOn, setFiledOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [filedOn, setFiledOn] = useState(() => today());
   const [note, setNote] = useState('');
 
   const save = useMutation({
@@ -369,13 +380,13 @@ function Close({ notice, engagementId }: { notice: AssessmentNotice; engagementI
         {/* The forward action gets button affordance; "Recorded in error"
             stays a quiet text control on purpose — it is corrective, not a
             step anyone should be invited toward. */}
-        <Button className="h-7 px-2.5 text-xs" onClick={() => setOutcome('protested')}>
+        <Button size="sm" onClick={() => setOutcome('protested')}>
           We protested this
         </Button>
         <button
           type="button"
           onClick={() => setOutcome('void')}
-          className="cursor-pointer text-[11px] text-[var(--color-ink-muted)] hover:text-[var(--color-critical)]"
+          className="cursor-pointer text-xs text-[var(--color-ink-muted)] hover:text-[var(--color-critical)]"
         >
           Recorded in error
         </button>
@@ -385,7 +396,7 @@ function Close({ notice, engagementId }: { notice: AssessmentNotice; engagementI
 
   return (
     <div className="space-y-2 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-2.5">
-      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+      <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
         {outcome === 'void'
           ? 'Voiding keeps the row and marks it as never having happened. Use it where the notice was recorded against the wrong site or the wrong year — not where the district was simply wrong about the value, which is what a protest is for.'
           : '41.44 makes the filing date the condition of being entitled to a hearing at all, so this is the date the notice of protest went in — not the day of the hearing.'}
@@ -422,7 +433,7 @@ function Close({ notice, engagementId }: { notice: AssessmentNotice; engagementI
         </Button>
       </div>
       {save.error ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+        <p className="text-xs leading-relaxed text-[var(--color-critical)]">
           {save.error instanceof Error ? save.error.message : String(save.error)}
         </p>
       ) : null}
@@ -498,7 +509,7 @@ function Resolved({
         ) : null}
       </div>
 
-      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+      <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
         {standing.standing}
       </p>
 
@@ -511,7 +522,7 @@ function Resolved({
       ) : null}
 
       {resolution.note ? (
-        <p className="text-[11px] text-[var(--color-ink-muted)]">{resolution.note}</p>
+        <p className="text-xs text-[var(--color-ink-muted)]">{resolution.note}</p>
       ) : null}
 
       <VoidResolution resolution={resolution} engagementId={engagementId} />
@@ -546,7 +557,7 @@ function VoidResolution({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="cursor-pointer text-[11px] text-[var(--color-ink-muted)] hover:text-[var(--color-critical)]"
+        className="cursor-pointer text-xs text-[var(--color-ink-muted)] hover:text-[var(--color-critical)]"
       >
         Recorded in error
       </button>
@@ -555,7 +566,7 @@ function VoidResolution({
 
   return (
     <div className="space-y-2 border-t border-[var(--color-hairline)] pt-2">
-      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+      <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
         Voiding leaves the notice showing a protest with no ending on it, which is the true state
         while this gets recorded again. To correct the figures instead, record the ending afresh —
         that supersedes this row and keeps whatever the client was already told.
@@ -579,7 +590,7 @@ function VoidResolution({
         </Button>
       </div>
       {save.error ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+        <p className="text-xs leading-relaxed text-[var(--color-critical)]">
           {save.error instanceof Error ? save.error.message : String(save.error)}
         </p>
       ) : null}
@@ -600,7 +611,7 @@ function Resolve({ notice, engagementId }: { notice: AssessmentNotice; engagemen
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [stage, setStage] = useState<ResolutionStage>('informal');
-  const [resolvedOn, setResolvedOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [resolvedOn, setResolvedOn] = useState(() => today());
   const [finalValue, setFinalValue] = useState('');
   const [orderReference, setOrderReference] = useState('');
   const [penaltyOutcome, setPenaltyOutcome] = useState<PenaltyOutcome | ''>('');
@@ -633,7 +644,7 @@ function Resolve({ notice, engagementId }: { notice: AssessmentNotice; engagemen
 
   if (!open) {
     return (
-      <Button className="h-7 px-2.5 text-xs" onClick={() => setOpen(true)}>
+      <Button size="sm" onClick={() => setOpen(true)}>
         Record how it ended
       </Button>
     );
@@ -646,7 +657,10 @@ function Resolve({ notice, engagementId }: { notice: AssessmentNotice; engagemen
           label="How it ended"
           help="An informal agreement with the chief appraiser is final under 1.111(e) — no hearing and nothing to appeal. A written ARB order under 41.47 starts sixty days to district court or to 41A arbitration. A withdrawal or a dismissal determines nothing and leaves the noticed value standing."
         >
-          <Select value={stage} onChange={(event) => setStage(event.target.value as ResolutionStage)}>
+          <Select
+            value={stage}
+            onChange={(event) => setStage(event.target.value as ResolutionStage)}
+          >
             <option value="informal">Settled with the chief appraiser</option>
             <option value="arb">Determined by written ARB order</option>
             <option value="withdrawn">Withdrawn</option>
@@ -734,7 +748,7 @@ function Resolve({ notice, engagementId }: { notice: AssessmentNotice; engagemen
         </Button>
       </div>
       {send.error ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+        <p className="text-xs leading-relaxed text-[var(--color-critical)]">
           {send.error instanceof Error ? send.error.message : String(send.error)}
         </p>
       ) : null}
@@ -762,7 +776,7 @@ function RecordForm({
 }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
-  const [noticedOn, setNoticedOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [noticedOn, setNoticedOn] = useState(() => today());
   const [deliveredOn, setDeliveredOn] = useState('');
   const [printedDeadline, setPrintedDeadline] = useState('');
   const [appraised, setAppraised] = useState('');
@@ -796,7 +810,7 @@ function RecordForm({
       // with — and the next notice here is by definition a corrected one for
       // the same site, where inheriting the superseded figures produces a
       // record that looks typed off the envelope and is not.
-      setNoticedOn(new Date().toISOString().slice(0, 10));
+      setNoticedOn(today());
       setDeliveredOn('');
       setPrintedDeadline('');
       setAppraised('');
@@ -812,7 +826,7 @@ function RecordForm({
 
   if (!open) {
     return (
-      <Button className="h-7 px-2.5 text-xs" onClick={() => setOpen(true)}>
+      <Button size="sm" onClick={() => setOpen(true)}>
         Record a notice
       </Button>
     );
@@ -891,7 +905,7 @@ function RecordForm({
         </Field>
       </div>
 
-      <label className="flex cursor-pointer items-start gap-2 text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+      <label className="flex cursor-pointer items-start gap-2 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
         <input
           type="checkbox"
           checked={penalty}
@@ -921,7 +935,7 @@ function RecordForm({
         </Button>
       </div>
       {send.error ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+        <p className="text-xs leading-relaxed text-[var(--color-critical)]">
           {send.error instanceof Error ? send.error.message : String(send.error)}
         </p>
       ) : null}

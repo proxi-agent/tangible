@@ -2,14 +2,21 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Lock, ShieldAlert } from 'lucide-react';
-import Link from 'next/link';
 import { useState } from 'react';
 import type { FilingMethod, Rendition, RenditionFiling } from '@tangible/types';
 import { api } from '@/lib/api';
 import { METHOD_LABEL } from '@/lib/filing-methods';
 import { count, money, plural } from '@/lib/format';
-import { Button, Field, Select, TextArea, TextInput } from '@/components/ui/controls';
-import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { Button, Field, LinkButton, Select, TextArea, TextInput } from '@/components/ui/controls';
+import {
+  Badge,
+  Card,
+  CardHeader,
+  ErrorState,
+  Skeleton,
+  TextLink,
+} from '@/components/ui/primitives';
+import { today } from '@/lib/today';
 
 /**
  * Recording that a return actually went out, and showing what was frozen.
@@ -164,40 +171,32 @@ function Standing({
         <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">{filing.note}</p>
       ) : null}
 
-      <p className="flex items-center gap-1.5 text-[11px] text-[var(--color-ink-muted)]">
+      <p className="flex items-center gap-1.5 text-xs text-[var(--color-ink-muted)]">
         <Lock size={11} strokeWidth={2} />
         Filed on Form {filing.formRevision}, checksum {filing.formSha256.slice(0, 12)}
         {filing.recordedBy ? ` · recorded by ${filing.recordedBy}` : ''}
       </p>
 
-      <div className="flex flex-wrap items-center gap-4">
+      {/* Three real controls. As bare underlined fragments in a row they read
+          as a footer of prose, and "Record an amendment" — which writes a new
+          filing row — looked exactly like the sentence above it. */}
+      <div className="flex flex-wrap items-center gap-2">
         {/* One link, not two. The download lives on the page this opens, which
             is the only place that knows whether the pinned revision can carry
             this year — a card offering it blind offers a link that fails. */}
-        <Link
-          href={`/filings/${filing.id}`}
-          className="inline-flex items-center gap-1.5 text-xs font-medium hover:underline"
-        >
+        <LinkButton href={`/filings/${filing.id}`}>
           <FileText size={13} strokeWidth={2} />
           The form as filed
-        </Link>
+        </LinkButton>
         {!voiding ? (
-          <button
-            type="button"
-            onClick={onAmend}
-            className="ml-auto cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline"
-          >
+          <Button size="sm" className="ml-auto" onClick={onAmend}>
             {amending ? 'Never mind' : 'Record an amendment'}
-          </button>
+          </Button>
         ) : null}
         {!voiding ? (
-          <button
-            type="button"
-            onClick={() => setVoiding(true)}
-            className="cursor-pointer text-xs text-[var(--color-ink-muted)] hover:text-[var(--color-critical)]"
-          >
+          <Button size="sm" variant="ghost" onClick={() => setVoiding(true)}>
             Recorded in error?
-          </button>
+          </Button>
         ) : null}
       </div>
 
@@ -254,7 +253,7 @@ function RecordForm({
 }) {
   const queryClient = useQueryClient();
   const [method, setMethod] = useState<FilingMethod>('certified-mail');
-  const [filedOn, setFiledOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [filedOn, setFiledOn] = useState(() => today());
   const [confirmation, setConfirmation] = useState('');
   const [note, setNote] = useState('');
 
@@ -322,18 +321,16 @@ function RecordForm({
     >
       {superseding ? (
         <p className="rounded-lg border border-[var(--color-hairline)] bg-[var(--color-plane)] p-3 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
-          This records a second return for {superseding.locationLabel}, tax year {superseding.taxYear}
-          . The {superseding.filedOn} record stays on file and is marked superseded — the district
-          worked from it until this one lands, and a history that pretends otherwise is no use in a
-          penalty argument. The numbers below are the register as it reads now, not as it read then.
+          This records a second return for {superseding.locationLabel}, tax year{' '}
+          {superseding.taxYear}. The {superseding.filedOn} record stays on file and is marked
+          superseded — the district worked from it until this one lands, and a history that pretends
+          otherwise is no use in a penalty argument. The numbers below are the register as it reads
+          now, not as it read then.
         </p>
       ) : null}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <Field
-          label="How it went"
-          help={METHODS.find((entry) => entry.value === method)?.help}
-        >
+        <Field label="How it went" help={METHODS.find((entry) => entry.value === method)?.help}>
           <Select value={method} onChange={(e) => setMethod(e.target.value as FilingMethod)}>
             {METHODS.map((entry) => (
               <option key={entry.value} value={entry.value}>
@@ -415,9 +412,9 @@ function History({ filings }: { filings: RenditionFiling[] }) {
             {filing.voidReason ? (
               <span className="text-[var(--color-ink-muted)]">{filing.voidReason}</span>
             ) : null}
-            <Link href={`/filings/${filing.id}`} className="ml-auto font-medium hover:underline">
+            <TextLink href={`/filings/${filing.id}`} className="ml-auto">
               View
-            </Link>
+            </TextLink>
           </li>
         ))}
       </ul>
@@ -428,7 +425,7 @@ function History({ filings }: { filings: RenditionFiling[] }) {
 function Fact({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+      <p className="text-2xs font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
         {label}
       </p>
       <p className="tabular mt-0.5 text-sm">{children}</p>

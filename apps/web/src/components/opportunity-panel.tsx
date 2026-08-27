@@ -5,9 +5,8 @@ import { useState } from 'react';
 import { SEGMENTS, SEGMENT_LIST, type SegmentDefinition, type SegmentKey } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, money, moneyExact, percent } from '@/lib/format';
-import { Card, CardHeader, Skeleton } from '@/components/ui/primitives';
+import { Card, CardHeader, Skeleton, Stat } from '@/components/ui/primitives';
 import { Field, Select, TextInput } from '@/components/ui/controls';
-import { InfoTip } from '@/components/ui/tooltip';
 
 /**
  * The dropdown reads as sentences, not identifiers. `core_icp` told you nothing
@@ -186,8 +185,9 @@ export function OpportunityPanel({
                 more than the penalty it removes. Segment size does not rescue that.
               </p>
             )}
-            <p className="mt-2 text-[11px] text-[var(--color-ink-muted)]">
-              Total penalty burden across the segment: {moneyExact(data.currentPenaltyBurden)} per year.
+            <p className="mt-2 text-xs text-[var(--color-ink-muted)]">
+              Total penalty burden across the segment: {moneyExact(data.currentPenaltyBurden)} per
+              year.
             </p>
           </div>
         </div>
@@ -207,14 +207,5 @@ function Figure({
   hint: string;
   help: string;
 }) {
-  return (
-    <div>
-      <p className="flex items-center gap-1 text-[11px] font-medium tracking-wide text-[var(--color-ink-secondary)] uppercase">
-        {label}
-        <InfoTip title={label} content={help} size={11} />
-      </p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
-      <p className="mt-0.5 text-[11px] text-[var(--color-ink-muted)]">{hint}</p>
-    </div>
-  );
+  return <Stat size="lg" label={label} value={value} help={help} note={hint} />;
 }

@@ -237,10 +237,13 @@ function StatsStrip({ stats }: { stats: ClassificationStats }) {
     { label: 'Not yet classified', value: count(stats.unclassifiedCount) },
   ];
   return (
-    <div className="grid grid-cols-2 gap-px border-y border-[var(--color-hairline)] bg-[var(--color-hairline)] sm:grid-cols-5">
+    <div className="grid grid-cols-2 gap-px overflow-hidden border-y border-[var(--color-hairline)] sm:grid-cols-5">
       {tiles.map((tile) => (
-        <div key={tile.label} className="bg-[var(--color-surface)] px-4 py-2.5">
-          <p className="flex items-center gap-1 text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+        <div
+          key={tile.label}
+          className="bg-[var(--color-surface)] px-4 py-2.5 shadow-[0_0_0_1px_var(--color-hairline)]"
+        >
+          <p className="text-2xs flex items-center gap-1 font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
             {tile.label}
             {tile.help ? (
               <Tooltip title={tile.label} content={tile.help}>
@@ -352,7 +355,7 @@ function QueueRow({ item, onSettled }: { item: ClassificationQueueItem; onSettle
           </p>
         ) : null}
         {siblingCount > 0 ? (
-          <p className="mt-1 text-[11px] text-[var(--color-ink-muted)]">
+          <p className="mt-1 text-xs text-[var(--color-ink-muted)]">
             {count(siblingCount)} other {plural(siblingCount, 'row')} in this engagement say the
             same thing.
           </p>
@@ -363,7 +366,7 @@ function QueueRow({ item, onSettled }: { item: ClassificationQueueItem; onSettle
         <div className="flex items-center gap-2">
           <ClassificationStatusBadge status={c.status} />
           <ClassificationSourceBadge source={c.source} />
-          <span className="tabular text-[11px] text-[var(--color-ink-muted)]">
+          <span className="tabular text-xs text-[var(--color-ink-muted)]">
             {percent(c.confidence, 0)} confident
           </span>
         </div>
@@ -392,7 +395,7 @@ function QueueRow({ item, onSettled }: { item: ClassificationQueueItem; onSettle
         </Select>
 
         {option ? (
-          <p className="text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
+          <p className="text-xs leading-relaxed text-[var(--color-ink-muted)]">
             {option.kind === 'exclusion' ? (
               <span className="font-medium text-[var(--color-warning)]">
                 Comes off the rendition.{' '}
@@ -404,7 +407,7 @@ function QueueRow({ item, onSettled }: { item: ClassificationQueueItem; onSettle
 
         <div className="flex items-center justify-between gap-2">
           {siblingCount > 0 ? (
-            <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[var(--color-ink-secondary)]">
+            <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--color-ink-secondary)]">
               <input
                 type="checkbox"
                 checked={applyToMatching}
@@ -426,13 +429,13 @@ function QueueRow({ item, onSettled }: { item: ClassificationQueueItem; onSettle
         </div>
 
         {applied !== null ? (
-          <p className="flex items-center gap-1 text-[11px] text-[var(--color-good)]">
+          <p className="flex items-center gap-1 text-xs text-[var(--color-good)]">
             <Check size={11} strokeWidth={3} />
             Settled {count(applied)} {plural(applied, 'row')} and remembered for future engagements.
           </p>
         ) : null}
         {decide.error ? (
-          <p className="text-[11px] text-[var(--color-critical)]">
+          <p className="text-xs text-[var(--color-critical)]">
             {decide.error instanceof Error ? decide.error.message : String(decide.error)}
           </p>
         ) : null}

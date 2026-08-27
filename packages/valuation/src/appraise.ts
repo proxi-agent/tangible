@@ -105,10 +105,24 @@ function lookupPercentGood(
   return null;
 }
 
-function lookupIndexFactor(schedule: DepreciationSchedule, year: number): number {
+/**
+ * The index factor for a year, clamped to the published range.
+ *
+ * Null when there is nothing published at all, for the same reason
+ * `lookupPercentGood` returns null: `Math.max()` of no arguments is
+ * `-Infinity`, `indexFactors[-Infinity]` is undefined, and the non-null
+ * assertion carries that undefined straight into `originalCost * factor`. The
+ * result is `NaN`, which is not an error anywhere downstream — it compares
+ * false against every threshold, formats as a dash, sums to `NaN`, and ends up
+ * on a rendition the client signs under oath. An empty index table means the
+ * schedules were extracted wrong; that is worth a gap the practitioner sees,
+ * not a silently blank market value.
+ */
+function lookupIndexFactor(schedule: DepreciationSchedule, year: number): number | null {
   const direct = schedule.indexFactors[year];
   if (direct !== undefined) return direct;
   const years = Object.keys(schedule.indexFactors).map(Number);
+  if (years.length === 0) return null;
   const newest = Math.max(...years);
   const oldest = Math.min(...years);
   if (year > newest) return schedule.indexFactors[newest]!;
@@ -191,6 +205,15 @@ export function appraise(input: AppraisalInput, schedule: DepreciationSchedule):
   }
 
   const indexFactor = category.indexed ? lookupIndexFactor(schedule, input.acquisitionYear) : 1;
+  if (indexFactor === null) {
+    return {
+      ok: false,
+      gap: {
+        reason: 'no-schedule',
+        detail: `The schedule publishes no index factors, so ${input.acquisitionYear} cannot be indexed`,
+      },
+    };
+  }
   const replacementCostNew = input.originalCost * indexFactor;
   const marketValue = replacementCostNew * (found.percentGood / 100);
 

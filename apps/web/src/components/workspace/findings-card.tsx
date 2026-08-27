@@ -88,7 +88,7 @@ export function FindingsCard({
                 <div className="text-sm font-medium tabular-nums">
                   {moneyExact(set.headline.value)}
                 </div>
-                <div className="text-[11px] text-[var(--color-ink-muted)]">
+                <div className="text-xs text-[var(--color-ink-muted)]">
                   {set.headline.label.toLowerCase()}
                 </div>
               </div>

@@ -1,25 +1,28 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, MapPin, Plus } from 'lucide-react';
+import { MapPin, Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { useState } from 'react';
 import { APPRAISAL_DISTRICTS } from '@tangible/filing/districts';
-import type { ClientLocation } from '@tangible/types';
+import type { ClientLocation, Engagement, FilingSeason } from '@tangible/types';
 import { scheduledJurisdictions } from '@tangible/valuation';
 import { api } from '@/lib/api';
+import { count, plural } from '@/lib/format';
 import { AgentAppointmentCard } from '@/components/workspace/agent-appointment-card';
 import { ClientStatusBadge } from '@/components/workspace/badges';
 import { DeleteClientCard } from '@/components/workspace/delete-client-card';
 import { FilingProfileCard } from '@/components/workspace/filing-profile-card';
 import { Button, Field, Select, TextInput } from '@/components/ui/controls';
 import {
+  BackLink,
   Badge,
   Card,
   CardHeader,
   EmptyState,
   ErrorState,
+  PageHeader,
   Skeleton,
 } from '@/components/ui/primitives';
 
@@ -90,17 +93,11 @@ export default function ClientPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <Link
-          href="/clients"
-          className="flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-        >
-          <ArrowLeft size={13} strokeWidth={2} />
-          Clients
-        </Link>
-        <h1 className="text-lg font-semibold tracking-tight">{client.name}</h1>
-        <ClientStatusBadge status={client.status} />
-      </div>
+      <PageHeader
+        back={<BackLink href="/clients">Clients</BackLink>}
+        title={client.name}
+        meta={<ClientStatusBadge status={client.status} />}
+      />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -149,20 +146,7 @@ export default function ClientPage() {
           ) : (
             <ul className="divide-y divide-[var(--color-hairline)]">
               {engagements.map((engagement) => (
-                <li key={engagement.id}>
-                  <Link
-                    href={`/clients/${clientId}/engagements/${engagement.id}`}
-                    className="flex items-center justify-between px-5 py-3 transition-colors hover:bg-[var(--color-plane)]"
-                  >
-                    <span className="text-sm font-medium">Tax year {engagement.taxYear}</span>
-                    <span className="flex items-center gap-2.5">
-                      <SeasonHint engagementId={engagement.id} />
-                      <span className="text-xs text-[var(--color-ink-muted)]">
-                        created {new Date(engagement.createdAt).toLocaleDateString()}
-                      </span>
-                    </span>
-                  </Link>
-                </li>
+                <EngagementRow key={engagement.id} clientId={clientId} engagement={engagement} />
               ))}
             </ul>
           )}
@@ -233,22 +217,68 @@ export default function ClientPage() {
 }
 
 /**
- * Where the engagement's season stands, on the row that opens it.
+ * One engagement, and enough of its season to choose between two of them.
  *
- * "Tax year 2027 · created 8/19" says an engagement exists, not whether it
- * needs anyone. This reads the same season the engagement page shows — the
- * fetch doubles as a prefetch for the page the row links to — and reduces it
- * to the one word worth knowing before clicking: blocked, ready, or filed.
+ * The row had been "Tax year 2027 · created 8/19" — which says an engagement
+ * exists and nothing else. A client mid-season carries several, and opening a
+ * second one for the same year is common enough that the schema has a field for
+ * it, so two rows reading "Tax year 2027" with different creation dates is the
+ * normal case rather than a corner. Nothing on either told the reader which one
+ * the work was in.
+ *
+ * So the row carries how many returns the season holds and when they are due,
+ * under the year. The fetch doubles as a prefetch for the page the row opens.
  */
-function SeasonHint({ engagementId }: { engagementId: string }) {
+function EngagementRow({ clientId, engagement }: { clientId: string; engagement: Engagement }) {
   const { data } = useQuery({
-    queryKey: ['engagement-season', engagementId],
-    queryFn: () => api.season(engagementId),
+    queryKey: ['engagement-season', engagement.id],
+    queryFn: () => api.season(engagement.id),
   });
-  if (!data || data.returns.length === 0) return null;
 
-  const blocked = data.returns.filter((entry) => entry.status === 'blocked').length;
-  const unfiled = data.returns.filter((entry) => entry.status !== 'filed').length;
+  return (
+    <li>
+      <Link
+        href={`/clients/${clientId}/engagements/${engagement.id}`}
+        className="flex items-center justify-between gap-3 px-5 py-3 transition-colors hover:bg-[var(--color-plane)]"
+      >
+        <span className="min-w-0">
+          <span className="block text-sm font-medium">Tax year {engagement.taxYear}</span>
+          <span className="block text-xs text-[var(--color-ink-muted)]">
+            {/* An engagement with no sites yet said nothing at all here, which
+                reads as a row still loading rather than as a season nobody has
+                set up. */}
+            {data
+              ? data.returns.length === 0
+                ? 'No sites yet'
+                : `${count(data.returns.length)} ${plural(data.returns.length, 'return')} · due ${dueDate(data.dueOn)}`
+              : 'Loading the season…'}
+            {' · created '}
+            {new Date(engagement.createdAt).toLocaleDateString()}
+          </span>
+        </span>
+        <SeasonHint season={data} />
+      </Link>
+    </li>
+  );
+}
+
+/** "Apr 15" — the deadline, not a timestamp. */
+function dueDate(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+  });
+}
+
+/**
+ * The season reduced to the one word worth knowing before clicking: blocked,
+ * ready, or filed.
+ */
+function SeasonHint({ season }: { season: FilingSeason | undefined }) {
+  if (!season || season.returns.length === 0) return null;
+
+  const blocked = season.returns.filter((entry) => entry.status === 'blocked').length;
+  const unfiled = season.returns.filter((entry) => entry.status !== 'filed').length;
   if (blocked > 0) {
     return <Badge tone="critical">{blocked} blocked</Badge>;
   }
@@ -322,6 +352,14 @@ function DistrictNote({ jurisdictionId }: { jurisdictionId: string }) {
  * engagement's, which meant a client with a plant across a county line filed
  * both returns in one county without anything on screen saying so.
  */
+function Dot() {
+  return (
+    <span aria-hidden className="opacity-45 select-none">
+      ·
+    </span>
+  );
+}
+
 function LocationRow({ clientId, location }: { clientId: string; location: ClientLocation }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -364,29 +402,40 @@ function LocationRow({ clientId, location }: { clientId: string; location: Clien
 
   return (
     <li className="px-5 py-3 text-sm">
+      {/* Two lines, not one. A site carries four facts — name, address, account,
+          district — and a single flex row squeezes each into a column two words
+          wide the moment the card is not full width. The name leads; everything
+          that qualifies it wraps together underneath. */}
       <div className="flex items-center gap-2">
-        <MapPin size={14} strokeWidth={2} className="text-[var(--color-ink-muted)]" />
-        <span className="font-medium">{location.label}</span>
+        <MapPin size={14} strokeWidth={2} className="shrink-0 text-[var(--color-ink-muted)]" />
+        <span className="min-w-0 truncate font-medium">{location.label}</span>
+        <Button
+          variant="ghost"
+          className="ml-auto h-7 shrink-0 text-xs"
+          onClick={() => setOpen(!open)}
+        >
+          {open ? 'Cancel' : address || location.accountId ? 'Edit' : 'Add address'}
+        </Button>
+      </div>
+
+      <div className="mt-1 ml-[22px] flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--color-ink-muted)]">
         {address ? (
-          <span className="text-xs text-[var(--color-ink-muted)]">{address}</span>
+          <span>{address}</span>
         ) : (
-          <span className="text-xs text-[var(--color-warning)]">no address yet</span>
+          <span className="text-[var(--color-warning)]">no address yet</span>
         )}
+        <Dot />
         {location.accountId ? (
-          <span className="tabular text-xs text-[var(--color-ink-muted)]">
-            account {location.accountId}
-          </span>
+          <span className="tabular">account {location.accountId}</span>
         ) : (
-          <span className="text-xs text-[var(--color-warning)]">no account</span>
+          <span className="text-[var(--color-warning)]">no account</span>
         )}
-        <span className="text-xs text-[var(--color-ink-muted)]">
+        <Dot />
+        <span>
           {location.jurisdictionId
             ? (DISTRICT_NAMES.get(location.jurisdictionId) ?? location.jurisdictionId)
             : 'district from the engagement'}
         </span>
-        <Button variant="ghost" className="ml-auto h-7 text-xs" onClick={() => setOpen(!open)}>
-          {open ? 'Cancel' : address || location.accountId ? 'Edit' : 'Add address'}
-        </Button>
       </div>
 
       {open ? (

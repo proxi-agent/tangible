@@ -63,15 +63,33 @@ export function aiUnavailableReason(): string {
   return 'Neither ANTHROPIC_API_KEY nor OPENAI_API_KEY is set in this deployment.';
 }
 
+/**
+ * How long a single model call may run, and how many attempts it gets.
+ *
+ * Both SDKs default to a ten-minute timeout and two retries. Every route that
+ * calls a model here budgets `maxDuration = 300`, so those defaults cannot be
+ * reached: the platform kills the function first, and what the practitioner
+ * sees is a blank 504 after five minutes with no indication whether the
+ * extraction failed, the key is wrong, or the provider is down. Bounding the
+ * call below the route's budget turns that into an error the app can catch and
+ * explain, and leaves room for one retry — two attempts at two minutes plus
+ * backoff still lands inside five.
+ *
+ * Retries stay at one rather than the default two for the same arithmetic: a
+ * third attempt would push past the budget and put us back where we started.
+ */
+const CALL_TIMEOUT_MS = 120_000;
+const MAX_RETRIES = 1;
+
 export function getAnthropic(): Anthropic {
   if (!hasAnthropic()) throw new Error(aiUnavailableReason());
-  anthropicClient ??= new Anthropic();
+  anthropicClient ??= new Anthropic({ timeout: CALL_TIMEOUT_MS, maxRetries: MAX_RETRIES });
   return anthropicClient;
 }
 
 export function getOpenAI(): OpenAI {
   if (!hasOpenai()) throw new Error(aiUnavailableReason());
-  openaiClient ??= new OpenAI();
+  openaiClient ??= new OpenAI({ timeout: CALL_TIMEOUT_MS, maxRetries: MAX_RETRIES });
   return openaiClient;
 }
 

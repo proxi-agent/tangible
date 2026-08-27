@@ -15,6 +15,7 @@ const empty: DeletionCounts = {
   correctionMotions: 0,
   appointments: 0,
   memoryRows: 0,
+  assistantTurns: 0,
 };
 
 describe('deletionWarnings', () => {

@@ -66,7 +66,18 @@ export async function proxy(request: NextRequest) {
 
   const login = request.nextUrl.clone();
   login.pathname = '/login';
-  login.search = reason === 'signin' ? '' : `?error=${reason}`;
+  login.search = '';
+  if (reason !== 'signin') login.searchParams.set('error', reason);
+  /**
+   * Carry where they were trying to go. A session that lapses overnight sends
+   * the practitioner here from a half-finished return, and without this they
+   * sign back in and land on the client list with the address gone. Only the
+   * path and query travel — the login page refuses anything that is not a
+   * same-origin path, so this cannot become an open redirect.
+   */
+  if (pathname !== '/' && reason === 'signin') {
+    login.searchParams.set('next', `${pathname}${request.nextUrl.search}`);
+  }
   return NextResponse.redirect(login);
 }
 

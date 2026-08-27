@@ -1,9 +1,10 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { CorrectionRouteKey, MotionDraftRecord, OpenYear } from '@tangible/types';
 import { api } from '@/lib/api';
+import { cn } from '@/lib/cn';
 import { dayShort, moneyExact } from '@/lib/format';
 import { Button, Field, Select, TextArea, TextInput } from '@/components/ui/controls';
 
@@ -37,8 +38,23 @@ export function MotionDraftSection({
   const record = query.data?.draft ?? null;
 
   return (
-    <div className="space-y-2">
-      {record ? <DraftBody record={record} /> : null}
+    /* With nothing drafted and the form shut this is a single button, and it
+       belongs in the year's row of actions beside the recorder rather than
+       stacked above it — `contents` lets the button itself be the item in that
+       row. A draft, or the form, is a block and takes the whole line. */
+    <div className={cn(record || open ? 'w-full space-y-2' : 'contents')}>
+      {record && !open ? (
+        // Redrafting belongs to the draft, in its footer, rather than loose
+        // beneath it where it reads as a second choice on the year itself.
+        <DraftBody
+          record={record}
+          action={
+            <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
+              Redraft the motion
+            </Button>
+          }
+        />
+      ) : null}
       {open ? (
         <DraftForm
           year={year}
@@ -50,11 +66,9 @@ export function MotionDraftSection({
           }}
           onClose={() => setOpen(false)}
         />
-      ) : (
-        // The only action on the tab — row-scale button affordance, same as
-        // the boards' LinkButton, so it reads as a thing to click, not a caption.
-        <Button className="h-7 px-2.5 text-xs" onClick={() => setOpen(true)}>
-          {record ? 'Redraft the motion' : 'Draft the motion'}
+      ) : record ? null : (
+        <Button size="sm" onClick={() => setOpen(true)}>
+          Draft the motion
         </Button>
       )}
     </div>
@@ -145,7 +159,11 @@ function DraftForm({
       />
 
       <div className="flex flex-wrap items-center gap-2">
-        <Button variant="primary" disabled={!ready || draft.isPending} onClick={() => draft.mutate()}>
+        <Button
+          variant="primary"
+          disabled={!ready || draft.isPending}
+          onClick={() => draft.mutate()}
+        >
           {draft.isPending ? 'Drafting…' : hasDraft ? 'Redraft it' : 'Draft it'}
         </Button>
         <Button variant="ghost" onClick={onClose}>
@@ -153,7 +171,7 @@ function DraftForm({
         </Button>
       </div>
       {draft.error ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+        <p className="text-xs leading-relaxed text-[var(--color-critical)]">
           {draft.error instanceof Error ? draft.error.message : String(draft.error)}
         </p>
       ) : null}
@@ -161,14 +179,16 @@ function DraftForm({
   );
 }
 
-function DraftBody({ record }: { record: MotionDraftRecord }) {
+function DraftBody({ record, action }: { record: MotionDraftRecord; action?: ReactNode }) {
   const { draft, facts } = record;
   return (
-    <div className="space-y-2 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-2.5 text-[11px] leading-relaxed">
+    <div className="space-y-2 rounded-md border border-[var(--color-hairline)] bg-[var(--color-surface)] p-2.5 text-xs leading-relaxed">
       <p className="text-[var(--color-ink-muted)]">
         Drafted {dayShort(record.createdAt.slice(0, 10))} under {facts.route.cite}, claiming{' '}
         {moneyExact(facts.claimedValue)}
-        {facts.rolledValue !== null ? <> against {moneyExact(facts.rolledValue)} on the roll</> : null}
+        {facts.rolledValue !== null ? (
+          <> against {moneyExact(facts.rolledValue)} on the roll</>
+        ) : null}
         . Review, sign, file — then record the filing below.
       </p>
       <div className="rounded border border-[var(--color-hairline)] p-2">
@@ -185,6 +205,7 @@ function DraftBody({ record }: { record: MotionDraftRecord }) {
           </ul>
         </div>
       ) : null}
+      {action ? <div className="pt-0.5">{action}</div> : null}
     </div>
   );
 }

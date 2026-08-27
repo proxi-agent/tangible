@@ -1,7 +1,12 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { EngagementResult, OutcomePhase, ResultLetterRecord, SiteOutcome } from '@tangible/types';
+import type {
+  EngagementResult,
+  OutcomePhase,
+  ResultLetterRecord,
+  SiteOutcome,
+} from '@tangible/types';
 import { api } from '@/lib/api';
 import { dayShort, moneyExact, plural } from '@/lib/format';
 import { InfoTip, Tooltip } from '@/components/ui/tooltip';
@@ -46,7 +51,7 @@ export function ResultCard({
       <div className="overflow-x-auto">
         <table className="w-full min-w-[36rem] text-xs">
           <thead>
-            <tr className="border-b border-[var(--color-hairline)] text-left text-[10px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+            <tr className="text-2xs border-b border-[var(--color-hairline)] text-left font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
               <th className="px-5 py-2">Site</th>
               <th className="px-3 py-2 text-right">
                 <Tooltip content="Historical cost on the return that went out — the client's own figure, in the client's own units.">
@@ -126,7 +131,15 @@ function LetterSection({ engagementId }: { engagementId: string }) {
             content="Drafting turns the scoreboard into the letter the client reads — every figure from the table above, nothing invented, still-moving sites said plainly. Nothing is sent; the letter is yours to copy."
           />
         </span>
-        <Button variant="ghost" onClick={() => draft.mutate()} disabled={draft.isPending}>
+        {/* A real button, not a ghost. This is the one action on the panel and
+            it sat as grey prose at the end of the heading row, where it read
+            as part of the title rather than as something to press. */}
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => draft.mutate()}
+          disabled={draft.isPending}
+        >
           {draft.isPending
             ? 'Drafting…'
             : record
@@ -136,7 +149,7 @@ function LetterSection({ engagementId }: { engagementId: string }) {
       </div>
 
       {draft.isError ? (
-        <p className="text-[11px] text-[var(--color-critical)]">
+        <p className="text-xs text-[var(--color-critical)]">
           {draft.error instanceof Error ? draft.error.message : 'The draft failed.'}
         </p>
       ) : null}
@@ -144,7 +157,7 @@ function LetterSection({ engagementId }: { engagementId: string }) {
       {record ? (
         <LetterBody record={record} />
       ) : query.isLoading ? null : (
-        <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+        <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
           The table above is the firm&apos;s view; drafting turns it into the letter the client
           reads.
         </p>
@@ -156,7 +169,7 @@ function LetterSection({ engagementId }: { engagementId: string }) {
 function LetterBody({ record }: { record: ResultLetterRecord }) {
   const { letter } = record;
   return (
-    <div className="space-y-2 text-[11px] leading-relaxed">
+    <div className="space-y-2 text-xs leading-relaxed">
       <p className="text-[var(--color-ink-muted)]">
         Drafted {dayShort(record.createdAt.slice(0, 10))} from the scoreboard as it stood then —
         redraft after anything settles.
@@ -181,7 +194,10 @@ function LetterBody({ record }: { record: ResultLetterRecord }) {
   );
 }
 
-const PHASE: Record<OutcomePhase, { label: string; tone: 'neutral' | 'accent' | 'warning' | 'good' }> = {
+const PHASE: Record<
+  OutcomePhase,
+  { label: string; tone: 'neutral' | 'accent' | 'warning' | 'good' }
+> = {
   unfiled: { label: 'not started', tone: 'neutral' },
   'awaiting-notice': { label: 'awaiting notice', tone: 'neutral' },
   'protest-window': { label: 'window open', tone: 'warning' },
@@ -197,7 +213,7 @@ function Row({ site }: { site: SiteOutcome }) {
       <td className="px-5 py-2">
         <div className="font-medium">{site.label}</div>
         {site.accountId ? (
-          <div className="tabular text-[10px] text-[var(--color-ink-muted)]">
+          <div className="tabular text-xs text-[var(--color-ink-muted)]">
             Account {site.accountId}
           </div>
         ) : null}
@@ -221,7 +237,7 @@ function Row({ site }: { site: SiteOutcome }) {
           <span className="inline-flex items-center gap-1.5">
             <Badge tone={phase.tone}>{phase.label}</Badge>
             {site.nextDeadline ? (
-              <span className="tabular text-[10px] whitespace-nowrap text-[var(--color-ink-muted)]">
+              <span className="tabular text-xs whitespace-nowrap text-[var(--color-ink-muted)]">
                 to {dayShort(site.nextDeadline)}
               </span>
             ) : null}
@@ -254,9 +270,7 @@ function Figure({ value, pending = false }: { value: number | null; pending?: bo
  */
 function Reduction({ site }: { site: SiteOutcome }) {
   if (site.reduction === null || site.reduction === 0) {
-    return (
-      <td className="tabular px-3 py-2 text-right text-[var(--color-ink-muted)]">—</td>
-    );
+    return <td className="tabular px-3 py-2 text-right text-[var(--color-ink-muted)]">—</td>;
   }
   const up = site.reduction > 0;
   return (
@@ -318,12 +332,12 @@ function Totals({ data }: { data: EngagementResult }) {
             ? '—'
             : `−${moneyExact(data.reductionTotal)}`}
         </td>
-        <td className="tabular px-3 py-2 text-right whitespace-nowrap font-normal text-[var(--color-ink-secondary)]">
+        <td className="tabular px-3 py-2 text-right font-normal whitespace-nowrap text-[var(--color-ink-secondary)]">
           {data.estimatedTaxTotal === null || data.estimatedTaxTotal === 0
             ? '—'
             : `${data.estimatedTaxTotal > 0 ? '~−' : '~+'}${moneyExact(Math.abs(data.estimatedTaxTotal))}`}
         </td>
-        <td className="px-5 py-2 text-right text-[10px] font-normal text-[var(--color-ink-muted)]">
+        <td className="px-5 py-2 text-right text-xs font-normal text-[var(--color-ink-muted)]">
           {partial ? 'sums cover only the rows with a figure' : null}
         </td>
       </tr>

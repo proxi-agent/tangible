@@ -21,13 +21,7 @@ import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/p
  * file, before anything enters a pipeline. The single-file uploads below
  * still work — this card is for the drop that arrives as a pile.
  */
-export function IntakeCard({
-  clientId,
-  engagementId,
-}: {
-  clientId: string;
-  engagementId: string;
-}) {
+export function IntakeCard({ clientId, engagementId }: { clientId: string; engagementId: string }) {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -48,7 +42,9 @@ export function IntakeCard({
   if (isLoading || !data) return <Skeleton className="h-24 w-full" />;
 
   const open = data.items.filter((item) => item.status === 'triaged' || item.status === 'failed');
-  const decided = data.items.filter((item) => item.status === 'routed' || item.status === 'dismissed');
+  const decided = data.items.filter(
+    (item) => item.status === 'routed' || item.status === 'dismissed',
+  );
 
   return (
     <Card>
@@ -74,17 +70,19 @@ export function IntakeCard({
           }}
           className={cn(
             'flex w-full cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed px-6 py-6 text-sm transition-colors outline-none',
-            'focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
+            'focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
             dragging
-              ? 'border-[var(--color-series-1)] bg-[color-mix(in_oklab,var(--color-series-1)_8%,transparent)]'
-              : 'border-[var(--color-hairline)] hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)] hover:bg-[var(--color-plane)]',
+              ? 'border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_8%,transparent)]'
+              : 'border-[var(--color-hairline)] hover:border-[color-mix(in_oklab,var(--color-accent)_45%,transparent)] hover:bg-[var(--color-plane)]',
           )}
         >
           <Inbox size={20} strokeWidth={1.8} className="text-[var(--color-ink-muted)]" />
           {upload.isPending ? (
             <span>Storing and triaging the drop…</span>
           ) : (
-            <span className="font-medium">Drop the client&rsquo;s files here — several at once is the point</span>
+            <span className="font-medium">
+              Drop the client&rsquo;s files here — several at once is the point
+            </span>
           )}
         </button>
         <input
@@ -119,7 +117,12 @@ export function IntakeCard({
         <div className="border-t border-[var(--color-hairline)] px-5 py-3">
           <ul className="space-y-1.5">
             {decided.map((item) => (
-              <DecidedRow key={item.id} item={item} clientId={clientId} engagementId={engagementId} />
+              <DecidedRow
+                key={item.id}
+                item={item}
+                clientId={clientId}
+                engagementId={engagementId}
+              />
             ))}
           </ul>
         </div>
@@ -161,17 +164,17 @@ function TriagedRow({ item, engagementId }: { item: IntakeFile; engagementId: st
     <li className="space-y-1">
       <div className="flex flex-wrap items-center gap-2.5 text-xs">
         <span className="min-w-0 font-medium break-all">{item.originalFilename}</span>
-        <span className="tabular text-[11px] text-[var(--color-ink-muted)]">
+        <span className="tabular text-xs text-[var(--color-ink-muted)]">
           {(item.byteSize / 1024).toFixed(0)} KB
         </span>
         {item.sheetNames && item.sheetNames.length > 0 ? (
-          <span className="text-[11px] text-[var(--color-ink-muted)]">
+          <span className="text-xs text-[var(--color-ink-muted)]">
             {item.sheetNames.length} {plural(item.sheetNames.length, 'sheet')}:{' '}
             {item.sheetNames.join(', ')}
           </span>
         ) : null}
         {item.peek ? (
-          <span className="text-[11px] text-[var(--color-ink-muted)]">
+          <span className="text-xs text-[var(--color-ink-muted)]">
             {[
               item.peek.title,
               item.peek.formNumber ? `Form ${item.peek.formNumber}` : null,
@@ -200,21 +203,22 @@ function TriagedRow({ item, engagementId }: { item: IntakeFile; engagementId: st
         </div>
       </div>
       {item.proposedRoute ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+        <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
           Proposed: {ROUTE_LABELS[item.proposedRoute]}
-          {item.proposedConfidence !== null ? ` (${percent(item.proposedConfidence, 0)})` : ''} —{' '}
-          {item.proposedReason}
+          {item.proposedConfidence !== null
+            ? ` (${percent(item.proposedConfidence, 0)})`
+            : ''} — {item.proposedReason}
         </p>
       ) : (
-        <p className="text-[11px] text-[var(--color-ink-muted)]">
+        <p className="text-xs text-[var(--color-ink-muted)]">
           Triage had no answer for this one — route it by hand.
         </p>
       )}
       {item.status === 'failed' && item.error ? (
-        <p className="text-[11px] text-[var(--color-critical)]">{item.error}</p>
+        <p className="text-xs text-[var(--color-critical)]">{item.error}</p>
       ) : null}
       {send.error ? (
-        <p className="text-[11px] text-[var(--color-critical)]">
+        <p className="text-xs text-[var(--color-critical)]">
           {send.error instanceof Error ? send.error.message : String(send.error)}
         </p>
       ) : null}
@@ -233,7 +237,7 @@ function DecidedRow({
   engagementId: string;
 }) {
   return (
-    <li className="flex flex-wrap items-center gap-2 text-[11px] text-[var(--color-ink-muted)]">
+    <li className="flex flex-wrap items-center gap-2 text-xs text-[var(--color-ink-muted)]">
       <Badge tone={item.status === 'routed' ? 'good' : 'neutral'}>
         {item.status === 'routed' && item.routedKind ? ROUTE_LABELS[item.routedKind] : 'dismissed'}
       </Badge>

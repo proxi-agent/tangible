@@ -10,6 +10,7 @@ import type { MappableLine } from './mapped-basis.js';
 let nextId = 0;
 const asset = (over: Partial<RegisterAsset> = {}): RegisterAsset => ({
   id: `a${nextId++}`,
+  assetTag: null,
   description: 'Lathe',
   acquisitionYear: 2020,
   originalCost: 100_000,
@@ -96,7 +97,11 @@ describe('what the comparison reconciles', () => {
       [asset()],
       [
         line({ historicalCost: 100_000 }),
-        line({ type: 'Furniture, Fixtures & Equipment', categoryKey: 'mixed', historicalCost: 30_000 }),
+        line({
+          type: 'Furniture, Fixtures & Equipment',
+          categoryKey: 'mixed',
+          historicalCost: 30_000,
+        }),
       ],
     );
     expect(c.reportedTotal).toBe(130_000);
@@ -237,9 +242,7 @@ describe('findings', () => {
    */
   it('names omitted property as exposure, never as a saving', () => {
     const c = run(
-      [
-        asset({ acquisitionYear: 2020, originalCost: 100_000, description: 'Unrendered press' }),
-      ],
+      [asset({ acquisitionYear: 2020, originalCost: 100_000, description: 'Unrendered press' })],
       [line({ yearAcquired: 2020, historicalCost: 60_000 })],
     );
 

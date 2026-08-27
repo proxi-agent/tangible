@@ -33,6 +33,8 @@ export interface SavingsAsset {
   isDisposed: boolean;
   /** The register's own label, used only to explain findings, never to value. */
   registerCategory: string | null;
+  /** The register's own identifier for the row, for evidence a client can check. */
+  assetTag?: string | null;
   categoryKey: string | null;
   lifeClassOverride: number | null;
   /** Null when the asset has no classification row at all. */
@@ -102,6 +104,7 @@ function scheduleValue(
 function evidenceFor(asset: SavingsAsset, value: number | null): FindingEvidence {
   return {
     assetId: asset.id,
+    assetTag: asset.assetTag ?? null,
     description: asset.description,
     acquisitionYear: asset.acquisitionYear,
     originalCost: asset.originalCost,
@@ -354,6 +357,7 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
       basis:
         'Only property owned and in place on January 1 is renderable. A disposal recorded in the fixed asset register is the evidence, and this is the least arguable adjustment on the list.',
       assumption: null,
+      question: null,
       evidence: ghosts.sort(byCost).slice(0, EVIDENCE_SHOWN),
     });
   }
@@ -366,10 +370,11 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
       valueRemoved: excludedValue,
       originalCost: excludedCost,
       assetCount: excluded.length,
-      summary: `${money(excludedCost)} of cost across ${excluded.length} line${excluded.length === 1 ? '' : 's'} is not the client's taxable tangible personal property — software and capitalized implementation, real property carried in the register, or equipment leased in from a lessor who renders it themselves.`,
+      summary: `${money(excludedCost)} of cost across ${excluded.length} line${excluded.length === 1 ? '' : 's'} is not taxable tangible personal property — software and capitalized implementation, real property carried in the register, or equipment leased in from a lessor who renders it themselves.`,
       basis:
         'Texas ad valorem tax reaches tangible personal property (Tax Code 11.02). Real property is appraised on its own account; a lessor renders what it owns. These lines are in the register because it is a book record kept for depreciation, not a tax schedule.',
-      assumption: `Value shown is what these would carry if rendered as ten-year machinery — the district's general default and where a rendition without a classification step puts everything. If the client rendered them on a shorter life, the saving is smaller.`,
+      assumption: `Value shown is what these would carry if rendered as ten-year machinery — the district's general default and where a rendition without a classification step puts everything. If they were rendered on a shorter life, the saving is smaller.`,
+      question: null,
       evidence: excluded.sort(byCost).slice(0, EVIDENCE_SHOWN),
     });
   }
@@ -385,7 +390,9 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
       summary: `${floored.length} asset${floored.length === 1 ? '' : 's'} older than the published schedule carr${floored.length === 1 ? 'ies' : 'y'} ${money(flooredCost)} of original cost but only ${money(flooredValue)} of schedule value — the district's own tables treat them as fully depreciated.`,
       basis:
         'Each life class stops depreciating at a floor. An asset past the last published year sits at that floor however old it is, which is a much smaller number than cost.',
-      assumption: `Worth money only if the client is rendering these above the floor. Ask for last year's rendition to find out — the gap would be up to ${money(flooredCost - flooredValue)} of value.`,
+      assumption: `Worth money only if these are being rendered above the floor. Last year's rendition settles it — the gap would be up to ${money(flooredCost - flooredValue)} of value.`,
+      question:
+        'On last year’s rendition, were these older assets reported at their original cost, or at a written-down value? If you have a copy of what was filed, that settles it outright.',
       evidence: floored.sort(byCost).slice(0, EVIDENCE_SHOWN),
     });
   }
@@ -403,6 +410,8 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
         'Tax Code 23.24 bars appraising an improvement as personal property when the real property assessment already includes it.',
       assumption:
         "Settled by pulling the landlord's real property account and its appraisal method. Worth doing: this is usually the second-largest line after ghost assets, and it recurs every year it goes unchallenged.",
+      question:
+        'Who is the landlord at this location, and does your lease say the build-out belongs to them at the end of the term? Their property account tells us whether this is already being taxed to them.',
       evidence: leasehold.sort(byCost).slice(0, EVIDENCE_SHOWN),
     });
   }
@@ -420,6 +429,8 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
         'Tax Code 11.251 exempts goods detained in Texas for 175 days or less for assembly, storage, manufacturing, or fabrication before moving out of state. Application is annual, and a late application still captures part of the benefit.',
       assumption:
         'Settled by asking one question: what share of inventory ships out of state, and how fast? A shipping report answers it.',
+      question:
+        'Roughly what share of your inventory leaves Texas, and how long does it typically sit here first? A shipping report for last year answers it exactly.',
       evidence: inventory.sort(byCost).slice(0, EVIDENCE_SHOWN),
     });
   }
@@ -437,6 +448,8 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
         'A project capitalized once as a total and again as its components, or a batch imported twice, puts the same property on the rendition more than once — and the district values every line it is given. The register alone cannot tell a double entry from a genuine multiple purchase; identity is exactly what an invoice adds.',
       assumption:
         'Ten identical desks on one purchase order are ten real assets; one lathe entered by two teams is one. The purchase order or invoice behind each group settles it, line by line.',
+      question:
+        'For the repeated lines below, is each one a separate piece of equipment you actually bought more than once — or the same asset entered twice? A purchase order settles a group in one look.',
       evidence: dupEvidence.sort(byCost).slice(0, EVIDENCE_SHOWN),
     });
   }

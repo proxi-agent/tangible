@@ -42,3 +42,21 @@ export { draftUnblockPlan } from './unblock.js';
 export { draftResultLetter } from './letter.js';
 export { answerGraphQuestion } from './ask.js';
 export { draftCorrectionMotion } from './motion-draft.js';
+export {
+  runToolLoop,
+  type AgentTool,
+  type AgentToolExecutor,
+  type AgentToolInvocation,
+  type AgentToolOutcome,
+  type AgentTurn,
+  type ToolLoopRequest,
+  type ToolLoopResult,
+  type ToolLoopStop,
+} from './agent.js';
+export {
+  composeAssistantAnswer,
+  researchAssistantQuestion,
+  renderScope,
+  type AssistantComposeRequest,
+  type AssistantResearchRequest,
+} from './assistant.js';

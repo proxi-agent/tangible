@@ -202,12 +202,12 @@ function TooltipPanel({
         opacity: position ? 1 : 0,
       }}
       className={cn(
-        'pointer-events-none z-50 overflow-y-auto overscroll-contain rounded-lg',
-        'border-hairline bg-surface border px-3 py-2',
-        'text-ink-secondary text-xs leading-relaxed shadow-lg shadow-black/10',
+        'pointer-events-none z-50 overflow-y-auto overscroll-contain rounded-[10px]',
+        'border border-[var(--color-hairline)] bg-[var(--color-raised)] px-3 py-2.5',
+        'text-xs leading-relaxed text-[var(--color-ink-secondary)] shadow-[var(--shadow-overlay)]',
       )}
     >
-      {title ? <p className="text-ink mb-1 font-semibold">{title}</p> : null}
+      {title ? <p className="mb-1 font-semibold text-[var(--color-ink)]">{title}</p> : null}
       {content}
     </div>,
     document.body,
@@ -239,8 +239,16 @@ export function InfoTip({
         aria-label={title ? `What is ${title}?` : 'More information'}
         className={cn(
           'cursor-help rounded-full text-[var(--color-ink-muted)] transition-colors',
-          'hover:text-[var(--color-series-1)] focus-visible:text-[var(--color-series-1)]',
-          'outline-none focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
+          // On a touch screen a 13px glyph is a 13px target. The icon keeps its
+          // size — it sits inside sentences and column headers, where a bigger one
+          // would read as a blot — and an invisible 36px pad is centred on it
+          // instead. Fine pointers keep the tight target: a mouse does not need the
+          // slop, and the pad would sit over whatever is beside it.
+          'relative pointer-coarse:after:absolute pointer-coarse:after:top-1/2 pointer-coarse:after:left-1/2',
+          'pointer-coarse:after:size-9 pointer-coarse:after:-translate-x-1/2 pointer-coarse:after:-translate-y-1/2',
+          'pointer-coarse:after:content-[""]',
+          'hover:text-[var(--color-accent)] focus-visible:text-[var(--color-accent)]',
+          'outline-none focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
           className,
         )}
       >

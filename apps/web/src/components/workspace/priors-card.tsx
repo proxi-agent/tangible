@@ -23,17 +23,19 @@ import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components
  */
 
 const KINDS: { value: PriorDocumentKind; label: string; hint: string }[] = [
-  { value: 'rendition', label: 'Rendition', hint: 'Form 50-144 as filed — the schedules and what was reported on them.' },
-  { value: 'notice', label: 'Notice', hint: 'The district’s notice of appraised value, with the protest deadline it prints.' },
+  {
+    value: 'rendition',
+    label: 'Rendition',
+    hint: 'Form 50-144 as filed — the schedules and what was reported on them.',
+  },
+  {
+    value: 'notice',
+    label: 'Notice',
+    hint: 'The district’s notice of appraised value, with the protest deadline it prints.',
+  },
 ];
 
-export function PriorsCard({
-  clientId,
-  engagementId,
-}: {
-  clientId: string;
-  engagementId: string;
-}) {
+export function PriorsCard({ clientId, engagementId }: { clientId: string; engagementId: string }) {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [kind, setKind] = useState<PriorDocumentKind>('rendition');
@@ -75,7 +77,7 @@ export function PriorsCard({
                 className={cn(
                   'rounded px-2.5 py-1 text-xs font-medium transition-colors',
                   kind === option.value
-                    ? 'bg-[color-mix(in_oklab,var(--color-series-1)_14%,transparent)] text-[var(--color-ink)]'
+                    ? 'bg-[color-mix(in_oklab,var(--color-accent)_14%,transparent)] text-[var(--color-ink)]'
                     : 'text-[var(--color-ink-muted)] hover:text-[var(--color-ink)]',
                 )}
               >
@@ -101,15 +103,17 @@ export function PriorsCard({
           }}
           className={cn(
             'flex w-full cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed px-6 py-8 text-sm transition-colors outline-none',
-            'focus-visible:ring-2 focus-visible:ring-[color-mix(in_oklab,var(--color-series-1)_35%,transparent)]',
+            'focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
             dragging
-              ? 'border-[var(--color-series-1)] bg-[color-mix(in_oklab,var(--color-series-1)_8%,transparent)]'
-              : 'border-[var(--color-hairline)] hover:border-[color-mix(in_oklab,var(--color-series-1)_45%,transparent)] hover:bg-[var(--color-plane)]',
+              ? 'border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_8%,transparent)]'
+              : 'border-[var(--color-hairline)] hover:border-[color-mix(in_oklab,var(--color-accent)_45%,transparent)] hover:bg-[var(--color-plane)]',
           )}
         >
           <UploadCloud size={20} strokeWidth={1.8} className="text-[var(--color-ink-muted)]" />
           {upload.isPending ? (
-            <span>Reading the {kind === 'notice' ? 'notice' : 'return'} — this takes a moment on a scan…</span>
+            <span>
+              Reading the {kind === 'notice' ? 'notice' : 'return'} — this takes a moment on a scan…
+            </span>
           ) : (
             <>
               <span className="font-medium">
@@ -182,7 +186,9 @@ function DocumentRow({
     document.kind === 'notice' ? 'Notice' : 'Rendition',
     document.documentTaxYear ? `tax year ${document.documentTaxYear}` : null,
     document.documentAccountId ? `account ${document.documentAccountId}` : null,
-    document.lineCount > 0 ? `${count(document.lineCount)} ${plural(document.lineCount, 'line')}` : null,
+    document.lineCount > 0
+      ? `${count(document.lineCount)} ${plural(document.lineCount, 'line')}`
+      : null,
     `${(document.byteSize / 1024).toFixed(0)} KB`,
   ].filter(Boolean);
 
@@ -195,12 +201,14 @@ function DocumentRow({
         {/* The one number that decides whether any of this can be leaned on. */}
         {document.footing && document.footing.statedTotal !== null ? (
           <p className="mt-0.5 text-xs text-[var(--color-ink-secondary)]">
-            <span className="tabular">{moneyExact(document.footing.derivedTotal)}</span> read against{' '}
-            <span className="tabular">{moneyExact(document.footing.statedTotal)}</span> printed
+            <span className="tabular">{moneyExact(document.footing.derivedTotal)}</span> read
+            against <span className="tabular">{moneyExact(document.footing.statedTotal)}</span>{' '}
+            printed
             {document.footing.derivedTotal !== document.footing.statedTotal ? (
               <span className="text-[var(--color-warning)]">
                 {' '}
-                — off by {moneyExact(Math.abs(document.footing.derivedTotal - document.footing.statedTotal))}
+                — off by{' '}
+                {moneyExact(Math.abs(document.footing.derivedTotal - document.footing.statedTotal))}
               </span>
             ) : null}
           </p>
@@ -271,7 +279,10 @@ function NoticeProposal({
   const failed = proposal.checks.filter((c) => !c.ok);
   const yearOk = proposal.checks.every((c) => c.check !== 'tax-year' || c.ok);
   const recordable =
-    proposal.match !== null && proposal.draft.noticedOn !== null && yearOk && !proposal.alreadyRecorded;
+    proposal.match !== null &&
+    proposal.draft.noticedOn !== null &&
+    yearOk &&
+    !proposal.alreadyRecorded;
 
   return (
     <div className="w-full rounded-lg border border-[var(--color-hairline)] bg-[var(--color-plane)] px-3 py-2.5">
@@ -303,7 +314,9 @@ function NoticeProposal({
         </ul>
       ) : null}
       {record.error ? (
-        <p className="mt-1 text-xs text-[var(--color-critical)]">{(record.error as Error).message}</p>
+        <p className="mt-1 text-xs text-[var(--color-critical)]">
+          {(record.error as Error).message}
+        </p>
       ) : null}
       <div className="mt-1.5 flex items-center gap-2">
         {record.isSuccess || proposal.alreadyRecorded ? (

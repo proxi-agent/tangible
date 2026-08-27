@@ -53,19 +53,32 @@ export function plural(n: number, singular: string, pluralForm = `${singular}s`)
  * being a day out is the whole problem.
  */
 export function day(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', {
-    timeZone: 'UTC',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  return format(iso, { year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 /** The same date without its year, for a second mention in one sentence. */
 export function dayShort(iso: string): string {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString('en-US', {
-    timeZone: 'UTC',
-    month: 'short',
-    day: 'numeric',
-  });
+  return format(iso, { month: 'short', day: 'numeric' });
+}
+
+/**
+ * Both date formatters, with the two inputs that would otherwise print
+ * nonsense handled once.
+ *
+ * `new Date('2027-04-15T12:00:00ZT00:00:00Z')` — what appending the suffix to a
+ * value that is already a full timestamp produces — is an Invalid Date, and
+ * `toLocaleDateString` renders that as the literal string "Invalid Date" in the
+ * middle of a sentence about a deadline. A date column read straight from
+ * Postgres is `YYYY-MM-DD`, but a *timestamp* column is not, and the two are
+ * one refactor apart. Take the leading date off whatever arrives, and if there
+ * is no date in it at all, show the raw value rather than a lie: an id or an
+ * empty string in the interface is obviously wrong, where "Invalid Date" looks
+ * like the record is broken.
+ */
+function format(iso: string, options: Intl.DateTimeFormatOptions): string {
+  const date = /^\d{4}-\d{2}-\d{2}/.exec(iso ?? '')?.[0];
+  if (!date) return iso ?? '';
+  const parsed = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return iso;
+  return parsed.toLocaleDateString('en-US', { timeZone: 'UTC', ...options });
 }

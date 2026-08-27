@@ -3,12 +3,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Boxes, LayoutList, MapPin } from 'lucide-react';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { GraphAskRecord, GraphReference } from '@tangible/types';
 import { api } from '@/lib/api';
 import { day } from '@/lib/format';
 import { Button, TextArea } from '@/components/ui/controls';
-import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { Card, EmptyState, ErrorState, PageHeader, Skeleton } from '@/components/ui/primitives';
+import { InfoTip } from '@/components/ui/tooltip';
 
 /**
  * Ask the record a question and read the answer with the record still in reach.
@@ -23,7 +24,18 @@ import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components
  * Exchanges accumulate; none is ever edited. Ask again after the register
  * moves and the older answer stays readable as what the record said then.
  */
-export function AskGraph({ clientId, engagementId }: { clientId: string; engagementId: string }) {
+const ASK_HELP =
+  'The answer is assembled the way every draft here is: code gathers the facts first, and the answer is stored beside the exact facts it was given. Nothing outside that digest reaches the answer, so “the record does not hold this” is a real answer and not a failure. References are checked against the digest before you see them — a citation the record cannot back is dropped and counted.';
+
+export function AskGraph({
+  clientId,
+  engagementId,
+  back,
+}: {
+  clientId: string;
+  engagementId: string;
+  back?: ReactNode;
+}) {
   const queryClient = useQueryClient();
   const [question, setQuestion] = useState('');
   const query = useQuery({
@@ -50,12 +62,14 @@ export function AskGraph({ clientId, engagementId }: { clientId: string; engagem
 
   return (
     <div className="space-y-4">
+      {/* The page says what this screen is; the card gets on with asking. */}
+      <PageHeader
+        back={back}
+        title="Ask the record"
+        meta={<InfoTip title="Ask the record" content={ASK_HELP} />}
+        description="A question about this engagement, answered from the register, the findings, and the season board — the same data the screens render."
+      />
       <Card>
-        <CardHeader
-          title="Ask the record"
-          description="A question about this engagement, answered from the register, the findings, and the season board — the same data the screens render."
-          help="The answer is assembled the way every draft here is: code gathers the facts first, and the answer is stored beside the exact facts it was given. Nothing outside that digest reaches the answer, so 'the record does not hold this' is a real answer and not a failure. References are checked against the digest before you see them — a citation the record cannot back is dropped and counted."
-        />
         <div className="space-y-2.5 p-5">
           <TextArea
             rows={2}
@@ -73,12 +87,12 @@ export function AskGraph({ clientId, engagementId }: { clientId: string; engagem
             >
               {ask.isPending ? 'Reading the record…' : 'Ask'}
             </Button>
-            <span className="text-[11px] text-[var(--color-ink-muted)]">
+            <span className="text-xs text-[var(--color-ink-muted)]">
               Answers are kept — this engagement&rsquo;s last twenty are below.
             </span>
           </div>
           {ask.error ? (
-            <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+            <p className="text-xs leading-relaxed text-[var(--color-critical)]">
               {ask.error instanceof Error ? ask.error.message : String(ask.error)}
             </p>
           ) : null}
@@ -125,10 +139,14 @@ function Exchange({
   return (
     <Card>
       <div className="space-y-3 p-5">
-        <p className="text-sm font-medium tracking-tight text-[var(--color-ink)]">
+        {/* The question is this card's heading — it had been a bold paragraph,
+            which left a page of exchanges with no headings in it at all. */}
+        <h2 className="text-base leading-snug font-semibold tracking-[-0.011em]">
           {record.question}
-        </p>
-        <p className="text-xs leading-relaxed whitespace-pre-wrap text-[var(--color-ink-secondary)]">
+        </h2>
+        {/* Reading the answer is the whole point of the screen, so it is set at
+            body size rather than the caption size a card's subtitle uses. */}
+        <p className="text-sm leading-relaxed whitespace-pre-wrap text-[var(--color-ink-secondary)]">
           {answer.answer}
         </p>
 
@@ -146,7 +164,7 @@ function Exchange({
         ) : null}
 
         {answer.limits.length > 0 ? (
-          <div className="text-[11px] leading-relaxed">
+          <div className="text-xs leading-relaxed">
             {/* Facing the firm, not the client — what the record could not settle. */}
             <p className="font-medium text-[var(--color-warning)]">What this answer could not do</p>
             <ul className="mt-0.5 list-disc space-y-0.5 pl-4 text-[var(--color-ink-muted)]">
@@ -157,7 +175,7 @@ function Exchange({
           </div>
         ) : null}
 
-        <p className="text-[11px] text-[var(--color-ink-muted)]">
+        <p className="text-xs text-[var(--color-ink-muted)]">
           Answered {day(record.createdAt.slice(0, 10))}
           {record.model ? <> by {record.model}</> : null} from the record as it stood then:{' '}
           {facts.assets.length} asset {facts.assets.length === 1 ? 'line' : 'lines'}
@@ -202,7 +220,7 @@ function ReferenceChip({
   return (
     <Link
       href={href}
-      className="inline-flex h-6 items-center gap-1.5 rounded-full border border-[var(--color-hairline)] bg-[var(--color-surface)] px-2 text-[11px] text-[var(--color-ink-secondary)] transition-colors hover:bg-[var(--color-plane)] hover:text-[var(--color-ink)]"
+      className="inline-flex h-6 items-center gap-1.5 rounded-full border border-[var(--color-hairline)] bg-[var(--color-surface)] px-2 text-xs text-[var(--color-ink-secondary)] transition-colors hover:bg-[var(--color-plane)] hover:text-[var(--color-ink)]"
     >
       <Icon size={11} strokeWidth={2} />
       {reference.label}

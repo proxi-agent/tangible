@@ -1,4 +1,5 @@
 import { buildAppointmentPdf } from '@/lib/appointments';
+import { formFailure } from '@/lib/route';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -26,7 +27,6 @@ export async function GET(
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Could not build the form.';
-    return Response.json({ error: message }, { status: 409 });
+    return formFailure(error);
   }
 }

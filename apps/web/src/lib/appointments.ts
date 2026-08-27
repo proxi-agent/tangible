@@ -22,6 +22,7 @@ import type {
 } from '@tangible/types';
 import { currentActor } from '@/lib/actor';
 import { HttpError, notFound } from '@/lib/route';
+import { today } from '@/lib/today';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**
@@ -86,8 +87,8 @@ export async function clientAppointments(clientId: string): Promise<AgentAppoint
     .from(schema.agentAppointments)
     .where(eq(schema.agentAppointments.clientId, clientId))
     .orderBy(desc(schema.agentAppointments.signedOn), desc(schema.agentAppointments.createdAt));
-  const today = new Date().toISOString().slice(0, 10);
-  return rows.map((row) => toAppointment(row, today));
+  const asOf = today();
+  return rows.map((row) => toAppointment(row, asOf));
 }
 
 /**
@@ -137,7 +138,7 @@ export async function recordAppointment(
     })
     .returning();
   if (!row) throw new HttpError(500, 'The appointment was not recorded.');
-  return toAppointment(row, new Date().toISOString().slice(0, 10));
+  return toAppointment(row, today());
 }
 
 /**
@@ -188,7 +189,7 @@ export async function updateAppointment(
     .where(eq(schema.agentAppointments.id, appointmentId))
     .returning();
   if (!row) throw new HttpError(500, 'The appointment was not updated.');
-  return toAppointment(row, new Date().toISOString().slice(0, 10));
+  return toAppointment(row, today());
 }
 
 /** One appointment with everything the form needs, for the PDF route. */
@@ -200,7 +201,7 @@ export async function appointmentById(appointmentId: string): Promise<AgentAppoi
     .orderBy(asc(schema.agentAppointments.createdAt));
   const row = rows[0];
   if (!row) notFound('No appointment with that id.');
-  return toAppointment(row, new Date().toISOString().slice(0, 10));
+  return toAppointment(row, today());
 }
 
 function toAgent(row: FilingAgentRow | null): FilingAgent {
@@ -284,10 +285,15 @@ export async function buildAppointmentPdf(
       // The roll name and our client name are usually the same and need not be.
       name: profile?.ownerName ?? client.name,
       phone: null,
-      street: [profile?.mailingAddressLine1, profile?.mailingAddressLine2]
-        .filter((line) => Boolean(line?.trim()))
-        .join(', ') || null,
-      cityStateZip: cityStateZip(profile?.mailingCity, profile?.mailingStateCode, profile?.mailingZip),
+      street:
+        [profile?.mailingAddressLine1, profile?.mailingAddressLine2]
+          .filter((line) => Boolean(line?.trim()))
+          .join(', ') || null,
+      cityStateZip: cityStateZip(
+        profile?.mailingCity,
+        profile?.mailingStateCode,
+        profile?.mailingZip,
+      ),
     },
     agent: {
       name: agent.name ?? '',
@@ -319,7 +325,10 @@ export async function buildAppointmentPdf(
   });
 
   const bytes = await renderForm50162(plan);
-  const slug = client.name.replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
+  const slug = client.name
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-|-$/g, '')
+    .toLowerCase();
   return { bytes, filename: `50-162-${slug || 'client'}-${appointment.signedOn}.pdf` };
 }
 

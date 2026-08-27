@@ -6,6 +6,10 @@ import type {
   AgentAppointment,
   AnswerExtensionRequest,
   AssessmentNotice,
+  AssistantAskRequest,
+  AssistantAskResponse,
+  AssistantConversation,
+  AssistantConversationDetail,
   ProtestBriefRecord,
   UnblockPlanRecord,
   ResultLetterRecord,
@@ -70,7 +74,8 @@ import type {
   RecordMotionRequest,
   RecordNoticeRequest,
   NoticeRecordProposal,
-  MappingAskRecord,
+  AskRecord,
+  CreateAskRequest,
   UpdateAskRequest,
   RecordResolutionRequest,
   Rendition,
@@ -156,8 +161,53 @@ function errorMessage(body: string): string {
     const parsed = JSON.parse(body) as { message?: unknown };
     return typeof parsed.message === 'string' ? parsed.message : body;
   } catch {
-    return body;
+    /**
+     * Not every failure comes from this app. A request over the platform's body
+     * limit is rejected by the edge before any handler runs, and what comes
+     * back is an HTML error page — which, printed into the error card, is a
+     * screenful of markup where a sentence should be.
+     */
+    return /^\s*</.test(body) ? '' : body;
   }
+}
+
+/**
+ * Turn a failed response into the right kind of failure.
+ *
+ * Two statuses do not belong in an error card. A 401 means the session expired
+ * while the tab sat open — the practitioner needs the login screen, not a red
+ * box telling them they are signed out on a page they cannot leave. A 413 was
+ * decided by the platform, which knows nothing about renditions and says so in
+ * HTML; the app knows what was being uploaded and can say something useful.
+ */
+function fail(response: Response, body: string): never {
+  if (
+    response.status === 401 &&
+    typeof window !== 'undefined' &&
+    // Not from the login page itself. The shell's scope query runs there too —
+    // hooks run before the shell returns its bare login room — and it 401s like
+    // everything else. Sending /login to /login?next=%2Flogin reloads the page,
+    // which fires the query again and nests the parameter one level deeper each
+    // time: an endless redirect on the one page whose whole job is to be
+    // reachable while signed out.
+    !window.location.pathname.startsWith('/login')
+  ) {
+    const next = `${window.location.pathname}${window.location.search}`;
+    // Replace, not assign: the expired page is not somewhere Back should return
+    // to, since going there would only bounce through here again.
+    window.location.replace(`/login?next=${encodeURIComponent(next)}`);
+  }
+  if (response.status === 413) {
+    throw new ApiError(
+      'That upload is larger than the server will accept in one request. Split the workbook, ' +
+        'or save it as CSV — the same rows in CSV are a fraction of the size.',
+      413,
+    );
+  }
+  throw new ApiError(
+    errorMessage(body) || response.statusText || 'Request failed',
+    response.status,
+  );
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -168,7 +218,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (!response.ok) {
     const body = await response.text();
-    throw new ApiError(errorMessage(body) || response.statusText, response.status);
+    fail(response, body);
   }
 
   return response.json() as Promise<T>;
@@ -370,7 +420,7 @@ export const api = {
     });
     if (!response.ok) {
       const body = await response.text();
-      throw new ApiError(errorMessage(body) || response.statusText, response.status);
+      fail(response, body);
     }
     return response.json() as Promise<FarFile>;
   },
@@ -394,7 +444,7 @@ export const api = {
     });
     if (!response.ok) {
       const body = await response.text();
-      throw new ApiError(errorMessage(body) || response.statusText, response.status);
+      fail(response, body);
     }
     return response.json() as Promise<{ items: IntakeFile[] }>;
   },
@@ -501,6 +551,41 @@ export const api = {
     request<{ ask: GraphAskRecord }>(`/engagements/${engagementId}/ask`, {
       method: 'POST',
       body: JSON.stringify({ question }),
+    }),
+
+  // -------------------------------------------------------------------------
+  // The assistant
+  // -------------------------------------------------------------------------
+
+  /** Every thread, newest activity first. Titles come from the first question. */
+  assistantConversations: () =>
+    request<{ conversations: AssistantConversation[] }>('/assistant/conversations'),
+
+  /** One thread with every turn in it, oldest first. */
+  assistantConversation: (conversationId: string) =>
+    request<AssistantConversationDetail>(`/assistant/conversations/${conversationId}`),
+
+  /**
+   * Ask. A null `conversationId` starts a thread rather than requiring the
+   * caller to create an empty one first, and the response says which thread
+   * the turn landed in.
+   *
+   * This is the one call in the client that routinely runs for a minute: the
+   * research loop can walk a whole book before the answer is composed. There
+   * is no timeout on the fetch for that reason — a question abandoned halfway
+   * through still costs the same and returns nothing.
+   */
+  assistantAsk: (body: AssistantAskRequest) =>
+    request<AssistantAskResponse>('/assistant', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** Delete a thread and its answers. Answers quote the record, so they carry
+   * the record's confidentiality and a reader has to be able to remove them. */
+  deleteAssistantConversation: (conversationId: string) =>
+    request<{ deleted: true }>(`/assistant/conversations/${conversationId}`, {
+      method: 'DELETE',
     }),
 
   /** What deleting this client would destroy, and what the operator should weigh. */
@@ -666,11 +751,22 @@ export const api = {
     }),
 
   /** The asks ledger for a file — every question the mapping raised. */
-  fileAsks: (fileId: string) => request<{ items: MappingAskRecord[] }>(`/files/${fileId}/asks`),
+  fileAsks: (fileId: string) => request<{ items: AskRecord[] }>(`/files/${fileId}/asks`),
+
+  /** Every question outstanding against a season: mapping asks and findings. */
+  engagementAsks: (engagementId: string) =>
+    request<{ items: AskRecord[] }>(`/engagements/${engagementId}/asks`),
+
+  /** Raise the question a screening finding turns on. Idempotent per finding. */
+  createFindingAsk: (engagementId: string, body: CreateAskRequest) =>
+    request<AskRecord>(`/engagements/${engagementId}/asks`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   /** Record the client's answer, dismiss a question, or reopen either. */
   updateAsk: (askId: string, body: UpdateAskRequest) =>
-    request<MappingAskRecord>(`/asks/${askId}`, { method: 'PATCH', body: JSON.stringify(body) }),
+    request<AskRecord>(`/asks/${askId}`, { method: 'PATCH', body: JSON.stringify(body) }),
 
   /**
    * What the intake would record for an uploaded notice. Advice, freshly
@@ -740,7 +836,7 @@ export const api = {
     });
     if (!response.ok) {
       const body = await response.text();
-      throw new ApiError(errorMessage(body) || response.statusText, response.status);
+      fail(response, body);
     }
     return response.json() as Promise<PriorDocument>;
   },

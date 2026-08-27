@@ -120,7 +120,7 @@ export function FilingProfileCard({
         </Field>
 
         <fieldset className="space-y-3">
-          <legend className="text-[11px] font-medium tracking-wide text-[var(--color-ink-secondary)] uppercase">
+          <legend className="text-2xs font-medium tracking-wide text-[var(--color-ink-secondary)] uppercase">
             Mailing address
           </legend>
           <p className="text-xs text-[var(--color-ink-muted)]">
@@ -180,7 +180,10 @@ export function FilingProfileCard({
           />
         </Field>
 
-        <Field label="Signing title" help="The title the signature is made in — “Agent” where we file, an officer’s title where the owner does.">
+        <Field
+          label="Signing title"
+          help="The title the signature is made in — “Agent” where we file, an officer’s title where the owner does."
+        >
           <TextInput
             placeholder="Agent"
             value={draft.signerTitle}

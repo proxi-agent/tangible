@@ -12,6 +12,7 @@ import { blockingProblems, engagementFilings } from '@/lib/filings';
 import { engagementNotices } from '@/lib/notices';
 import { formInputs } from '@/lib/rendition';
 import { engagementReturns } from '@/lib/sites';
+import { daysUntil } from '@/lib/today';
 import { fetchEngagement } from '@/lib/workspace';
 
 /**
@@ -194,18 +195,4 @@ function byWhatNeedsDoing(a: SeasonReturn, b: SeasonReturn): number {
     b.renderedCost - a.renderedCost ||
     a.label.localeCompare(b.label)
   );
-}
-
-/**
- * Whole days from today to an ISO date, in UTC.
- *
- * UTC on both sides on purpose. A statutory date is a date, not an instant, and
- * subtracting a local midnight from a UTC one is how a deadline reads as one
- * day nearer or further depending on which side of the Atlantic the server
- * happens to be on.
- */
-function daysUntil(iso: string): number {
-  const today = new Date();
-  const from = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  return Math.round((Date.parse(`${iso}T00:00:00Z`) - from) / 86_400_000);
 }

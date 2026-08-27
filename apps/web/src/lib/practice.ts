@@ -13,6 +13,7 @@ import { OUTCOME_PHASES } from '@tangible/types';
 import { clientMotions } from '@/lib/motions';
 import { jurisdictionRates, seasonOutcomes } from '@/lib/result';
 import { filingSeason } from '@/lib/season';
+import { currentYear, daysUntil } from '@/lib/today';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**
@@ -55,7 +56,7 @@ export async function practiceSeason(taxYear?: number): Promise<PracticeSeason> 
   // that teaches people to stop trusting the default. Probing an empty year is
   // cheap — zero engagements with returns means zero renditions built — and the
   // seasons already built for the fallback year are reused, not rebuilt.
-  let year = taxYear ?? years[0] ?? new Date().getUTCFullYear();
+  let year = taxYear ?? years[0] ?? currentYear();
   let chosen = rows.filter((row) => row.taxYear === year);
   let seasons = await Promise.all(
     chosen.map(async (row) => ({ row, season: await filingSeason(row.id) })),
@@ -164,7 +165,10 @@ async function resultAcross(
   // is the sequence itself, so its index is the rank; a filing breaks ties
   // because between two drafts of one site, the one that went out the door is
   // the one the season's numbers hang off.
-  const kept = new Map<string, { row: { id: string; clientId: string; clientName: string }; outcome: SiteOutcome }>();
+  const kept = new Map<
+    string,
+    { row: { id: string; clientId: string; clientName: string }; outcome: SiteOutcome }
+  >();
   for (const entry of rows) {
     const key = `${entry.row.clientId}:${entry.outcome.locationId}`;
     const standing = kept.get(key);
@@ -280,7 +284,13 @@ function holdsAcross(returns: PracticeReturn[]): SeasonHold[] {
   // than the sum, which would invent property that does not exist.
   const held = new Map<
     string,
-    { key: string; message: string; resolution: string; sites: Map<string, number>; clients: Set<string> }
+    {
+      key: string;
+      message: string;
+      resolution: string;
+      sites: Map<string, number>;
+      clients: Set<string>;
+    }
   >();
   for (const entry of returns) {
     if (done.has(entry.locationId)) continue;
@@ -334,11 +344,4 @@ function byWhatNeedsDoing(a: PracticeReturn, b: PracticeReturn): number {
     a.clientName.localeCompare(b.clientName) ||
     a.label.localeCompare(b.label)
   );
-}
-
-/** Whole days from today to an ISO date, in UTC on both sides. */
-function daysUntil(iso: string): number {
-  const today = new Date();
-  const from = Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate());
-  return Math.round((Date.parse(`${iso}T00:00:00Z`) - from) / 86_400_000);
 }

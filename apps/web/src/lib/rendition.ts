@@ -30,6 +30,7 @@ import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { renditionPositions } from '@/lib/findings';
 import { HttpError } from '@/lib/route';
 import { engagementReturns } from '@/lib/sites';
+import { today } from '@/lib/today';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -101,7 +102,7 @@ async function weakestAppointment(
   jurisdictionId: string,
   returns: readonly EngagementReturn[],
 ): Promise<AgentAppointment | null> {
-  const on = new Date().toISOString().slice(0, 10);
+  const on = today();
   const answers = await Promise.all(
     returns.map((entry) =>
       appointmentAt(clientId, { jurisdictionId, locationId: entry.locationId, on }),

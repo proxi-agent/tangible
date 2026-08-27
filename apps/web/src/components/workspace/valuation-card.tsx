@@ -129,17 +129,20 @@ function Headline({ valuation }: { valuation: EngagementValuation }) {
       {/* The explainer sits on the label rather than wrapping the tile: a
           Tooltip trigger is an inline-flex span, and as a grid item it shrinks
           to its content, leaving the cell background showing through. */}
-      <div className="grid grid-cols-2 gap-px border-b border-[var(--color-hairline)] bg-[var(--color-hairline)] lg:grid-cols-4">
+      <div className="grid grid-cols-2 gap-px overflow-hidden border-b border-[var(--color-hairline)] lg:grid-cols-4">
         {tiles.map((tile) => (
-          <div key={tile.label} className="bg-[var(--color-surface)] px-5 py-3">
-            <p className="flex items-center gap-1 text-[11px] font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+          <div
+            key={tile.label}
+            className="bg-[var(--color-surface)] px-5 py-3 shadow-[0_0_0_1px_var(--color-hairline)]"
+          >
+            <p className="text-2xs flex items-center gap-1 font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
               {tile.label}
               <InfoTip title={tile.label} content={tile.help} size={11} />
             </p>
             <p
               className={
                 tile.strong
-                  ? 'tabular mt-1 text-2xl font-semibold text-[var(--color-series-1)]'
+                  ? 'tabular mt-1 text-2xl font-semibold text-[var(--color-accent)]'
                   : 'tabular mt-1 text-xl font-semibold'
               }
             >
@@ -183,7 +186,7 @@ function CategoryTable({ valuation }: { valuation: EngagementValuation }) {
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-[var(--color-hairline)] text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+          <tr className="text-2xs border-b border-[var(--color-hairline)] tracking-wide text-[var(--color-ink-muted)] uppercase">
             <th className="px-5 py-2 text-left font-medium">Category</th>
             <th className="px-5 py-2 text-right font-medium">Assets</th>
             <th className="px-5 py-2 text-right font-medium">Original cost</th>
@@ -203,7 +206,7 @@ function CategoryTable({ valuation }: { valuation: EngagementValuation }) {
                       title="At the schedule floor"
                       content={`${count(row.flooredCount)} of these are older than the schedule publishes and are fully depreciated in the district's own model.`}
                     >
-                      <span className="cursor-help text-[11px] text-[var(--color-ink-muted)]">
+                      <span className="cursor-help text-xs text-[var(--color-ink-muted)]">
                         {count(row.flooredCount)} at floor
                       </span>
                     </Tooltip>

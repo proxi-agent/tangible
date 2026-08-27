@@ -1,11 +1,9 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
-import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
-import { Card, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { BackLink, Card, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { FindingSetView } from '@/components/workspace/finding-set';
 
 /**
@@ -51,14 +49,14 @@ export default function FindingSetPage() {
 
   return (
     <div className="space-y-5">
-      <Link
-        href={`/clients/${clientId}/engagements/${engagementId}`}
-        className="inline-flex items-center gap-1 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
-      >
-        <ArrowLeft size={13} strokeWidth={2} />
-        Back to the engagement
-      </Link>
-      <FindingSetView set={data} />
+      <FindingSetView
+        set={data}
+        back={
+          <BackLink href={`/clients/${clientId}/engagements/${engagementId}`}>
+            Back to the engagement
+          </BackLink>
+        }
+      />
     </div>
   );
 }

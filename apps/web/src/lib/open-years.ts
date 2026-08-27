@@ -10,6 +10,7 @@ import type {
   ResolutionStage,
 } from '@tangible/types';
 import { clientMotions, motionKey, spentBy } from '@/lib/motions';
+import { today as todayIso } from '@/lib/today';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -52,7 +53,7 @@ import { requireDb, schema } from '@/lib/workspace-db';
  */
 export async function engagementOpenYears(engagementId: string): Promise<OpenYears> {
   const { engagement } = await fetchEngagement(engagementId);
-  const today = new Date().toISOString().slice(0, 10);
+  const today = todayIso();
   const motions = await clientMotions(engagement.clientId);
 
   // Grouped before the outlooks are computed, because a motion is an input to
@@ -135,10 +136,7 @@ async function recordedYears(
     .from(schema.assessmentNotices)
     .innerJoin(schema.engagements, eq(schema.engagements.id, schema.assessmentNotices.engagementId))
     .where(
-      and(
-        eq(schema.engagements.clientId, clientId),
-        eq(schema.assessmentNotices.status, 'active'),
-      ),
+      and(eq(schema.engagements.clientId, clientId), eq(schema.assessmentNotices.status, 'active')),
     )
     .orderBy(desc(schema.assessmentNotices.taxYear));
   if (notices.length === 0) return [];

@@ -4,10 +4,17 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ExternalLink, Loader2, Play, Sparkles } from 'lucide-react';
 import { Suspense, useState } from 'react';
 import type { IngestRun, JurisdictionSummary } from '@tangible/types';
-import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
+import {
+  Badge,
+  Card,
+  CardHeader,
+  ErrorState,
+  PageHeader,
+  Skeleton,
+} from '@/components/ui/primitives';
 import { Button, Field, TextInput } from '@/components/ui/controls';
 import { Tooltip } from '@/components/ui/tooltip';
-import { useJurisdictions } from '@/hooks/use-scope';
+import { stateName, useJurisdictions } from '@/hooks/use-scope';
 import { api } from '@/lib/api';
 import { count } from '@/lib/format';
 
@@ -50,6 +57,13 @@ function DataSources() {
   const queryClient = useQueryClient();
   const jurisdictions = useJurisdictions();
   const [years, setYears] = useState(DEFAULT_YEARS);
+  /**
+   * Seventy-one counties in one list runs to eight thousand pixels, and the
+   * only order it has is biggest-first inside each state — so finding Tarrant
+   * meant scrolling past forty Florida counties, and finding Osceola meant
+   * knowing it was small. One box is the whole fix.
+   */
+  const [find, setFind] = useState('');
 
   const runs = useQuery({
     queryKey: ['ingest-runs'],
@@ -78,6 +92,14 @@ function DataSources() {
     },
   });
 
+  // Name or CAD code, because half the reason to come here is to check whether
+  // "TAD" has anything in it.
+  const needle = find.trim().toLowerCase();
+  const matches = (jurisdictions.data ?? []).filter(
+    (j) =>
+      !needle || j.name.toLowerCase().includes(needle) || j.cadCode.toLowerCase().includes(needle),
+  );
+
   const seedDemo = useMutation({
     mutationFn: () => api.seedDemo(25_000),
     onSuccess: () => void queryClient.invalidateQueries(),
@@ -85,31 +107,49 @@ function DataSources() {
 
   return (
     <div className="space-y-4">
+      <PageHeader
+        title="Data sources"
+        description="Where the county files come from and what has been loaded. Each connector knows one appraisal district's file layout, so adding a county means writing a connector for its published files — not migrating the warehouse."
+      />
+
       <Card>
         <CardHeader
           title="Jurisdictions"
-          description="Each connector knows one appraisal district's file layout."
-          help="Everything downstream of ingest is jurisdiction-agnostic, so adding a county means writing a connector for its published files, not migrating the warehouse."
+          help="Everything downstream of ingest is jurisdiction-agnostic: a county that loads here behaves like every other county on every other screen."
         />
 
         <div className="border-b border-[var(--color-hairline)] p-5">
-          <div className="max-w-xs">
+          <div className="grid max-w-2xl gap-3 sm:grid-cols-2">
+            <div>
+              <Field
+                label="Tax years to download"
+                help="A comma-separated list of years. Each one is a separate file from the county, and downloading more of them is what makes the history in this app possible."
+              >
+                <TextInput
+                  value={years}
+                  onChange={(e) => setYears(e.target.value)}
+                  placeholder={DEFAULT_YEARS}
+                  className="tabular"
+                />
+              </Field>
+              {/* Kept inside the years column. Spanning the row under both
+                  boxes, it read as a note about the search beside it. */}
+              <p className="mt-2 text-xs text-[var(--color-ink-secondary)]">
+                Multiple years are what make the analysis work — a single year cannot tell a chronic
+                non-filer from someone who missed once.
+              </p>
+            </div>
             <Field
-              label="Tax years to download"
-              help="A comma-separated list of years. Each one is a separate file from the county, and downloading more of them is what makes the history in this app possible."
+              label="Find a county"
+              help="Matches the county name or its appraisal-district code. Narrows the list below only — it changes nothing about what a download would fetch."
             >
               <TextInput
-                value={years}
-                onChange={(e) => setYears(e.target.value)}
-                placeholder={DEFAULT_YEARS}
-                className="tabular"
+                value={find}
+                onChange={(e) => setFind(e.target.value)}
+                placeholder="e.g. tarrant, or TAD"
               />
             </Field>
           </div>
-          <p className="mt-2 text-xs text-[var(--color-ink-secondary)]">
-            Multiple years are what make the analysis work — a single year cannot tell a chronic
-            non-filer from someone who missed once.
-          </p>
         </div>
 
         {jurisdictions.error ? (
@@ -120,17 +160,34 @@ function DataSources() {
               <Skeleton key={i} className="h-16 w-full" />
             ))}
           </div>
+        ) : /* Grouped by state, because the flat list had nowhere to read one
+             off: a row carries a county and a CAD code, and only the code
+             hints at which state it is in. Thirty-odd counties down a page
+             that way is a list you scan rather than one you navigate. */
+        matches.length === 0 ? (
+          <p className="px-5 py-8 text-center text-sm text-[var(--color-ink-secondary)]">
+            No county here matches “{find}”. A county missing from this list is missing because
+            nobody has written a connector for it — the coverage guide in the header says which
+            states publish the file at all.
+          </p>
         ) : (
-          <ul>
-            {jurisdictions.data.map((jurisdiction) => (
-              <JurisdictionRow
-                key={jurisdiction.id}
-                jurisdiction={jurisdiction}
-                onIngest={() => startIngest.mutate(jurisdiction.id)}
-                isStarting={startIngest.isPending && startIngest.variables === jurisdiction.id}
-              />
-            ))}
-          </ul>
+          byState(matches).map(([state, group]) => (
+            <section key={state}>
+              <h3 className="eyebrow border-b border-[var(--color-hairline)] bg-[var(--color-sunken)] px-5 py-2">
+                {stateName(state)} · {group.length === 1 ? '1 county' : `${group.length} counties`}
+              </h3>
+              <ul>
+                {group.map((jurisdiction) => (
+                  <JurisdictionRow
+                    key={jurisdiction.id}
+                    jurisdiction={jurisdiction}
+                    onIngest={() => startIngest.mutate(jurisdiction.id)}
+                    isStarting={startIngest.isPending && startIngest.variables === jurisdiction.id}
+                  />
+                ))}
+              </ul>
+            </section>
+          ))
         )}
 
         <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--color-hairline)] px-5 py-4">
@@ -207,6 +264,24 @@ function DataSources() {
   );
 }
 
+/**
+ * The counties grouped by state, in the order the list already had them.
+ *
+ * Not alphabetically: the list arrives biggest county first, so first
+ * appearance puts the state with the most to work with at the top. Sorting the
+ * groups by name instead buried Texas — the only state here with years of
+ * history — under sixty-seven Florida counties holding one year each.
+ */
+function byState(jurisdictions: readonly JurisdictionSummary[]): [string, JurisdictionSummary[]][] {
+  const groups = new Map<string, JurisdictionSummary[]>();
+  for (const jurisdiction of jurisdictions) {
+    const group = groups.get(jurisdiction.state);
+    if (group) group.push(jurisdiction);
+    else groups.set(jurisdiction.state, [jurisdiction]);
+  }
+  return [...groups];
+}
+
 function JurisdictionRow({
   jurisdiction,
   onIngest,
@@ -237,7 +312,9 @@ function JurisdictionRow({
             href={jurisdiction.dataPortalUrl}
             target="_blank"
             rel="noreferrer"
-            className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--color-ink-muted)] hover:text-[var(--color-series-1)]"
+            // Standalone rather than inside a sentence, so it owes a real touch
+            // target: 20px of text grows into 32px of box on a coarse pointer.
+            className="mt-1 inline-flex items-center gap-1 text-xs text-[var(--color-ink-muted)] hover:text-[var(--color-accent)] pointer-coarse:min-h-8"
           >
             Data portal <ExternalLink size={11} />
           </a>
@@ -249,7 +326,11 @@ function JurisdictionRow({
           title="Download this county"
           content={`Pulls ${jurisdiction.name}'s published files for the years listed above and loads them. A county archive is large, so this takes minutes, and progress appears below.`}
         >
-          <Button variant="primary" onClick={onIngest} disabled={isStarting}>
+          {/* Secondary, not primary. Every row on this list carries the same
+              action, and twenty saturated blue blocks down a page make a wall
+              the eye cannot read the county names through — none of them is
+              "the" action, so none of them should wear the accent. */}
+          <Button variant="secondary" onClick={onIngest} disabled={isStarting}>
             {isStarting ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
             {isStarting ? 'Starting…' : 'Download data'}
           </Button>
@@ -260,7 +341,6 @@ function JurisdictionRow({
 }
 
 function StatusBadge({ status }: { status: IngestRun['status'] }) {
-  const tone =
-    status === 'completed' ? 'good' : status === 'failed' ? 'critical' : 'accent';
+  const tone = status === 'completed' ? 'good' : status === 'failed' ? 'critical' : 'accent';
   return <Badge tone={tone}>{status}</Badge>;
 }

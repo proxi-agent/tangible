@@ -19,6 +19,7 @@ import { Button, Field, Select, TextArea, TextInput } from '@/components/ui/cont
 import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { api } from '@/lib/api';
 import { day, dayShort } from '@/lib/format';
+import { today } from '@/lib/today';
 
 /**
  * Every Form 50-162 this client has signed, and whether any of them lets us
@@ -121,7 +122,7 @@ function AgentRecord() {
   return (
     <div className="border-b border-[var(--color-hairline)] bg-[var(--color-plane)] px-5 py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="text-[11px] font-medium tracking-wide text-[var(--color-ink-secondary)] uppercase">
+        <span className="text-2xs font-medium tracking-wide text-[var(--color-ink-secondary)] uppercase">
           Filing as
         </span>
         {named ? (
@@ -143,7 +144,7 @@ function AgentRecord() {
         <button
           type="button"
           onClick={() => setOpen((current) => !current)}
-          className="ml-auto cursor-pointer text-[11px] font-medium text-[var(--color-ink-secondary)] hover:underline"
+          className="ml-auto cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline"
         >
           {open ? 'Close' : named ? 'Edit' : 'Fill it in'}
         </button>
@@ -170,8 +171,7 @@ function AgentForm({ agent, onSaved }: { agent: FilingAgent | null; onSaved: () 
   const [zip, setZip] = useState(agent?.zip ?? '');
 
   const save = useMutation({
-    mutationFn: () =>
-      api.updateFilingAgent({ name, phone, addressLine1, city, stateCode, zip }),
+    mutationFn: () => api.updateFilingAgent({ name, phone, addressLine1, city, stateCode, zip }),
     onSuccess: onSaved,
   });
 
@@ -241,7 +241,7 @@ function AgentForm({ agent, onSaved }: { agent: FilingAgent | null; onSaved: () 
         <Button variant="primary" type="submit" disabled={save.isPending}>
           {save.isPending ? 'Saving…' : 'Save'}
         </Button>
-        <p className="text-[11px] text-[var(--color-ink-muted)]">
+        <p className="text-xs text-[var(--color-ink-muted)]">
           Used on every appointment, including ones already signed — the form is reprinted from
           this, not from a copy taken when it was recorded.
         </p>
@@ -262,7 +262,10 @@ function AgentForm({ agent, onSaved }: { agent: FilingAgent | null; onSaved: () 
  * but one of them is this afternoon's errand and the other is a phone call to
  * find out who else the client appointed.
  */
-function state(appointment: AgentAppointment): { tone: 'good' | 'warning' | 'critical'; label: string } {
+function state(appointment: AgentAppointment): {
+  tone: 'good' | 'warning' | 'critical';
+  label: string;
+} {
   if (appointment.revokedOn) return { tone: 'critical', label: 'revoked' };
   if (appointment.effective) return { tone: 'good', label: 'in force' };
   if (!appointment.filedOn) return { tone: 'warning', label: 'not filed' };
@@ -297,28 +300,26 @@ function Recorded({
         </span>
       </div>
 
-      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+      <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
         {coverage(appointment, locations)} {appointment.standing}
       </p>
 
       {appointment.matters === 'specific' ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-warning)]">
+        <p className="text-xs leading-relaxed text-[var(--color-warning)]">
           Limited to: {appointment.specificMatters}. Anything outside that is not ours to do,
           including signing a return if the wording does not reach it.
         </p>
       ) : null}
 
       {!appointment.receivesConfidential ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-warning)]">
+        <p className="text-xs leading-relaxed text-[var(--color-warning)]">
           Step 4 says no to 22.27(b)(2), so the district may not release this client’s file to us —
           no prior rendition, no account detail. We can file; we cannot see what was filed before.
         </p>
       ) : null}
 
       {appointment.note ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
-          {appointment.note}
-        </p>
+        <p className="text-xs leading-relaxed text-[var(--color-ink-muted)]">{appointment.note}</p>
       ) : null}
 
       <Actions appointment={appointment} clientId={clientId} />
@@ -349,7 +350,7 @@ type Pending = 'file' | 'revoke' | null;
 function Actions({ appointment, clientId }: { appointment: AgentAppointment; clientId: string }) {
   const queryClient = useQueryClient();
   const [pending, setPending] = useState<Pending>(null);
-  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [date, setDate] = useState(() => today());
   const [reason, setReason] = useState('');
 
   const update = useMutation({
@@ -376,7 +377,7 @@ function Actions({ appointment, clientId }: { appointment: AgentAppointment; cli
       <div className="flex flex-wrap items-center gap-3 pt-0.5">
         <a
           href={api.appointmentPdfUrl(appointment.id)}
-          className="cursor-pointer text-[11px] font-medium text-[var(--color-ink-secondary)] hover:underline"
+          className="cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline"
         >
           Download Form 50-162
         </a>
@@ -384,7 +385,7 @@ function Actions({ appointment, clientId }: { appointment: AgentAppointment; cli
           <button
             type="button"
             onClick={() => setPending('file')}
-            className="cursor-pointer text-[11px] font-medium text-[var(--color-ink-secondary)] hover:underline"
+            className="cursor-pointer text-xs font-medium text-[var(--color-ink-secondary)] hover:underline"
           >
             The district has it
           </button>
@@ -393,7 +394,7 @@ function Actions({ appointment, clientId }: { appointment: AgentAppointment; cli
           <button
             type="button"
             onClick={() => setPending('revoke')}
-            className="cursor-pointer text-[11px] text-[var(--color-ink-muted)] hover:text-[var(--color-critical)]"
+            className="cursor-pointer text-xs text-[var(--color-ink-muted)] hover:text-[var(--color-critical)]"
           >
             Revoke
           </button>
@@ -404,18 +405,14 @@ function Actions({ appointment, clientId }: { appointment: AgentAppointment; cli
 
   return (
     <div className="space-y-2 rounded-md border border-[var(--color-hairline)] bg-[var(--color-plane)] p-2.5">
-      <p className="text-[11px] leading-relaxed text-[var(--color-ink-secondary)]">
+      <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
         {pending === 'file'
           ? 'The day the district received it, which is the day the designation took effect. A return signed before that date was signed unappointed, so this is the date and not today’s.'
           : 'Revocation is the district’s record ending, not ours. Use the date the written revocation was filed — or, where the client appointed somebody else, the date that form was filed, because 1.111(d) revoked ours the moment it was.'}
       </p>
       <div className="flex flex-wrap items-end gap-2">
         <Field label={pending === 'file' ? 'Received' : 'Revoked'}>
-          <TextInput
-            type="date"
-            value={date}
-            onChange={(event) => setDate(event.target.value)}
-          />
+          <TextInput type="date" value={date} onChange={(event) => setDate(event.target.value)} />
         </Field>
         {pending === 'revoke' ? (
           <TextInput
@@ -479,7 +476,7 @@ function RecordForm({ clientId, locations }: { clientId: string; locations: Clie
   const [specificMatters, setSpecificMatters] = useState('');
   const [receivesConfidential, setReceivesConfidential] = useState(true);
   const [deliveries, setDeliveries] = useState<AppointmentDelivery[]>([...APPOINTMENT_DELIVERIES]);
-  const [signedOn, setSignedOn] = useState(() => new Date().toISOString().slice(0, 10));
+  const [signedOn, setSignedOn] = useState(() => today());
   const [filedOn, setFiledOn] = useState('');
   const [endsOn, setEndsOn] = useState('');
   const [signerName, setSignerName] = useState('');
@@ -555,7 +552,10 @@ function RecordForm({ clientId, locations }: { clientId: string; locations: Clie
           label="What it covers"
           help="Step 2 is a check-one. “All property at the mailing address” is the convenient box and usually the wrong one for business personal property: the property sits at each site, and a client whose post goes to a downtown office has none listed there at all."
         >
-          <Select value={scope} onChange={(event) => setScope(event.target.value as AppointmentScope)}>
+          <Select
+            value={scope}
+            onChange={(event) => setScope(event.target.value as AppointmentScope)}
+          >
             <option value="listed">The sites listed on the form</option>
             <option value="all-at-address">All property at the owner’s mailing address</option>
           </Select>
@@ -563,7 +563,7 @@ function RecordForm({ clientId, locations }: { clientId: string; locations: Clie
       </div>
 
       {elsewhere ? (
-        <p className="text-[11px] leading-relaxed text-[var(--color-warning)]">
+        <p className="text-xs leading-relaxed text-[var(--color-warning)]">
           None of this client’s sites is recorded in that district. Worth a second look — an
           appointment filed with the wrong district reaches nothing, and nobody will say so.
         </p>
@@ -571,13 +571,13 @@ function RecordForm({ clientId, locations }: { clientId: string; locations: Clie
 
       {scope === 'listed' ? (
         locations.length === 0 ? (
-          <p className="text-[11px] leading-relaxed text-[var(--color-warning)]">
+          <p className="text-xs leading-relaxed text-[var(--color-warning)]">
             This client has no sites recorded, so there is nothing for Step 2 to list. Add the
             locations first — the form identifies property by account and situs, not by client.
           </p>
         ) : (
           <div className="space-y-1.5">
-            <p className="text-[11px] text-[var(--color-ink-secondary)]">
+            <p className="text-xs text-[var(--color-ink-secondary)]">
               Step 2 prints four rows. Anything past the fourth has to go on an attached sheet, and
               the form will say so rather than dropping it.
             </p>
@@ -649,7 +649,7 @@ function RecordForm({ clientId, locations }: { clientId: string; locations: Clie
           />
           <span>
             The district may release the client’s confidential information to us
-            <span className="block text-[11px] text-[var(--color-ink-muted)]">
+            <span className="block text-xs text-[var(--color-ink-muted)]">
               Step 4’s 22.27(b)(2) radio. Answered either way, never left blank — a district reading
               an unanswered box will not open the file, so silence is a no nobody chose. Without it
               we cannot get the prior rendition or the account detail behind an assessment.
@@ -657,7 +657,7 @@ function RecordForm({ clientId, locations }: { clientId: string; locations: Clie
           </span>
         </label>
         <div className="space-y-1">
-          <p className="text-[11px] text-[var(--color-ink-secondary)]">
+          <p className="text-xs text-[var(--color-ink-secondary)]">
             Send their communications to us instead of the client:
           </p>
           <div className="flex flex-wrap gap-x-4 gap-y-1.5">
@@ -682,7 +682,7 @@ function RecordForm({ clientId, locations }: { clientId: string; locations: Clie
               </label>
             ))}
           </div>
-          <p className="text-[11px] leading-relaxed text-[var(--color-ink-muted)]">
+          <p className="text-xs leading-relaxed text-[var(--color-ink-muted)]">
             A redirection, not a copy: the form has the owner acknowledge these will no longer be
             delivered to them. The review board box is the one that decides whether a hearing notice
             reaches us in time to answer it.
@@ -744,9 +744,7 @@ function RecordForm({ clientId, locations }: { clientId: string; locations: Clie
         >
           <Select
             value={signerCapacity}
-            onChange={(event) =>
-              setSignerCapacity(event.target.value as AppointmentSignerCapacity)
-            }
+            onChange={(event) => setSignerCapacity(event.target.value as AppointmentSignerCapacity)}
           >
             {(Object.keys(CAPACITY_LABEL) as AppointmentSignerCapacity[]).map((capacity) => (
               <option key={capacity} value={capacity}>
@@ -769,11 +767,15 @@ function RecordForm({ clientId, locations }: { clientId: string; locations: Clie
       {record.error ? <Failure error={record.error} /> : null}
 
       <div className="flex flex-wrap items-center gap-3">
-        <Button variant="primary" disabled={!ready || record.isPending} onClick={() => record.mutate()}>
+        <Button
+          variant="primary"
+          disabled={!ready || record.isPending}
+          onClick={() => record.mutate()}
+        >
           {record.isPending ? 'Recording…' : 'Record the appointment'}
         </Button>
         <Button onClick={() => setOpen(false)}>Never mind</Button>
-        <p className="text-[11px] text-[var(--color-ink-muted)]">
+        <p className="text-xs text-[var(--color-ink-muted)]">
           {filedOn
             ? `Authorises us in ${appraisalDistrictName(jurisdictionId) ?? 'that district'} from ${day(filedOn)}.`
             : 'Recorded as signed and unfiled — print it, get it signed, and mark it filed once the district has it.'}
@@ -785,7 +787,7 @@ function RecordForm({ clientId, locations }: { clientId: string; locations: Clie
 
 function Failure({ error }: { error: unknown }) {
   return (
-    <p className="text-[11px] leading-relaxed text-[var(--color-critical)]">
+    <p className="text-xs leading-relaxed text-[var(--color-critical)]">
       {error instanceof Error ? error.message : String(error)}
     </p>
   );

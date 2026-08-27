@@ -65,7 +65,7 @@ export function DeleteClientCard({
         description="Removes the client and everything of theirs — rows, uploads, and the classifications learned from their register."
         help="A client who asks to be deleted is not asking to be archived. This is not reversible and there is no undo; what survives is a receipt with counts, a name and a date, and no client data."
         action={
-          <Button variant="ghost" className="h-8 text-xs" onClick={() => setOpen(!open)}>
+          <Button size="sm" variant="ghost" onClick={() => setOpen(!open)}>
             {open ? 'Cancel' : 'Delete client…'}
           </Button>
         }
@@ -113,7 +113,7 @@ export function DeleteClientCard({
                    * what to type — and a placeholder holding the answer turns a
                    * confirmation into a transcription.
                    */}
-                  <span className="text-[11px] tracking-wide text-[var(--color-ink-muted)] uppercase">
+                  <span className="text-2xs tracking-wide text-[var(--color-ink-muted)] uppercase">
                     Type the client’s name to confirm:{' '}
                     <span className="font-medium text-[var(--color-ink-secondary)] normal-case">
                       {clientName}
@@ -156,6 +156,7 @@ const COUNT_LABELS: Array<[keyof DeletionCounts, string]> = [
   ['correctionMotions', '25.25 motions'],
   ['appointments', 'Appointments'],
   ['memoryRows', 'Learned classifications'],
+  ['assistantTurns', 'Assistant answers'],
 ];
 
 /** Everything that goes, counted. Zeroes stay on screen — an absence is a fact too. */
@@ -214,7 +215,7 @@ function ReceiptCard({ receipt }: { receipt: DeletionReceipt }) {
               The rows are gone either way. These objects need removing by hand before the deletion
               is complete:
             </p>
-            <ul className="mt-1.5 space-y-0.5 font-mono text-[11px] text-[var(--color-ink-secondary)]">
+            <ul className="mt-1.5 space-y-0.5 font-mono text-xs text-[var(--color-ink-secondary)]">
               {receipt.storageFailed.map((path) => (
                 <li key={path}>{path}</li>
               ))}

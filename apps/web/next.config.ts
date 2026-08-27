@@ -54,12 +54,21 @@ const config: NextConfig = {
   outputFileTracingIncludes: {
     '/api/**': ['../../node_modules/.pnpm/@duckdb+node-bindings-*/node_modules/@duckdb/**/*'],
     /**
-     * The Comptroller's blank Form 50-144, read at runtime by `@tangible/filing`
-     * through `new URL('../assets/…', import.meta.url)`. The tracer follows
-     * imports, and that is a filesystem read rather than an import, so nothing
-     * would point it at the one file the PDF route exists to fill.
+     * The Comptroller's blank forms — 50-144 (rendition) and 50-162 (agent
+     * appointment) — read at runtime by `@tangible/filing` through
+     * `new URL('../assets/…', import.meta.url)`. The tracer follows imports,
+     * and that is a filesystem read rather than an import, so nothing would
+     * point it at the one file each PDF route exists to fill.
+     *
+     * Every route that reaches a filler needs its own entry: the draft
+     * rendition, the *filed* rendition reprinted from its frozen inputs, and
+     * the appointment. Miss one and it deploys clean, then ENOENTs on the
+     * first download — which the route reports as a 409, as though the form
+     * had refused to print something misleading.
      */
     '/api/engagements/[engagementId]/rendition/pdf': ['../../packages/filing/assets/*.pdf'],
+    '/api/filings/[filingId]/pdf': ['../../packages/filing/assets/*.pdf'],
+    '/api/appointments/[appointmentId]/pdf': ['../../packages/filing/assets/*.pdf'],
   },
 };
 
