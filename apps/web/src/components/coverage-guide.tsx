@@ -38,7 +38,7 @@ interface StateGuide {
 const AVAILABILITY: Record<Availability, { label: string; tone: 'good' | 'warning' | 'critical' }> =
   {
     loaded: { label: 'Account-level data, wired up', tone: 'good' },
-    partial: { label: 'Aggregate only — needs a records request', tone: 'warning' },
+    partial: { label: 'Not published — needs a records request', tone: 'warning' },
     closed: { label: 'Account detail is confidential by statute', tone: 'critical' },
   };
 
@@ -173,37 +173,52 @@ const GUIDES: StateGuide[] = [
     name: 'Maryland',
     availability: 'partial',
     headline:
-      'Assessed centrally by the state rather than by counties, so the county-shaped model this app is built on does not fit without adaptation.',
+      'The best non-filer flag outside Texas, in a statewide account-level file whose layout SDAT publishes — and which no portal serves. Ask for it by name.',
     source: {
-      label: 'State Department of Assessments and Taxation (SDAT)',
-      url: 'https://dat.maryland.gov/businesses/pages/business-personal-property.aspx',
+      label: 'SDAT — Personal Property Record Layout for the MBES Billing Extract',
+      url: 'https://dat.maryland.gov/businesses/Pages/newppmbes.aspx',
       detail:
-        'Businesses file one return with SDAT — Form 1 for registered entities, Form 2 for sole proprietors and partnerships — due 15 April. SDAT values the property and certifies assessments to the counties, which only set rates and bill. The taxpayer, not the parcel, is the unit.',
+        'Businesses file one return with SDAT — Form 1 for registered entities, Form 2 for sole proprietors and partnerships — due 15 April. SDAT values the property centrally and certifies the assessments to the counties, which only set rates and bill. It certifies them as a file: a 2,000-byte fixed-width record, one per account, whose field layout is published on SDAT’s own site. It is sent to local governments for billing rather than posted for download, which is why the survey first read Maryland as having no extract at all.',
     },
     has: [
-      'A single statewide filing regime rather than 24 county ones, which makes any dataset that does exist immediately statewide',
-      'A per-entity filing obligation tied to good standing, which is conceptually much closer to a rendition flag than anything Florida or Georgia has',
+      'An Estimated Code — "E" or blank — marking accounts SDAT valued by estimate because no return was filed. This is the same fact HCAD’s rendition flag records, stated by the assessor rather than inferred, and it is the only field of its kind found outside Texas.',
+      'A statutory doubling behind that flag: a non-filer is assessed at twice the estimated value of the property, so the exposure follows from the flag without modelling a penalty rate',
+      'County code, district code and town code in the record itself — Maryland partitions the same way the app already does, contrary to the earlier reading of this state',
+      'Entity name, both owner-name lines, trading-as name, mailing address, and a separate premise address — the physical location, which Form 1 requires and forbids being a PO box',
+      'Four separate assessment bases per account — state, county, traders licence (inventory) and town — plus signed adjustments to each, so a base can be matched to the rate that actually applies to it',
+      'Assessment year, certificate date, transaction code and entity status, which together give a per-account history rather than a snapshot',
+      'Real local rates, published: SDAT posts per-county and per-incorporated-town exemption charts for 2023–2027 and a local tax rate table, so Maryland tax-at-risk needs no statewide millage approximation of the kind Florida forces',
+      'Free county-level sizing back to 2011: SDAT’s assessable base tables break out business personal property per jurisdiction. The FY2022 table puts the statewide base at $12.97bn, concentrated in Montgomery ($2.25bn), Baltimore County ($1.95bn), Prince George’s ($1.75bn), Anne Arundel ($1.60bn) and Baltimore City ($1.25bn).',
     ],
     lacks: [
-      'The Maryland open data portal carries real property assessments only. A search of its catalogue for personal property returns nothing relevant — there is no published business personal property extract.',
-      'The $20,000 total-original-cost exemption in force since 2022 removed most small filers from valuation entirely, so any extract undercounts small businesses by design',
-      'No county partition in the source data, so "county" here would have to be derived from the business address rather than read off the record',
+      'Any download. The extract goes to the levying jurisdictions for billing; SpecPrint sells SDAT’s corporate, UCC and real property files but does not list this one. Maryland is a records request, not a connector, until someone answers.',
+      'A clean read on empty accounts. Returns themselves are confidential — only the assessment is disclosable — and the $20,000 exemption is a self-attestation on Form 1 rather than an SDAT finding, so an account with no assessment is either genuinely under the threshold or someone who said so. The E flag is what separates them, which is the whole reason to insist on that field.',
+      'Coverage of county-issued estimated bills. Form 1’s instructions warn that some jurisdictions bill an estimate when a business has not closed properly, and say plainly those bills rest on no SDAT assessment action — they are not in the E flag, and reading them as non-filers would double count.',
+      'A trustworthy published layout. The document is dated 2004 and does not survive arithmetic: Interest Refund Indicator and Entity Status both claim byte 1846, and bytes 1805–1844 are undocumented. Treat it as the shape of the file, not the parse, and validate against a real one.',
+      'A levy in seven of the 24 jurisdictions. Caroline, Dorchester, Frederick, Garrett, Kent, Queen Anne’s and Talbot do not tax ordinary business personal property — Garrett explicitly so in SDAT’s own footnote — though SDAT assesses in them anyway and some of their towns still levy. Non-filing there carries no county tax exposure.',
+      'Any free per-account backfill. SDAT’s entity search returns name, department ID and status without challenge, but the detail page behind it is gated by a live Cloudflare Turnstile — the operator has said what it thinks of bulk collection, and the answer is no.',
+      'A NAICS code or a class code. There is no industry field, so Maryland slices by jurisdiction and value, not by trade.',
     ],
     steps: [
       {
-        title: 'Confirm whether the entity registry can stand in for a filing flag',
+        title: 'Ask SDAT for the MBES billing extract by name',
         detail:
-          'SDAT’s business entity records carry a good-standing status that reflects whether the annual report and personal property return were filed. Before building anything on it, check on a sample of known filers whether that status separates non-filers from entities in bad standing for unrelated reasons — this is exactly the kind of proxy that looks right until it is tested.',
+          'A Public Information Act request to sdat.persprop@maryland.gov (410-767-1170) for the Personal Property Record / MBES Billing Extract, by assessment year, naming the Estimated Code, Certificate Date and the four base fields, and asking for the current layout rather than the 2004 one. Naming the file and its fields is the difference between this request and the one that gets read as a fishing expedition — SDAT publishes the layout, so the file is not in dispute.',
       },
       {
-        title: 'File a Public Information Act request with SDAT',
+        title: 'Ask a county for the same file in parallel',
         detail:
-          'Ask for the business personal property assessment extract by assessment year, with a field layout. Name the years and ask specifically whether filing status and assessment date are included — that answer determines whether Maryland is worth a connector at all.',
+          'Every levying jurisdiction receives this extract to bill from, so Montgomery, Baltimore County, Prince George’s, Anne Arundel and Baltimore City each hold a county-shaped copy of it. A county finance office answering a Maryland PIA request is a second draw on the same data, and the four largest of them are two thirds of the state’s base.',
       },
       {
-        title: 'Decide the unit before writing code',
+        title: 'Test the E flag before believing it',
         detail:
-          'If the extract is per-entity and statewide, Maryland does not slot into the county selector as it stands. That is a modelling decision to take deliberately rather than by mapping addresses to counties and hoping.',
+          'Apply the test that qualified ten Florida counties and rejected the Williamson proxy in Texas: the estimated share should fall as accounts get larger. If small accounts and large accounts are estimated at the same rate, the flag is recording something other than non-filing — most likely dormant registrations — and the segment sizes would be wrong.',
+      },
+      {
+        title: 'Drop the good-standing proxy',
+        detail:
+          'The earlier plan here was to infer filing from entity good standing. That is unnecessary now and was always weaker: forfeiture follows from an unfiled annual report, an unfiled return, or a resident agent problem, and cannot tell them apart. The E flag is the assessor’s own record of the same event; use it and leave good standing alone.',
       },
     ],
   },

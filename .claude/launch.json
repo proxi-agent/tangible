@@ -7,6 +7,12 @@
       "runtimeArgs": ["--filter", "@tangible/web", "dev"],
       "port": 3000,
       "autoPort": true
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@tangible/api", "dev"],
+      "port": 3001
     }
   ]
 }

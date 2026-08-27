@@ -83,7 +83,13 @@ async function ingestYear(options: RunIngestOptions, taxYear: number): Promise<I
     const existing = await countExistingRows(warehouse, jurisdictionId, taxYear);
     if (existing > 0) {
       logger.info(`[${taxYear}] ${existing.toLocaleString()} rows already loaded, skipping`);
-      return { taxYear, rowsLoaded: existing, sourceFile: '', skipped: true, reason: 'already loaded' };
+      return {
+        taxYear,
+        rowsLoaded: existing,
+        sourceFile: '',
+        skipped: true,
+        reason: 'already loaded',
+      };
     }
   }
 
@@ -118,11 +124,31 @@ async function ingestYear(options: RunIngestOptions, taxYear: number): Promise<I
       }
       extracted = [...new Set(files)];
     } else {
-      const downloaded = await downloadFirstAvailable(
-        await connector.discover(taxYear),
-        yearDir,
-        logger,
-      );
+      const sources = await connector.discover(taxYear);
+
+      // No candidates at all means the connector knows this jurisdiction never
+      // published that year — Florida's DOR posts only the current roll, so
+      // asking any Florida county for 2021 is a question with a legitimate
+      // answer of "there is no such file". That is a skip, not a failure.
+      //
+      // Treating it as an error was worse than untidy: a `--all` run printed
+      // five paragraphs of remediation instructions per Florida county, 335 in
+      // total, each telling the operator to go and download a file that does
+      // not exist. Real problems drowned in it.
+      if (sources.length === 0) {
+        logger.info(`[${taxYear}] not published by this jurisdiction, skipping`);
+        return {
+          taxYear,
+          rowsLoaded: 0,
+          sourceFile: '',
+          skipped: true,
+          reason: 'not published for this year',
+        };
+      }
+
+      const downloaded = await downloadFirstAvailable(sources, yearDir, logger);
+      // Candidates existed and every one of them failed. That is a real
+      // problem, and the operator can do something about it.
       if (!downloaded) {
         throw new Error(
           `No source file could be downloaded for ${taxYear}. ` +
