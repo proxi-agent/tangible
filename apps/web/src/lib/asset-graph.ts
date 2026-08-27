@@ -19,6 +19,39 @@ import { requireDb, schema } from '@/lib/workspace-db';
  * This file only knows how to read the prior state and write the plan down.
  */
 
+/** Rows per statement. The widest row here is a version, at ~20 columns. */
+const INSERT_CHUNK = 500;
+
+/**
+ * Insert in chunks, returning the rows in the order they were given.
+ *
+ * A register is as long as the client's books, and one `.values()` call carries
+ * a bind parameter per column per row: four thousand assets at twenty columns
+ * is eighty thousand parameters, past both Postgres's own ceiling and the point
+ * where building the statement overflows the stack. The updates and the events
+ * below were already chunked for exactly this reason; the inserts were not, and
+ * the first real register — four thousand rows out of a Chapter 11 filing —
+ * found it.
+ *
+ * Order is the contract: the discovery insert reads its ids back positionally,
+ * so the chunks have to be issued in sequence and concatenated in sequence. A
+ * single multi-row INSERT ... RETURNING gives rows back in values order, and a
+ * run of them in order does the same.
+ */
+async function insertChunked<Row, Returned>(
+  rows: Row[],
+  chunkSize: number,
+  run: (chunk: Row[]) => Promise<Returned[]>,
+): Promise<Returned[]> {
+  const out: Returned[] = [];
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    // Not `out.push(...chunk)` — spreading an argument list is the same
+    // unbounded-list mistake one layer up.
+    for (const row of await run(rows.slice(i, i + chunkSize))) out.push(row);
+  }
+  return out;
+}
+
 /** Fields a version carries, in one place so the three writers cannot drift. */
 function versionValues(draft: AssetDraft) {
   return {
@@ -198,20 +231,19 @@ export async function applyImportBatch(input: ApplyBatchInput): Promise<ApplyBat
     const assetIdByDraftIndex = new Map<number, string>();
     const discoveries = plan.resolutions.filter((r) => r.assetId === null);
     if (discoveries.length > 0) {
-      const inserted = await tx
-        .insert(schema.assets)
-        .values(
-          discoveries.map((r) => ({
-            clientId: input.clientId,
-            naturalKey: r.naturalKey,
-            ordinal: r.ordinal,
-            matchMethod: r.matchMethod,
-            firstSeenBatchId: batchId,
-            lastSeenBatchId: batchId,
-            currentTaxYear: input.taxYear,
-          })),
-        )
-        .returning({ id: schema.assets.id });
+      const inserted = await insertChunked(
+        discoveries.map((r) => ({
+          clientId: input.clientId,
+          naturalKey: r.naturalKey,
+          ordinal: r.ordinal,
+          matchMethod: r.matchMethod,
+          firstSeenBatchId: batchId,
+          lastSeenBatchId: batchId,
+          currentTaxYear: input.taxYear,
+        })),
+        INSERT_CHUNK,
+        (chunk) => tx.insert(schema.assets).values(chunk).returning({ id: schema.assets.id }),
+      );
       discoveries.forEach((r, i) => {
         const id = inserted[i]?.id;
         if (id) assetIdByDraftIndex.set(r.draftIndex, id);
@@ -224,19 +256,22 @@ export async function applyImportBatch(input: ApplyBatchInput): Promise<ApplyBat
     // 2. One version per row, whether the asset is new or carried forward.
     const versionIdByAssetId = new Map<string, string>();
     if (plan.resolutions.length > 0) {
-      const versions = await tx
-        .insert(schema.assetVersions)
-        .values(
-          plan.resolutions.map((r) => ({
-            assetId: assetIdByDraftIndex.get(r.draftIndex)!,
-            batchId,
-            engagementId: input.engagementId,
-            farFileId: input.farFileId,
-            isCurrent: true,
-            ...versionValues(r.draft),
-          })),
-        )
-        .returning({ id: schema.assetVersions.id, assetId: schema.assetVersions.assetId });
+      const versions = await insertChunked(
+        plan.resolutions.map((r) => ({
+          assetId: assetIdByDraftIndex.get(r.draftIndex)!,
+          batchId,
+          engagementId: input.engagementId,
+          farFileId: input.farFileId,
+          isCurrent: true,
+          ...versionValues(r.draft),
+        })),
+        INSERT_CHUNK,
+        (chunk) =>
+          tx
+            .insert(schema.assetVersions)
+            .values(chunk)
+            .returning({ id: schema.assetVersions.id, assetId: schema.assetVersions.assetId }),
+      );
       for (const row of versions) versionIdByAssetId.set(row.assetId, row.id);
     }
 
