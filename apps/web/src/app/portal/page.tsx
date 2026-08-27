@@ -66,11 +66,20 @@ export default function PortalReportPage() {
     );
   }
 
+  // A year with nothing read yet must not be introduced as a finding. "What we
+  // found in the register you sent" sitting directly above "we have not read a
+  // register for this year" reads as a report that came back empty, which is a
+  // worse and different claim than not having looked.
+  const description =
+    report.data && report.data.coverage.assetCount === 0
+      ? 'Nothing has been read for this year yet.'
+      : 'What we found in the register you sent, and what it is worth.';
+
   return (
     <>
       <PortalHeader
         title="Your report"
-        description="What we found in the register you sent, and what it is worth."
+        description={description}
         actions={<LinkButton href="/portal/documents">Send more files</LinkButton>}
       />
 

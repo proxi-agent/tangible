@@ -86,7 +86,7 @@ export function SavingsReportView({
         description={`${report.jurisdictionName ?? report.jurisdictionId ?? 'Jurisdiction not set'} · prepared ${new Date(report.generatedAt).toLocaleDateString()}`}
         actions={actions}
       />
-      <Headline report={report} />
+      <Headline report={report} asks={asks} />
 
       {priced.length > 0 ? (
         <Card>
@@ -128,7 +128,7 @@ export function SavingsReportView({
   );
 }
 
-function Headline({ report }: { report: SavingsReport }) {
+function Headline({ report, asks }: { report: SavingsReport; asks: AskRecord[] }) {
   const { assessed, valueReduction, estimatedAnnualSaving } = report;
 
   return (
@@ -188,7 +188,7 @@ function Headline({ report }: { report: SavingsReport }) {
         </div>
       )}
 
-      <LeakageBand report={report} />
+      <LeakageBand report={report} asks={asks} />
 
       <div className="grid grid-cols-2 gap-px overflow-hidden border-b border-[var(--color-hairline)] lg:grid-cols-3">
         <Tile
@@ -225,13 +225,27 @@ function Headline({ report }: { report: SavingsReport }) {
  * Kept apart, each number is defensible on its own terms — and a lead is a
  * count on purpose, because a question does not have a dollar figure yet.
  */
-function LeakageBand({ report }: { report: SavingsReport }) {
+function LeakageBand({ report, asks }: { report: SavingsReport; asks: AskRecord[] }) {
   const l = report.leakage;
   if (!l || (l.measuredValue === 0 && l.modeledValue === 0 && l.leadCount === 0)) return null;
   const rate = report.blendedTaxRate;
   // One row of "everything is one jurisdiction" is the headline repeated, so
   // the split only renders when there is a split to show.
   const split = l.byJurisdiction.length > 1 ? l.byJurisdiction : null;
+
+  // Answering a lead does not price it — each needs its own rule, and a number
+  // that appeared the moment a client typed a sentence would be a guess. So the
+  // note says what is actually outstanding: the question, or the pricing.
+  const leads = report.findings.filter((finding) => finding.kind === 'screening');
+  const answered = leads.filter(
+    (finding) => asks.find((ask) => ask.subject === finding.key)?.status === 'answered',
+  ).length;
+  const leadNote =
+    answered === 0
+      ? 'not counted until answered'
+      : answered === leads.length
+        ? 'answered — still to be priced by hand'
+        : `${count(answered)} of ${count(leads.length)} answered, none priced yet`;
 
   return (
     <div className="border-b border-[var(--color-hairline)] px-5 py-4">
@@ -253,7 +267,7 @@ function LeakageBand({ report }: { report: SavingsReport }) {
         <LeakageFigure
           label="Leads worth pursuing"
           value={`${count(l.leadCount)}`}
-          note={`on ${money(l.leadCost)} of cost — not counted until answered`}
+          note={`on ${money(l.leadCost)} of cost — ${leadNote}`}
           tone="warning"
           help={KIND_META.screening.help}
         />
