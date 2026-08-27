@@ -132,6 +132,17 @@ export const ClassificationStatsSchema = z.object({
   needsReviewCount: z.number().int().nonnegative(),
   confirmedCount: z.number().int().nonnegative(),
   fromMemoryCount: z.number().int().nonnegative(),
+  /**
+   * How many *decisions* the outstanding rows actually amount to.
+   *
+   * A register repeats itself: four thousand lines that say only "Equipment"
+   * are one question, asked once and applied to all of them. Counting rows
+   * describes an afternoon's work as a month's, which is the difference
+   * between a queue somebody starts and one they never open. Rows with no
+   * classification yet have no fingerprint to group on, so each counts as its
+   * own — a guess that they will collapse is still a guess.
+   */
+  pendingDecisionCount: z.number().int().nonnegative(),
 });
 
 export type ClassificationStats = z.infer<typeof ClassificationStatsSchema>;

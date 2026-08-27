@@ -201,6 +201,11 @@ function buildSteps(detail: EngagementDetail, season: FilingSeason | undefined):
   });
 
   const unclassified = classification.unclassifiedCount + classification.needsReviewCount;
+  // What the queue costs is decisions, not rows. A register that says
+  // "Equipment" a thousand times asks once, and quoting the row count sends a
+  // reviewer away from a job that is an afternoon long. Say the rows too — they
+  // are what the reviewer is answering for — but lead with the ask.
+  const decisions = classification.pendingDecisionCount;
   steps.push({
     id: 'classify',
     label: 'Classify',
@@ -208,7 +213,9 @@ function buildSteps(detail: EngagementDetail, season: FilingSeason | undefined):
     detail:
       stats.assetCount === 0
         ? 'Classification starts once the register is in.'
-        : `${count(unclassified)} ${plural(unclassified, 'asset needs', 'assets need')} a decision on which schedule ${plural(unclassified, 'it is', 'they are')} valued on — the decision the money turns on.`,
+        : decisions > 0 && decisions < unclassified
+          ? `${count(decisions)} ${plural(decisions, 'decision covers', 'decisions cover')} the ${count(unclassified)} assets still waiting on which schedule they are valued on — the register repeats itself, and one answer settles every row that says the same thing.`
+          : `${count(unclassified)} ${plural(unclassified, 'asset needs', 'assets need')} a decision on which schedule ${plural(unclassified, 'it is', 'they are')} valued on — the decision the money turns on.`,
     action: 'Review the queue',
     goes: 'value',
   });

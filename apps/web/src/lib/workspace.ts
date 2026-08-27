@@ -182,6 +182,12 @@ export async function engagementClassificationStats(
       needsReviewCount: sql<number>`(count(*) filter (where ${c.status} = 'needs-review'))::int`,
       confirmedCount: sql<number>`(count(*) filter (where ${c.status} = 'confirmed'))::int`,
       fromMemoryCount: sql<number>`(count(*) filter (where ${c.source} = 'memory'))::int`,
+      // Grouped on the classification's own fingerprint rather than a rule
+      // restated here, so the count can never drift from what "Apply to all"
+      // will actually do. An unclassified row has no fingerprint yet and falls
+      // back to its own id, counting as one decision until the engine says
+      // otherwise.
+      pendingDecisionCount: sql<number>`(count(distinct coalesce(${c.fingerprint}, ${v.assetId}::text)) filter (where ${c.id} is null or ${c.status} = 'needs-review'))::int`,
     })
     .from(v)
     .leftJoin(c, eq(c.assetId, v.assetId))
@@ -196,6 +202,7 @@ export async function engagementClassificationStats(
       needsReviewCount: 0,
       confirmedCount: 0,
       fromMemoryCount: 0,
+      pendingDecisionCount: 0,
     }
   );
 }
