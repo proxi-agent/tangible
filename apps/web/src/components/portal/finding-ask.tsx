@@ -7,6 +7,7 @@ import type { AskRecord, SavingsFinding } from '@tangible/types';
 import { api } from '@/lib/api';
 import { day } from '@/lib/format';
 import { usePortal } from '@/components/portal/portal-context';
+import { ReadOnlyNote } from '@/components/portal/read-only';
 import { useAskInvalidation, usePortalAsks } from '@/components/portal/use-portal-asks';
 import { Button, TextArea } from '@/components/ui/controls';
 import { Callout } from '@/components/ui/primitives';
@@ -27,8 +28,16 @@ import { Callout } from '@/components/ui/primitives';
  * a number that moved the moment a sentence was typed would be a guess wearing
  * a report's clothes.
  */
-export function FindingAsk({ finding }: { finding: SavingsFinding }) {
-  const { engagementId } = usePortal();
+/**
+ * Narrowed to the four fields it reads rather than taking a whole finding: the
+ * row-level page assembles its header from `FindingRowPage`, which carries the
+ * same four and is not a `SavingsFinding`. Widening the prop would have meant
+ * reconstructing a finding around them just to satisfy a type.
+ */
+type Askable = Pick<SavingsFinding, 'key' | 'title' | 'summary' | 'question' | 'assumption'>;
+
+export function FindingAsk({ finding }: { finding: Askable }) {
+  const { engagementId, canAct } = usePortal();
   const { asks } = usePortalAsks(engagementId);
   const invalidate = useAskInvalidation();
   const [open, setOpen] = useState(false);
@@ -67,6 +76,23 @@ export function FindingAsk({ finding }: { finding: SavingsFinding }) {
           {ask.answeredAt ? `Answered ${day(ask.answeredAt.slice(0, 10))}. ` : ''}
           Your team works this into the return by hand — the report moves only once it does.
         </p>
+      </Callout>
+    );
+  }
+
+  /**
+   * A viewer still reads the question. It is the most load-bearing sentence on
+   * the finding — it is what stands between a screening line and a number — and
+   * a reader who cannot answer it is exactly the person who forwards it to
+   * somebody who can.
+   */
+  if (!canAct) {
+    return (
+      <Callout tone="warning" icon={MessageCircleQuestion} title="What we need from you">
+        <p className="text-[var(--color-ink)]">{finding.question}</p>
+        <div className="mt-3">
+          <ReadOnlyNote what="Answering" />
+        </div>
       </Callout>
     );
   }
@@ -117,7 +143,7 @@ export function FindingAsk({ finding }: { finding: SavingsFinding }) {
   );
 }
 
-function create(engagementId: string, finding: SavingsFinding): Promise<AskRecord> {
+function create(engagementId: string, finding: Askable): Promise<AskRecord> {
   return api.createFindingAsk(engagementId, {
     findingKey: finding.key,
     question: finding.question!,

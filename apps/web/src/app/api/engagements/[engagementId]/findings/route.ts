@@ -1,4 +1,8 @@
-import { CommitFindingsRequestSchema, type FindingSet, type FindingSetSummary } from '@tangible/types';
+import {
+  CommitFindingsRequestSchema,
+  type FindingSet,
+  type FindingSetSummary,
+} from '@tangible/types';
 import { currentActor } from '@/lib/actor';
 import { commitFindings, listFindingSets } from '@/lib/findings';
 import { handle } from '@/lib/route';

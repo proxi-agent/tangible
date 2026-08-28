@@ -18,6 +18,8 @@
     "@tangible/analytics": "workspace:*",
     "@tangible/classification": "workspace:*",
     "@tangible/db": "workspace:*",
+    "@tangible/eval": "workspace:*",
+    "@tangible/evidence": "workspace:*",
     "@tangible/far": "workspace:*",
     "@tangible/filing": "workspace:*",
     "@tangible/findings": "workspace:*",

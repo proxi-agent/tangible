@@ -3,7 +3,12 @@ import { eq } from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import { classificationLabel, isExclusion, isValuable } from '@tangible/classification';
 import { appraisalDistrictName } from '@tangible/filing';
-import type { ClassificationStatus, Rendition } from '@tangible/types';
+import type {
+  ClassificationStatus,
+  FindingRowFilters,
+  FindingRowPage,
+  Rendition,
+} from '@tangible/types';
 import {
   appraise,
   scheduleFor,
@@ -11,6 +16,7 @@ import {
   type LifeClass,
 } from '@tangible/valuation';
 import { lookupRate } from '@/lib/analysis';
+import { loadFindingRows } from '@/lib/finding-rows';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { buildEngagementRendition } from '@/lib/rendition';
 import { engagementReturns } from '@/lib/sites';
@@ -412,4 +418,244 @@ function findingsSheet(renditions: Rendition[], siteLabel: (i: number) => string
       renditions.length > 1 ? [22, 40, 14, 12, 18, 13, 13, 8, 80] : [40, 14, 12, 18, 13, 13, 8, 80],
     moneyCols: money,
   });
+}
+
+// ---------------------------------------------------------------------------
+// One finding, as the client filtered it
+// ---------------------------------------------------------------------------
+
+/**
+ * The rows a controller is looking at right now, as a working paper.
+ *
+ * The engagement workbook above is the whole file. This is narrower and, for
+ * the person doing the reviewing, more useful: the population they filtered to,
+ * the decisions they have made on it, and — printed at the top rather than
+ * assumed — *which filter produced this list*. A workpaper that shows sixty
+ * rows without saying they are the high-confidence ones over $10,000 at the
+ * Houston site is a workpaper nobody can tie back to anything.
+ *
+ * It runs from `loadFindingRows` unpaged, so the spreadsheet and the screen are
+ * the same selection read twice rather than two implementations of one filter.
+ */
+export async function buildFindingRowsWorkbook(
+  engagementId: string,
+  findingKey: string,
+  filters: FindingRowFilters,
+): Promise<EngagementWorkbook> {
+  const { engagement, client } = await fetchEngagement(engagementId);
+  const page = await loadFindingRows(engagementId, findingKey, filters, { all: true });
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, reviewSheet(page, client.name, engagement.taxYear), 'Review');
+  XLSX.utils.book_append_sheet(wb, detectionSheet(page), 'How it was found');
+
+  const bytes = XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+  const slug = `${client.name} ${findingKey}`
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+  return { bytes, filename: `${slug}-${engagement.taxYear}-review.xlsx` };
+}
+
+const KIND_TEXT: Record<FindingRowPage['kind'], string> = {
+  measured: 'Measured from the register',
+  modeled: 'Rests on an assumption',
+  screening: 'Needs an answer from the client',
+};
+
+const DISPOSITION_TEXT: Record<string, string> = {
+  accepted: 'Accepted',
+  rejected: 'Rejected',
+  'pending-client': 'Need more information',
+};
+
+/**
+ * What the filter was, in a sentence a reader can check.
+ *
+ * Deliberately written from the labels the screen showed rather than the ids it
+ * sent: `Houston plant` and not a uuid, because the point is that somebody can
+ * read this next April and know what they were looking at.
+ */
+function filterLines(page: FindingRowPage, filters: FindingRowFilters): string[] {
+  const lines: string[] = [];
+  const label = (id: string) =>
+    id === 'unplaced'
+      ? 'no site recorded'
+      : (page.facets.locations.find((l) => l.id === id)?.label ?? id);
+
+  if (filters.confidence.length > 0) lines.push(`Confidence: ${filters.confidence.join(', ')}`);
+  if (filters.locations.length > 0)
+    lines.push(`Location: ${filters.locations.map(label).join(', ')}`);
+  if (filters.costCenters.length > 0) lines.push(`Cost centre: ${filters.costCenters.join(', ')}`);
+  if (filters.categories.length > 0)
+    lines.push(
+      `Asset class: ${filters.categories
+        .map((key) => page.facets.categories.find((c) => c.key === key)?.label ?? key)
+        .join(', ')}`,
+    );
+  if (filters.acquiredFrom !== null || filters.acquiredTo !== null)
+    lines.push(`Acquired: ${filters.acquiredFrom ?? 'any'} to ${filters.acquiredTo ?? 'any'}`);
+  if (filters.costMin !== null || filters.costMax !== null)
+    lines.push(
+      `Original cost: ${filters.costMin === null ? 'any' : `$${filters.costMin.toLocaleString()}`} to ${
+        filters.costMax === null ? 'any' : `$${filters.costMax.toLocaleString()}`
+      }`,
+    );
+  if (filters.evidence !== 'any')
+    lines.push(
+      filters.evidence === 'present'
+        ? 'Only rows with something to check against a document'
+        : 'Only rows with nothing to check against a document',
+    );
+  if (filters.dispositions.length > 0) lines.push(`Decision: ${filters.dispositions.join(', ')}`);
+  if (filters.reviewers.length > 0) lines.push(`Decided by: ${filters.reviewers.join(', ')}`);
+  if (filters.query.trim() !== '') lines.push(`Search: “${filters.query.trim()}”`);
+
+  return lines.length > 0 ? lines : ['No filter — every row on this finding.'];
+}
+
+function reviewSheet(page: FindingRowPage, clientName: string, taxYear: number): XLSX.WorkSheet {
+  const filters = page.appliedFilters;
+  const rows: (string | number | null)[][] = [
+    [page.title],
+    [`${clientName} · ${taxYear} · ${KIND_TEXT[page.kind]}`],
+    [page.summary],
+    GAP,
+    ['What this list is'],
+    ...filterLines(page, filters).map((line) => [line]),
+    GAP,
+    ['', 'Rows', 'Original cost', 'Value off the return', 'Tax a year'],
+    [
+      'This list',
+      page.filtered.rows,
+      page.filtered.originalCost,
+      page.filtered.valueRemoved,
+      page.filtered.taxAtRisk,
+    ],
+    [
+      'The whole finding',
+      page.population.rows,
+      page.population.originalCost,
+      page.population.valueRemoved,
+      page.population.taxAtRisk,
+    ],
+  ];
+  if (page.filtered.unpricedRows > 0) {
+    rows.push([
+      `${page.filtered.unpricedRows} of these rows cannot be priced yet — they are counted above but contribute nothing to the dollars.`,
+    ]);
+  }
+  rows.push(GAP);
+  rows.push([
+    page.publishedAt
+      ? `From the report published ${page.publishedAt.slice(0, 10)}. Tax at ${(page.blendedTaxRate * 100).toFixed(2)}%${
+          page.jurisdictionName ? `, the blended rate for ${page.jurisdictionName}` : ''
+        }.`
+      : 'From the current report.',
+  ]);
+  rows.push(GAP);
+
+  const header = [
+    'Asset',
+    'Description',
+    'Asset class',
+    'Location',
+    'Cost centre',
+    'Acquired',
+    'Original cost',
+    'Assessed as filed',
+    'Corrected value',
+    'Value off the return',
+    'Tax a year',
+    'Expected recovery',
+    'Confidence',
+    'Score',
+    'Evidence',
+    'Why it was flagged',
+    'Decision',
+    'Note',
+    'Decided by',
+    'Decided',
+  ];
+  const headerAt = rows.length;
+  rows.push(header);
+
+  for (const { row, decision } of page.rows) {
+    rows.push([
+      row.assetTag ?? '',
+      row.description ?? '',
+      row.categoryLabel ?? '',
+      row.siteLabel ?? '',
+      row.costCenter ?? '',
+      row.acquisitionYear,
+      row.originalCost,
+      row.assessedAsFiled,
+      row.correctedValue,
+      row.valueRemoved,
+      row.taxAtRisk,
+      // Phase 3 prices this. Blank rather than zero: nobody should sum a
+      // column of noughts and conclude the recovery is nothing.
+      row.expectedRecovery ?? 'Pending',
+      row.confidence.tier,
+      row.confidence.score,
+      row.evidencePresent ? 'Yes' : 'No',
+      row.confidence.why,
+      decision ? (DISPOSITION_TEXT[decision.status] ?? decision.status) : 'Not decided',
+      decision?.note ?? '',
+      decision?.decidedBy ?? '',
+      decision?.decidedAt?.slice(0, 10) ?? '',
+    ]);
+  }
+  if (page.rows.length === 0) {
+    rows.push(['Nothing on this finding matches that filter.']);
+  }
+
+  const ws = sheet(rows, {
+    widths: [16, 44, 22, 20, 16, 10, 14, 16, 15, 18, 13, 16, 12, 8, 10, 70, 16, 40, 22, 12],
+  });
+  // Money formatting starts at the table header, not at row 1 — the summary
+  // block above it has dollars in different columns, so it gets its own pass.
+  for (const [r, cols] of [
+    [headerAt - 4, [2, 3, 4]],
+    [headerAt - 3, [2, 3, 4]],
+  ] as [number, number[]][]) {
+    for (const c of cols) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })] as XLSX.CellObject | undefined;
+      if (cell && typeof cell.v === 'number') cell.z = '"$"#,##0';
+    }
+  }
+  for (let r = headerAt + 1; r < rows.length; r += 1) {
+    for (const c of [6, 7, 8, 9, 10, 11]) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })] as XLSX.CellObject | undefined;
+      if (cell && typeof cell.v === 'number') cell.z = '"$"#,##0';
+    }
+  }
+  return ws;
+}
+
+/**
+ * The detection basis: which signals fired, over how many assets.
+ *
+ * On its own sheet because it answers a different question from the table — not
+ * "which of my assets" but "how did you decide these were the ones" — and
+ * because it is the part a client's auditor asks about.
+ */
+function detectionSheet(page: FindingRowPage): XLSX.WorkSheet {
+  const rows: (string | number | null)[][] = [['How these assets were found'], [page.basis]];
+  if (page.assumption) rows.push([page.assumption]);
+  rows.push(GAP);
+  rows.push(['Signal', 'Assets', 'Original cost']);
+  for (const signal of page.detection) {
+    rows.push([signal.label, signal.assetCount, signal.originalCost]);
+  }
+  if (page.detection.length === 0) {
+    rows.push(['This report predates per-signal recording. Re-run the analysis to populate it.']);
+  }
+  rows.push(GAP);
+  rows.push(['Confidence across the whole finding']);
+  rows.push(['High', page.confidenceMix.high]);
+  rows.push(['Medium', page.confidenceMix.medium]);
+  rows.push(['Low', page.confidenceMix.low]);
+
+  return sheet(rows, { widths: [60, 12, 16], moneyCols: [2] });
 }

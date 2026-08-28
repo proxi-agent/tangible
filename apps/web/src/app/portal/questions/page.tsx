@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { day } from '@/lib/format';
 import { usePortal } from '@/components/portal/portal-context';
 import { PortalHeader } from '@/components/portal/portal-header';
+import { ReadOnlyNote } from '@/components/portal/read-only';
 import { useAskInvalidation, usePortalAsks } from '@/components/portal/use-portal-asks';
 import { Button, TextArea } from '@/components/ui/controls';
 import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
@@ -23,7 +24,7 @@ import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components
  * is the same row the next mapping proposal reads as fact.
  */
 export default function PortalQuestionsPage() {
-  const { engagementId } = usePortal();
+  const { engagementId, canAct } = usePortal();
 
   const { asks, isLoading, error } = usePortalAsks(engagementId);
 
@@ -57,7 +58,7 @@ export default function PortalQuestionsPage() {
         ) : (
           <ul className="divide-y divide-[var(--color-hairline)]">
             {open.map((ask) => (
-              <AskRow key={ask.id} ask={ask} />
+              <AskRow key={ask.id} ask={ask} canAct={canAct} />
             ))}
           </ul>
         )}
@@ -88,7 +89,7 @@ export default function PortalQuestionsPage() {
   );
 }
 
-function AskRow({ ask }: { ask: AskRecord }) {
+function AskRow({ ask, canAct }: { ask: AskRecord; canAct: boolean }) {
   const invalidate = useAskInvalidation();
   const [answer, setAnswer] = useState('');
 
@@ -103,27 +104,37 @@ function AskRow({ ask }: { ask: AskRecord }) {
       {/* The firm's "why" is written for the firm, but it is the honest answer
         to "why are you asking me this" and reads perfectly well as one. */}
       <p className="mt-1 text-xs leading-relaxed text-[var(--color-ink-secondary)]">{ask.why}</p>
-      <div className="mt-3 flex flex-wrap items-end gap-2">
-        <TextArea
-          rows={2}
-          value={answer}
-          placeholder="Your answer…"
-          onChange={(e) => setAnswer(e.target.value)}
-          className="min-w-[16rem] flex-1"
-        />
-        <Button
-          variant="primary"
-          disabled={answer.trim().length === 0 || submit.isPending}
-          onClick={() => submit.mutate()}
-        >
-          {submit.isPending ? 'Sending…' : 'Send answer'}
-        </Button>
-      </div>
-      {submit.error ? (
-        <p className="mt-2 text-xs text-[var(--color-critical)]">
-          {submit.error instanceof Error ? submit.error.message : 'Could not save that.'}
-        </p>
-      ) : null}
+      {/* The question is worth reading either way — a viewer who cannot answer
+        it can still tell the person who can that it is waiting. */}
+      {!canAct ? (
+        <div className="mt-3">
+          <ReadOnlyNote what="Answering" />
+        </div>
+      ) : (
+        <>
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            <TextArea
+              rows={2}
+              value={answer}
+              placeholder="Your answer…"
+              onChange={(e) => setAnswer(e.target.value)}
+              className="min-w-[16rem] flex-1"
+            />
+            <Button
+              variant="primary"
+              disabled={answer.trim().length === 0 || submit.isPending}
+              onClick={() => submit.mutate()}
+            >
+              {submit.isPending ? 'Sending…' : 'Send answer'}
+            </Button>
+          </div>
+          {submit.error ? (
+            <p className="mt-2 text-xs text-[var(--color-critical)]">
+              {submit.error instanceof Error ? submit.error.message : 'Could not save that.'}
+            </p>
+          ) : null}
+        </>
+      )}
     </li>
   );
 }

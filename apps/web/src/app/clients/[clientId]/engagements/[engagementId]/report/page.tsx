@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { BackLink, Card, ErrorState, Skeleton } from '@/components/ui/primitives';
 import { CommitFindings } from '@/components/workspace/commit-findings';
+import { PublishRun } from '@/components/workspace/publish-run';
 import { SavingsReportView } from '@/components/workspace/savings-report';
 
 /**
@@ -76,10 +77,17 @@ export default function SavingsReportPage() {
       // where a reader who scrolled the findings had to scroll back up to find
       // anything else — and where it was the one action on the page with no
       // header to belong to.
+      // Two different acts, side by side on purpose. Committing records what
+      // this office decided; publishing is what the client is allowed to read.
+      // A report can be committed without ever being sent, and — after a
+      // register lands — published without anyone having committed it.
       actions={
-        data.findings.length > 0 ? (
-          <CommitFindings clientId={clientId} engagementId={engagementId} source="savings" />
-        ) : null
+        <div className="flex flex-wrap items-center gap-3">
+          {data.findings.length > 0 ? (
+            <CommitFindings clientId={clientId} engagementId={engagementId} source="savings" />
+          ) : null}
+          <PublishRun engagementId={engagementId} />
+        </div>
       }
     />
   );

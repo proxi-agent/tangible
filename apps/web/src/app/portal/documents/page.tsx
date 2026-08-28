@@ -9,6 +9,7 @@ import { cn } from '@/lib/cn';
 import { day } from '@/lib/format';
 import { usePortal } from '@/components/portal/portal-context';
 import { PortalHeader } from '@/components/portal/portal-header';
+import { ReadOnlyNote } from '@/components/portal/read-only';
 import { LinkButton } from '@/components/ui/controls';
 import {
   Badge,
@@ -31,7 +32,7 @@ import {
  * that somebody has looked at it.
  */
 export default function PortalDocumentsPage() {
-  const { engagementId } = usePortal();
+  const { engagementId, canAct } = usePortal();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -86,77 +87,86 @@ export default function PortalDocumentsPage() {
           help="Files go to private storage. Only your account team can open them."
           icon={Inbox}
         />
-        <div className="px-5 py-4">
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragging(true);
-            }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={(e) => {
-              e.preventDefault();
-              setDragging(false);
-              const files = Array.from(e.dataTransfer.files);
-              if (files.length > 0) upload.mutate(files);
-            }}
-            className={cn(
-              'flex w-full cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed px-6 py-10 text-sm transition-colors outline-none',
-              'focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
-              dragging
-                ? 'border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_8%,transparent)]'
-                : 'border-[var(--color-hairline)] hover:border-[color-mix(in_oklab,var(--color-accent)_45%,transparent)] hover:bg-[var(--color-plane)]',
-            )}
-          >
-            <Inbox size={22} strokeWidth={1.7} className="text-[var(--color-ink-muted)]" />
-            <span className="font-medium">
-              {upload.isPending ? 'Uploading…' : 'Drop files here, or click to choose'}
-            </span>
-            <span className="text-xs text-[var(--color-ink-secondary)]">
-              Excel, CSV, PDF or images — several at a time is fine
-            </span>
-          </button>
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              const files = Array.from(e.target.files ?? []);
-              if (files.length > 0) upload.mutate(files);
-              e.target.value = '';
-            }}
-          />
-          {sent && sent.length > 0 ? (
-            <Callout
-              tone="good"
-              className="mt-3"
-              icon={CheckCircle2}
-              title={`Submitted successfully — ${sent.length} file${sent.length === 1 ? '' : 's'} received`}
+        {/* A register is a tax position before anybody reads it: what is sent
+          here is what the return gets filed from. A read-only viewer sees the
+          history below and no way to add to it. */}
+        {!canAct ? (
+          <div className="px-5 py-4">
+            <ReadOnlyNote what="Sending files" />
+          </div>
+        ) : (
+          <div className="px-5 py-4">
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragging(true);
+              }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragging(false);
+                const files = Array.from(e.dataTransfer.files);
+                if (files.length > 0) upload.mutate(files);
+              }}
+              className={cn(
+                'flex w-full cursor-pointer flex-col items-center gap-1.5 rounded-lg border border-dashed px-6 py-10 text-sm transition-colors outline-none',
+                'focus-visible:ring-[3px] focus-visible:ring-[color-mix(in_oklab,var(--color-accent)_30%,transparent)]',
+                dragging
+                  ? 'border-[var(--color-accent)] bg-[color-mix(in_oklab,var(--color-accent)_8%,transparent)]'
+                  : 'border-[var(--color-hairline)] hover:border-[color-mix(in_oklab,var(--color-accent)_45%,transparent)] hover:bg-[var(--color-plane)]',
+              )}
             >
-              <p>
-                We will read {sent.length === 1 ? 'it' : 'them'} and email you when your report is
-                ready. Nothing else is needed from you right now.
+              <Inbox size={22} strokeWidth={1.7} className="text-[var(--color-ink-muted)]" />
+              <span className="font-medium">
+                {upload.isPending ? 'Uploading…' : 'Drop files here, or click to choose'}
+              </span>
+              <span className="text-xs text-[var(--color-ink-secondary)]">
+                Excel, CSV, PDF or images — several at a time is fine
+              </span>
+            </button>
+            <input
+              ref={inputRef}
+              type="file"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                const files = Array.from(e.target.files ?? []);
+                if (files.length > 0) upload.mutate(files);
+                e.target.value = '';
+              }}
+            />
+            {sent && sent.length > 0 ? (
+              <Callout
+                tone="good"
+                className="mt-3"
+                icon={CheckCircle2}
+                title={`Submitted successfully — ${sent.length} file${sent.length === 1 ? '' : 's'} received`}
+              >
+                <p>
+                  We will read {sent.length === 1 ? 'it' : 'them'} and email you when your report is
+                  ready. Nothing else is needed from you right now.
+                </p>
+                <p className="mt-1 truncate text-xs text-[var(--color-ink-muted)]">
+                  {sent.join(', ')}
+                </p>
+                <div className="mt-2">
+                  <LinkButton href="/portal">See your report</LinkButton>
+                </div>
+              </Callout>
+            ) : null}
+            {upload.error ? (
+              <p className="mt-3 text-xs text-[var(--color-critical)]">
+                {upload.error instanceof Error ? upload.error.message : 'Upload failed.'}
               </p>
-              <p className="mt-1 truncate text-xs text-[var(--color-ink-muted)]">
-                {sent.join(', ')}
-              </p>
-              <div className="mt-2">
-                <LinkButton href="/portal">See your report</LinkButton>
-              </div>
-            </Callout>
-          ) : null}
-          {upload.error ? (
-            <p className="mt-3 text-xs text-[var(--color-critical)]">
-              {upload.error instanceof Error ? upload.error.message : 'Upload failed.'}
+            ) : null}
+            <p className="mt-3 flex items-center gap-1.5 text-xs text-[var(--color-ink-muted)]">
+              <ShieldCheck size={13} strokeWidth={2} />
+              Stored privately and used only for your filing.
             </p>
-          ) : null}
-          <p className="mt-3 flex items-center gap-1.5 text-xs text-[var(--color-ink-muted)]">
-            <ShieldCheck size={13} strokeWidth={2} />
-            Stored privately and used only for your filing.
-          </p>
-        </div>
+          </div>
+        )}
       </Card>
 
       <Card>

@@ -14,6 +14,7 @@ import { AgentAppointmentCard } from '@/components/workspace/agent-appointment-c
 import { ClientStatusBadge } from '@/components/workspace/badges';
 import { DeleteClientCard } from '@/components/workspace/delete-client-card';
 import { FilingProfileCard } from '@/components/workspace/filing-profile-card';
+import { PortalAccessCard } from '@/components/workspace/portal-access-card';
 import { Button, Field, Select, TextInput } from '@/components/ui/controls';
 import {
   BackLink,
@@ -210,6 +211,8 @@ export default function ClientPage() {
       <FilingProfileCard clientId={clientId} clientName={client.name} profile={filingProfile} />
 
       <AgentAppointmentCard clientId={clientId} locations={locations} />
+
+      <PortalAccessCard clientId={clientId} clientName={client.name} />
 
       <DeleteClientCard clientId={clientId} clientName={client.name} />
     </div>

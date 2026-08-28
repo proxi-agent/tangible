@@ -1,6 +1,8 @@
 import { CreateAskRequestSchema } from '@tangible/types';
 import { createFindingAsk, engagementAsks } from '@/lib/asks';
+import { fireAndLog, notifyQuestionsWaiting } from '@/lib/notify';
 import { handle } from '@/lib/route';
+import { requireEngagementScope, requirePortalRole } from '@/lib/viewer';
 import { fetchEngagement } from '@/lib/workspace';
 
 export const runtime = 'nodejs';
@@ -19,6 +21,7 @@ export function GET(
 ): Promise<Response> {
   return handle(async () => {
     const { engagementId } = await params;
+    await requireEngagementScope(engagementId);
     await fetchEngagement(engagementId);
     return { items: await engagementAsks(engagementId) };
   });
@@ -40,8 +43,22 @@ export function POST(
 ): Promise<Response> {
   return handle(async () => {
     const { engagementId } = await params;
+    await requireEngagementScope(engagementId);
+    await requirePortalRole('admin');
     const body = CreateAskRequestSchema.parse(await request.json());
     await fetchEngagement(engagementId);
-    return await createFindingAsk(engagementId, body);
+    const ask = await createFindingAsk(engagementId, body);
+
+    /**
+     * Told, not left to be discovered. A question that only exists on a screen
+     * the client has no reason to open is a question that goes unanswered, and
+     * a screening finding stays unpriced for want of one fact.
+     *
+     * Detached and rate-limited inside `notifyQuestionsWaiting`: raising ten
+     * asks in a row is one message, and a mail failure is not a reason to lose
+     * the ask that was just recorded.
+     */
+    fireAndLog(notifyQuestionsWaiting(engagementId), 'question-waiting');
+    return ask;
   });
 }

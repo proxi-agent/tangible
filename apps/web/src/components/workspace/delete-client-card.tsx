@@ -155,6 +155,7 @@ const COUNT_LABELS: Array<[keyof DeletionCounts, string]> = [
   ['protests', 'Protests'],
   ['correctionMotions', '25.25 motions'],
   ['appointments', 'Appointments'],
+  ['portalLogins', 'Portal sign-ins'],
   ['memoryRows', 'Learned classifications'],
   ['assistantTurns', 'Assistant answers'],
 ];

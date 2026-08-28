@@ -56,7 +56,7 @@ async function engagementIdsFor(clientId: string): Promise<string[]> {
 async function storagePathsFor(engagementIds: string[]): Promise<string[]> {
   if (engagementIds.length === 0) return [];
   const db = requireDb();
-  const [fars, priors, intake] = await Promise.all([
+  const [fars, priors, intake, evidence] = await Promise.all([
     db
       .select({ path: schema.farFiles.storagePath })
       .from(schema.farFiles)
@@ -69,8 +69,17 @@ async function storagePathsFor(engagementIds: string[]): Promise<string[]> {
       .select({ path: schema.intakeFiles.storagePath })
       .from(schema.intakeFiles)
       .where(inArray(schema.intakeFiles.engagementId, engagementIds)),
+    // Evidence exports are somebody else's system, handed over — a client's
+    // whole maintenance history or lease schedule. They leave with everything
+    // else, and the rows go with the engagement's cascade.
+    db
+      .select({ path: schema.evidenceExports.storagePath })
+      .from(schema.evidenceExports)
+      .where(inArray(schema.evidenceExports.engagementId, engagementIds)),
   ]);
-  return [...new Set([...fars, ...priors, ...intake].map((row) => row.path).filter(Boolean))];
+  return [
+    ...new Set([...fars, ...priors, ...intake, ...evidence].map((row) => row.path).filter(Boolean)),
+  ];
 }
 
 async function countsFor(clientId: string): Promise<{
@@ -94,12 +103,14 @@ async function countsFor(clientId: string): Promise<{
     fars,
     priors,
     intake,
+    evidenceExports,
     findings,
     filedRenditions,
     notices,
     protests,
     correctionMotions,
     appointments,
+    portalLogins,
     memoryRows,
     assistantTurns,
   ] = await Promise.all([
@@ -108,12 +119,14 @@ async function countsFor(clientId: string): Promise<{
     scoped(schema.farFiles, schema.farFiles.engagementId),
     scoped(schema.priorDocuments, schema.priorDocuments.engagementId),
     scoped(schema.intakeFiles, schema.intakeFiles.engagementId),
+    scoped(schema.evidenceExports, schema.evidenceExports.engagementId),
     scoped(schema.findings, schema.findings.engagementId),
     scoped(schema.renditionFilings, schema.renditionFilings.engagementId),
     scoped(schema.assessmentNotices, schema.assessmentNotices.engagementId),
     scoped(schema.protestResolutions, schema.protestResolutions.engagementId),
     scoped(schema.correctionMotions, schema.correctionMotions.engagementId),
     tally(schema.agentAppointments, eq(schema.agentAppointments.clientId, clientId)),
+    tally(schema.portalUsers, eq(schema.portalUsers.clientId, clientId)),
     scoped(schema.classificationMemory, schema.classificationMemory.sourceEngagementId),
     tally(
       schema.assistantTurns,
@@ -128,7 +141,7 @@ async function countsFor(clientId: string): Promise<{
       engagements: engagementIds.length,
       locations,
       assets,
-      documents: fars + priors + intake,
+      documents: fars + priors + intake + evidenceExports,
       storageObjects: storagePaths.length,
       findings,
       filedRenditions,
@@ -136,6 +149,7 @@ async function countsFor(clientId: string): Promise<{
       protests,
       correctionMotions,
       appointments,
+      portalLogins,
       memoryRows,
       assistantTurns,
     },
@@ -212,6 +226,11 @@ export async function deleteClient(
     await tx.delete(schema.assets).where(eq(schema.assets.clientId, clientId));
 
     await tx.delete(schema.engagements).where(eq(schema.engagements.clientId, clientId));
+    // Both of these would be carried off by their own cascades. They are
+    // written out because the sign-in grant is the one row whose absence a
+    // person notices from outside the system, and a delete order this file
+    // states in full is one a reader can check against the schema.
+    await tx.delete(schema.portalUsers).where(eq(schema.portalUsers.clientId, clientId));
     await tx
       .delete(schema.agentAppointments)
       .where(eq(schema.agentAppointments.clientId, clientId));

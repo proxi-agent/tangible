@@ -740,7 +740,11 @@ function Deadlines({ rendition }: { rendition: Rendition }) {
       />
       <ul className="divide-y divide-[var(--color-hairline)]">
         {rendition.deadlines.map((deadline) => {
-          const past = deadline.date < asOf;
+          // A deadline with no date is not a deadline that has passed. Florida's
+          // petition clock runs 25 days from a TRIM notice the county mails when
+          // it chooses, so the row stands all season saying it is waiting on the
+          // notice rather than showing a date nobody has.
+          const past = deadline.date !== null && deadline.date < asOf;
           return (
             <li key={deadline.key} className="flex items-start gap-3 px-5 py-2.5">
               <CalendarDays
@@ -754,12 +758,14 @@ function Deadlines({ rendition }: { rendition: Rendition }) {
                     {deadline.label}
                   </span>
                   <span className="tabular ml-2 text-xs text-[var(--color-ink-secondary)]">
-                    {new Date(`${deadline.date}T00:00:00Z`).toLocaleDateString(undefined, {
-                      timeZone: 'UTC',
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                    })}
+                    {deadline.date === null
+                      ? 'Dated when the notice arrives'
+                      : new Date(`${deadline.date}T00:00:00Z`).toLocaleDateString(undefined, {
+                          timeZone: 'UTC',
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                        })}
                   </span>
                 </p>
                 <p className="mt-0.5 text-xs leading-relaxed text-[var(--color-ink-muted)]">

@@ -69,6 +69,35 @@ export function exemptionForYear(year: number): number {
 export const DEFAULT_BLENDED_TAX_RATE = 0.025;
 
 /**
+ * The blend to assume when a jurisdiction has no rate of its own on file, per
+ * state.
+ *
+ * Florida quotes its rate in mills rather than percent, and a combined county,
+ * school, municipal and special-district levy runs roughly 16 to 23 mills —
+ * 1.6% to 2.3% — so 2.0% is the middle of that range rather than a number
+ * carried over from Harris County. The two happen to be close, which is exactly
+ * why this is worth writing down: a Texas default silently applied to a Florida
+ * account would produce a plausible answer, and a plausible wrong answer is the
+ * kind nobody checks.
+ *
+ * These are placeholders in the same sense the acceptance rates are: real
+ * millage is per taxing authority and published every August with the TRIM
+ * notice. A jurisdiction row with its own rate always wins.
+ */
+export const DEFAULT_RATE_BY_STATE: Readonly<Record<string, number>> = {
+  TX: 0.025,
+  FL: 0.02,
+};
+
+/** The default blend for a jurisdiction id, falling back to the Texas figure. */
+export function defaultRateFor(jurisdictionId: string | null | undefined): number {
+  if (!jurisdictionId) return DEFAULT_BLENDED_TAX_RATE;
+  const dash = jurisdictionId.indexOf('-');
+  const state = (dash === -1 ? jurisdictionId : jurisdictionId.slice(0, dash)).toUpperCase();
+  return DEFAULT_RATE_BY_STATE[state] ?? DEFAULT_BLENDED_TAX_RATE;
+}
+
+/**
  * Texas Tax Code Sec. 22.28: 10% of the taxes due when a business fails to
  * render. It recurs every year the filing is skipped.
  */

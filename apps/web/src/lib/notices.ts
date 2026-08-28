@@ -29,6 +29,7 @@ import { currentActor } from '@/lib/actor';
 import { engagementExtensions } from '@/lib/extensions';
 import { engagementFilings } from '@/lib/filings';
 import { clientMotions, motionKey, spentBy } from '@/lib/motions';
+import { settleFromResolution } from '@/lib/recovery';
 import { HttpError, notFound } from '@/lib/route';
 import { engagementReturns } from '@/lib/sites';
 import { today as todayIso } from '@/lib/today';
@@ -274,6 +275,21 @@ export async function recordResolution(
     if (!row) throw new HttpError(500, 'The resolution was not recorded.');
     return row;
   });
+
+  // The site-and-year answer, carried down to the positions that produced it.
+  // Outside the transaction and swallowed on failure for the same reason a
+  // filing's claims are: the resolution is the record of what the district
+  // determined, and it must stand whether or not there were claims under it.
+  await settleFromResolution({
+    engagementId: inserted.engagementId,
+    resolutionId: inserted.id,
+    locationId: inserted.locationId,
+    taxYear: inserted.taxYear,
+    noticedValue: inserted.noticedValue,
+    finalValue: inserted.finalValue,
+    resolvedOn: inserted.resolvedOn,
+    orderReference: inserted.orderReference,
+  }).catch(() => undefined);
 
   const [decorated] = await decorate(inserted.engagementId, [notice]);
   if (!decorated) throw new HttpError(500, 'The resolution was not recorded.');

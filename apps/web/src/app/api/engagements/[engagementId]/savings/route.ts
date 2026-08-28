@@ -1,6 +1,7 @@
 import type { SavingsReport } from '@tangible/types';
 import { buildSavingsAnalysis } from '@/lib/analysis';
 import { handle } from '@/lib/route';
+import { requireEngagementScope } from '@/lib/viewer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -24,6 +25,7 @@ export function GET(
 ): Promise<Response> {
   return handle(async (): Promise<SavingsReport> => {
     const { engagementId } = await params;
+    await requireEngagementScope(engagementId);
     const { report } = await buildSavingsAnalysis(engagementId);
     return report;
   });

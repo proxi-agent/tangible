@@ -3,6 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import type { CorrectionMotionRow } from '@tangible/db';
 import { checkMotion, motionStanding } from '@tangible/filing';
 import type {
+  ClaimRoute,
   CorrectionMotion,
   CorrectionMotionFacts,
   CorrectionMotionOutcome,
@@ -12,6 +13,7 @@ import type {
   VoidMotionRequest,
 } from '@tangible/types';
 import { currentActor } from '@/lib/actor';
+import { seedClaimsForMotion } from '@/lib/recovery';
 import { HttpError, notFound } from '@/lib/route';
 import { today } from '@/lib/today';
 import { fetchEngagement } from '@/lib/workspace';
@@ -124,6 +126,23 @@ export async function recordMotion(
     })
     .returning();
   if (!row) throw new HttpError(500, 'The motion was not recorded.');
+
+  // Same reasoning as a filing: the positions the motion carries are written
+  // down as claims against the year it reopens, so what the district does about
+  // them can be scored later. The subsection is recorded on every claim because
+  // it is what the district answers — a county that takes (c) and fights (c-1)
+  // is a pattern only visible if the route rode along.
+  await seedClaimsForMotion({
+    engagementId,
+    motionId: row.id,
+    locationId: row.locationId,
+    accountId: row.accountId,
+    taxYear: row.subjectTaxYear,
+    route: `25.25-${row.route}` as ClaimRoute,
+    authority: `Tex. Tax Code 25.25(${row.route})`,
+    filedOn: row.filedOn,
+  }).catch(() => undefined);
+
   return hydrate(row, engagement.clientId, today());
 }
 

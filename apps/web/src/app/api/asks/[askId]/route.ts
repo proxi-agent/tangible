@@ -1,7 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { UpdateAskRequestSchema } from '@tangible/types';
 import { askDto } from '@/lib/asks';
+import { fireAndLog, notifyAnswerReceived } from '@/lib/notify';
 import { handle, notFound } from '@/lib/route';
+import { requireAskScope, requirePortalRole } from '@/lib/viewer';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 export const runtime = 'nodejs';
@@ -20,6 +22,11 @@ export function PATCH(
 ): Promise<Response> {
   return handle(async () => {
     const { askId } = await params;
+    // The answer to "is any of this held outside Texas?" ends up on a signed
+    // rendition, so the two checks are separate questions: whose ask is this,
+    // and may this person answer one at all.
+    await requireAskScope(askId);
+    await requirePortalRole('admin');
     const body = UpdateAskRequestSchema.parse(await request.json());
     const db = requireDb();
     const [updated] = await db
@@ -33,6 +40,12 @@ export function PATCH(
       .where(eq(schema.mappingAsks.id, askId))
       .returning();
     if (!updated) return notFound(`Unknown ask: ${askId}`);
+
+    // The one message that goes to us rather than to them. An answer is what
+    // unblocks a screening finding, and nobody on our side watches this table.
+    if (updated.status === 'answered') {
+      fireAndLog(notifyAnswerReceived(updated.id), 'answer-received');
+    }
     return askDto(updated);
   });
 }

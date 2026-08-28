@@ -1,7 +1,7 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { Building2 } from 'lucide-react';
+import { useSearchParams } from 'next/navigation';
 import {
   createContext,
   useCallback,
@@ -13,25 +13,28 @@ import {
 } from 'react';
 import type { ClientDetail, Engagement } from '@tangible/types';
 import { api } from '@/lib/api';
-import { Select } from '@/components/ui/controls';
-import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { useViewer } from '@/components/viewer-context';
+import { Card, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
 
 /**
  * Who the portal is speaking to.
  *
  * The client wing is the same app seen from the other side of the engagement:
  * a business that sent us files and wants to know what happened to them. Every
- * page under /portal is scoped to one client and one season, and nothing on
- * them takes a client id from the URL — a portal whose scope is addressable by
- * editing the address bar is one URL away from showing a business somebody
- * else's register.
+ * page under /portal is scoped to one client and one season.
  *
- * Until clients have logins of their own, the identity is chosen here and kept
- * in localStorage. That is a stand-in and is labelled as one on screen: when
- * auth arrives it is this provider that changes, and no page above it.
+ * The scope now comes from the session. A client signs in and *is* one
+ * business; there is nothing to pick and nothing stored, because an identity a
+ * reader can set is an identity a reader can set to somebody else. The picker
+ * that used to live here, and the localStorage key behind it, are gone rather
+ * than hidden — a stand-in left in place behind a flag is a stand-in that ships.
+ *
+ * The firm reaches this wing too, by naming a client explicitly in the URL. That
+ * is a preview and says so on screen. It is safe in a way the old picker was
+ * not: the parameter only works for a session the server already knows to be
+ * the firm, and a client-audience browser ignores it entirely.
  */
 
-const CLIENT_KEY = 'tangible-portal-client';
 const SEASON_KEY = 'tangible-portal-season';
 
 interface PortalValue {
@@ -43,7 +46,10 @@ interface PortalValue {
   engagement: Engagement | null;
   engagementId: string | null;
   setEngagementId: (id: string) => void;
-  setClientId: (id: string | null) => void;
+  /** True when the firm is looking at somebody else's wing. */
+  previewing: boolean;
+  /** Whether this reader may send files and answer questions. */
+  canAct: boolean;
 }
 
 const PortalContext = createContext<PortalValue | null>(null);
@@ -72,26 +78,27 @@ function write(key: string, value: string | null) {
 }
 
 export function PortalProvider({ children }: { children: ReactNode }) {
-  // Read on mount rather than during render: the server has no localStorage,
-  // and seeding state from it directly hydrates a different tree than it
-  // rendered.
-  const [ready, setReady] = useState(false);
-  const [clientId, setClientIdState] = useState<string | null>(null);
+  const { viewer, isLoading } = useViewer();
+  const params = useSearchParams();
+  const previewed = params.get('client');
+
+  // A client is their own scope and the parameter is ignored — the same rule
+  // the server applies in `portalScope`, so the two cannot disagree about who
+  // is on screen.
+  const clientId = viewer?.audience === 'client' ? viewer.clientId : (previewed ?? null);
+  const previewing = viewer?.audience === 'firm' && clientId !== null;
+  const canAct = viewer?.audience === 'firm' || viewer?.role === 'admin';
+
+  // Which year is on screen is a preference, not an identity: it survives a
+  // reload for convenience and grants nothing. Read on mount rather than during
+  // render, because the server has no localStorage and seeding state from it
+  // hydrates a different tree than it rendered.
+  const [seasonReady, setSeasonReady] = useState(false);
   const [pickedSeason, setPickedSeason] = useState<string | null>(null);
 
   useEffect(() => {
-    setClientIdState(read(CLIENT_KEY));
     setPickedSeason(read(SEASON_KEY));
-    setReady(true);
-  }, []);
-
-  const setClientId = useCallback((id: string | null) => {
-    setClientIdState(id);
-    write(CLIENT_KEY, id);
-    // A season belongs to a client. Carrying one across the switch would land
-    // the new business on a stranger's engagement id and show it nothing.
-    setPickedSeason(null);
-    write(SEASON_KEY, null);
+    setSeasonReady(true);
   }, []);
 
   const setEngagementId = useCallback((id: string) => {
@@ -102,7 +109,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const detail = useQuery({
     queryKey: ['client', clientId],
     queryFn: () => api.client(clientId!),
-    enabled: Boolean(clientId) && ready,
+    enabled: clientId !== null,
     staleTime: 60_000,
   });
 
@@ -142,17 +149,38 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     return seasons[0] ?? null;
   }, [detail.data, pickedSeason, seasons]);
 
-  if (!ready) return <Skeleton className="h-40 w-full" />;
+  if (isLoading || !seasonReady) return <Skeleton className="h-40 w-full" />;
 
-  if (!clientId) return <ClientChooser onPick={setClientId} />;
-  // A stored id whose client has since been deleted would otherwise leave the
-  // whole wing stuck on an error with no way back to the picker.
+  if (viewer === null) {
+    return (
+      <Card>
+        <EmptyState title="Sign in to see your account">
+          This page belongs to one business. Signing in is what says which.
+        </EmptyState>
+      </Card>
+    );
+  }
+
+  // The firm arrived without naming a client. There is nothing to guess at:
+  // opening the newest client, or the first alphabetically, would be a portal
+  // that shows a preparer one business while they believe they are looking at
+  // another.
+  if (clientId === null) {
+    return (
+      <Card>
+        <EmptyState title="A portal belongs to a business">
+          Open a client in the workspace and use “View their portal” to see this wing the way they
+          do.
+        </EmptyState>
+      </Card>
+    );
+  }
+
   if (detail.error) {
     return (
-      <div className="space-y-4">
+      <Card>
         <ErrorState error={detail.error} />
-        <ClientChooser onPick={setClientId} />
-      </div>
+      </Card>
     );
   }
   if (!detail.data) return <Skeleton className="h-40 w-full" />;
@@ -166,66 +194,28 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         engagement,
         engagementId: engagement?.id ?? null,
         setEngagementId,
-        setClientId,
+        previewing,
+        canAct,
       }}
     >
+      {previewing ? <PreviewBanner name={detail.data.client.name} /> : null}
       {children}
     </PortalContext.Provider>
   );
 }
 
 /**
- * The stand-in for a login screen.
+ * Said plainly, and at the top.
  *
- * Deliberately plain and deliberately labelled: this is the one screen in the
- * client wing that will not survive real authentication, and dressing it up as
- * a feature would make it harder to notice when it should be deleted.
+ * A preparer who forgets they are in a preview will read "you have $84,000 of
+ * savings" as a sentence about the firm's own work rather than about this
+ * client's, and a screenshot taken from here goes out with the wrong name on it.
  */
-function ClientChooser({ onPick }: { onPick: (id: string) => void }) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['clients'],
-    queryFn: () => api.clients(),
-  });
-
+function PreviewBanner({ name }: { name: string }) {
   return (
-    <Card>
-      <CardHeader
-        title="Which business is this?"
-        description="Client logins do not exist yet, so the portal asks who you are instead of proving it."
-        help="Everything under this wing is scoped to the business picked here. When clients sign in for themselves, this screen goes away and the identity comes from the session."
-        icon={Building2}
-      />
-      <div className="px-5 py-5">
-        {error ? (
-          <ErrorState error={error} />
-        ) : isLoading || !data ? (
-          <Skeleton className="h-9 w-72" />
-        ) : data.length === 0 ? (
-          <EmptyState title="No businesses on file yet">
-            A client has to exist in the Proxi wing before it has a portal to sign in to.
-          </EmptyState>
-        ) : (
-          <Select
-            // Controlled at the empty choice and never moved off it: picking a
-            // business unmounts this screen, so there is no second render for a
-            // stored value to survive into.
-            value=""
-            className="w-full max-w-sm"
-            onChange={(e) => {
-              if (e.target.value) onPick(e.target.value);
-            }}
-          >
-            <option value="" disabled>
-              Choose a business…
-            </option>
-            {data.map((client) => (
-              <option key={client.id} value={client.id}>
-                {client.name}
-              </option>
-            ))}
-          </Select>
-        )}
-      </div>
-    </Card>
+    <div className="rounded-md border border-[var(--color-hairline)] bg-[var(--color-sunken)] px-4 py-2 text-xs text-[var(--color-ink-muted)]">
+      You are looking at <span className="font-medium text-[var(--color-ink)]">{name}</span>’s
+      portal as the firm. They see this page without this line.
+    </div>
   );
 }

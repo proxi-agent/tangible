@@ -54,18 +54,61 @@ export async function commitFindings(
       'This analysis found nothing to commit. Commit a set once there is something in it to decide about.',
     );
 
+  const setId = await writeFindingSet({
+    engagementId,
+    normalized,
+    report,
+    fingerprint,
+    priorDocumentId,
+    taxYear,
+    label: body.label ?? null,
+    actor,
+  });
+
+  return fetchFindingSet(setId);
+}
+
+export interface WriteFindingSet {
+  engagementId: string;
+  normalized: NormalizedSet;
+  report: unknown;
+  fingerprint: string;
+  priorDocumentId: string | null;
+  taxYear: number;
+  label: string | null;
+  actor: string | null;
+}
+
+/**
+ * Write the snapshot, and nothing else.
+ *
+ * Split out from `commitFindings` for the run publisher, which cannot go
+ * through the front door for two reasons. It has already run the analysis —
+ * calling in again would price the register a second time and could store a
+ * report the run did not compute, with a fingerprint from the other one. And a
+ * run that legitimately finds nothing still has to publish: the empty-set
+ * refusal above is right for a partner clicking "commit" and wrong for a job a
+ * client is waiting on, where it would leave a business staring at a report
+ * that never arrives because their books were clean.
+ *
+ * Everything both paths must agree on lives here, so a column added to the set
+ * cannot be populated by one caller and forgotten by the other.
+ */
+export async function writeFindingSet(input: WriteFindingSet): Promise<string> {
+  const { engagementId, normalized } = input;
   const db = requireDb();
-  const setId = await db.transaction(async (tx) => {
+
+  return db.transaction(async (tx) => {
     const [set] = await tx
       .insert(schema.findingSets)
       .values({
         engagementId,
         source: normalized.source,
-        priorDocumentId,
-        taxYear,
-        label: body.label ?? null,
-        report,
-        sourceFingerprint: fingerprint,
+        priorDocumentId: input.priorDocumentId,
+        taxYear: input.taxYear,
+        label: input.label,
+        report: input.report,
+        sourceFingerprint: input.fingerprint,
         findingCount: normalized.findingCount,
         savingCount: normalized.savingCount,
         exposureCount: normalized.exposureCount,
@@ -74,36 +117,36 @@ export async function commitFindings(
         headlineLabel: normalized.headline.label,
         headlineValue: normalized.headline.value,
         headlineCaveat: normalized.headline.caveat,
-        committedBy: actor,
+        committedBy: input.actor,
       })
       .returning({ id: schema.findingSets.id });
     if (!set) throw new HttpError(500, 'The finding set could not be written.');
 
-    await tx.insert(schema.findings).values(
-      normalized.findings.map((finding) => ({
-        setId: set.id,
-        engagementId,
-        source: normalized.source,
-        key: finding.key,
-        ordinal: finding.ordinal,
-        title: finding.title,
-        kind: finding.kind,
-        effect: finding.effect,
-        cost: finding.cost,
-        value: finding.value,
-        assetCount: finding.assetCount,
-        summary: finding.summary,
-        basis: finding.basis,
-        assumption: finding.assumption,
-        evidence: finding.evidence,
-        cells: finding.cells,
-      })),
-    );
+    if (normalized.findings.length > 0) {
+      await tx.insert(schema.findings).values(
+        normalized.findings.map((finding) => ({
+          setId: set.id,
+          engagementId,
+          source: normalized.source,
+          key: finding.key,
+          ordinal: finding.ordinal,
+          title: finding.title,
+          kind: finding.kind,
+          effect: finding.effect,
+          cost: finding.cost,
+          value: finding.value,
+          assetCount: finding.assetCount,
+          summary: finding.summary,
+          basis: finding.basis,
+          assumption: finding.assumption,
+          evidence: finding.evidence,
+          cells: finding.cells,
+        })),
+      );
+    }
 
     return set.id;
   });
-
-  return fetchFindingSet(setId);
 }
 
 /**

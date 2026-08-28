@@ -37,7 +37,84 @@ export function observedDate(iso: string): string {
   return date.toISOString().slice(0, 10);
 }
 
-export function deadlinesFor(taxYear: number): FilingDeadline[] {
+/**
+ * The statutory calendar, per state.
+ *
+ * Texas stays the default because every existing caller meant Texas and none of
+ * them should silently change answer. What Florida proves is that a calendar is
+ * not a set of dates with the state's name swapped in: the *shape* differs.
+ * Texas gives a rendition an extension the appraiser must grant on request;
+ * Florida gives an extension the appraiser may grant and caps at 45 days.
+ * Texas prices lateness at a flat 10%; Florida runs 5% a month to 25% and adds
+ * a separate 15% on property never disclosed. And the Florida protest clock
+ * does not start on a calendar date at all — it runs 25 days from the TRIM
+ * notice, which the county mails when it mails.
+ *
+ * A state nobody has researched gets an empty calendar rather than Texas's. An
+ * empty list reads on screen as "no dates loaded"; a wrong list reads as April
+ * 15, and somebody plans around it.
+ */
+export function deadlinesFor(
+  taxYear: number,
+  jurisdictionId: string | null = null,
+): FilingDeadline[] {
+  if (jurisdictionId === null || jurisdictionId.startsWith('tx-')) return texasDeadlines(taxYear);
+  if (jurisdictionId === 'fl' || jurisdictionId.startsWith('fl-')) return floridaDeadlines(taxYear);
+  return [];
+}
+
+/**
+ * Florida's tangible personal property season.
+ *
+ * Three dates and one that cannot be computed. April 1 is the return deadline
+ * under s. 193.062; the extension under s. 193.063 is discretionary and capped,
+ * unlike the Texas one; s. 193.072 penalties compound monthly rather than
+ * landing flat. The TRIM notice is the one that matters most to a protest and
+ * the one this calendar cannot print, because the mailing date is the county's
+ * and the 25 days run from it — so it appears as a dated-when-it-arrives entry
+ * rather than as a guess, and the notice intake is what fills it in.
+ */
+function floridaDeadlines(taxYear: number): FilingDeadline[] {
+  return [
+    {
+      key: 'assessment-date',
+      label: 'Property counted as of this date',
+      date: `${taxYear}-01-01`,
+      basis:
+        's. 192.042(2), F.S. — tangible personal property is assessed at its value on January 1. The same January 1 rule as Texas, from a different statute.',
+    },
+    {
+      key: 'return-due',
+      label: 'DR-405 tangible personal property return due',
+      date: observed(taxYear, 4, 1),
+      basis:
+        's. 193.062, F.S. Two weeks earlier than the Texas rendition, and the deadline a firm working both states will miss first.',
+    },
+    {
+      key: 'extension-request',
+      label: 'Last day to request an extension',
+      date: observed(taxYear, 4, 1),
+      basis:
+        's. 193.063, F.S.: the property appraiser *may* grant up to 45 days, and it is discretionary throughout. Nothing moves until it is granted — unlike Texas, where a timely request moves the deadline on its own.',
+    },
+    {
+      key: 'trim-notice',
+      label: 'TRIM notice of proposed property taxes',
+      date: null,
+      basis:
+        's. 200.069, F.S. Mailed in August, on a date the county sets. The petition clock runs 25 days from this notice, so the date is recorded when the notice arrives rather than predicted here.',
+    },
+    {
+      key: 'protest',
+      label: 'VAB petition deadline',
+      date: null,
+      basis:
+        's. 194.011(3), F.S.: a DR-486 petition within 25 days of the TRIM notice. Filing a timely return is a precondition for contesting the assessment at all, which makes the April 1 date above do double duty.',
+    },
+  ];
+}
+
+function texasDeadlines(taxYear: number): FilingDeadline[] {
   return [
     {
       key: 'assessment-date',

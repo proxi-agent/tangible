@@ -21,6 +21,7 @@ import type {
   RenditionFilingRecord,
 } from '@tangible/types';
 import { currentActor } from '@/lib/actor';
+import { seedClaimsForFiling } from '@/lib/recovery';
 import { formInputs } from '@/lib/rendition';
 import { HttpError, notFound } from '@/lib/route';
 import { fetchEngagement } from '@/lib/workspace';
@@ -79,7 +80,7 @@ export async function recordFiling(
   }
 
   const db = requireDb();
-  return db.transaction(async (tx) => {
+  const record = await db.transaction(async (tx) => {
     // An amendment supersedes what it amends. Scoped to the site and the year
     // rather than the engagement: the same site may file for two years under
     // one engagement, and superseding across years would retract a return that
@@ -128,6 +129,22 @@ export async function recordFiling(
     if (!row) throw new HttpError(500, 'The filing was not recorded.');
     return toRecord(row);
   });
+
+  // The positions this return took, written down as claims so the season can
+  // eventually be scored against them. Outside the transaction and outside the
+  // caller's failure path on purpose: a return that went out went out, and a
+  // seeding failure must not roll back the record of it. Re-recording is safe —
+  // `seedClaimsForFiling` is idempotent per filing.
+  await seedClaimsForFiling({
+    engagementId,
+    filingId: record.id,
+    locationId: record.locationId,
+    accountId: record.accountId,
+    taxYear: record.taxYear,
+    filedOn: record.filedOn,
+  }).catch(() => undefined);
+
+  return record;
 }
 
 /**

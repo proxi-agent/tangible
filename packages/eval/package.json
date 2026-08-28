@@ -1,0 +1,32 @@
+{
+  "name": "@tangible/eval",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsc -p tsconfig.json --watch",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "gate": "vitest run src/gate.test.ts",
+    "clean": "rm -rf dist .turbo"
+  },
+  "dependencies": {
+    "@tangible/savings": "workspace:*",
+    "@tangible/types": "workspace:*",
+    "@tangible/valuation": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

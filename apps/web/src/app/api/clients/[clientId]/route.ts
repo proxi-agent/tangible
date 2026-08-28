@@ -1,6 +1,7 @@
 import { desc, eq } from 'drizzle-orm';
 import { UpdateClientRequestSchema, type ClientDetail } from '@tangible/types';
 import { handle } from '@/lib/route';
+import { requireClientScope, requireFirm } from '@/lib/viewer';
 import {
   clientDto,
   engagementDto,
@@ -19,6 +20,9 @@ type Params = { params: Promise<{ clientId: string }> };
 export function GET(request: Request, { params }: Params): Promise<Response> {
   return handle(async (): Promise<ClientDetail> => {
     const { clientId } = await params;
+    // The client wing reads this for its own name and its own seasons. Anyone
+    // else's id answers 404 here, the same as an id that does not exist.
+    await requireClientScope(clientId);
     const client = await fetchClient(clientId);
     const db = requireDb();
 
@@ -51,6 +55,9 @@ export function GET(request: Request, { params }: Params): Promise<Response> {
 export function PATCH(request: Request, { params }: Params): Promise<Response> {
   return handle(async () => {
     const { clientId } = await params;
+    // Editing the business record is the firm's, not the client's: the name and
+    // the entity details on it are what the rendition is signed under.
+    await requireFirm();
     await fetchClient(clientId);
     const body = UpdateClientRequestSchema.parse(await request.json());
     const db = requireDb();

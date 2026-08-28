@@ -1,9 +1,11 @@
 import { eq } from 'drizzle-orm';
+import { after } from 'next/server';
 import { applyMapping, parseWorkbook } from '@tangible/far';
 import { ConfirmMappingRequestSchema, type NormalizationResult } from '@tangible/types';
 import { handle } from '@/lib/route';
 import { applyImportBatch } from '@/lib/asset-graph';
 import { downloadFarFile } from '@/lib/far-storage';
+import { executeRun, requestRun } from '@/lib/runs';
 import { fetchEngagement, fetchFarFile } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -69,6 +71,23 @@ export function POST(
         updatedAt: new Date(),
       })
       .where(eq(schema.farFiles.id, fileId));
+
+    /**
+     * A confirmed register is the event the client is actually waiting on, so
+     * this is where the report gets made. It runs after the response, and the
+     * mapping screen does not wait on it — the caller gets its normalization
+     * summary immediately and the portal follows the run.
+     *
+     * Best-effort on purpose. A run that could not be queued must not undo an
+     * import that succeeded: the assets are in the graph either way, and the
+     * next request or the reaper will produce the report.
+     */
+    try {
+      const run = await requestRun(row.engagementId, 'upload', row.uploadedBy);
+      if (run.status === 'queued') after(() => executeRun(run.id));
+    } catch (error) {
+      console.error('[files] imported, but the report run could not be queued', fileId, error);
+    }
 
     return {
       inserted: batch.assetCount,

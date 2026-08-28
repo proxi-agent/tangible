@@ -14,11 +14,18 @@ const empty: DeletionCounts = {
   protests: 0,
   correctionMotions: 0,
   appointments: 0,
+  portalLogins: 0,
   memoryRows: 0,
   assistantTurns: 0,
 };
 
 describe('deletionWarnings', () => {
+  it('counts the sign-ins that stop working, because nobody tells them', () => {
+    const [warning] = deletionWarnings({ ...empty, portalLogins: 2 });
+    expect(warning).toContain('2 people');
+    expect(warning).toContain('not told');
+  });
+
   it('says nothing about a client who was never worked', () => {
     expect(deletionWarnings({ ...empty, engagements: 1, locations: 2 })).toEqual([]);
   });

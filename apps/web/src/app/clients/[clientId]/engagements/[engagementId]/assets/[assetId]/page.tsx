@@ -123,6 +123,8 @@ export default function AssetProfilePage() {
         <FindingsCard profile={data} />
       </div>
 
+      {data.evidence ? <EvidenceCard evidence={data.evidence} /> : null}
+
       <HistoryCard events={data.events} />
       <VersionsCard profile={data} />
       <RawCard raw={data.raw} sheet={data.asset.sourceSheet} row={data.asset.sourceRow} />
@@ -517,6 +519,67 @@ function FindingsCard({ profile }: { profile: AssetProfile }) {
           ))}
         </ul>
       )}
+    </Card>
+  );
+}
+
+/**
+ * What the systems outside the register say about this one asset.
+ *
+ * Three lists, and keeping them apart is the whole design. A match is a system
+ * saying it has this asset. A negative is a system that covers this kind of
+ * property saying it does not — which is evidence, and is what a ghost finding
+ * rests on. Silence is a system that was never going to know either way, and it
+ * appears here for exactly one reason: so an empty row is not read as a search
+ * that came back empty. The card is absent entirely when nothing has been
+ * imported, because "no evidence" and "no sources" are different claims.
+ */
+function EvidenceCard({ evidence }: { evidence: NonNullable<AssetProfile['evidence']> }) {
+  return (
+    <Card>
+      <CardHeader
+        title="Outside the register"
+        description="What the client's other systems have to say about this asset."
+        help="Each source is authoritative over its own slice of the register and silent everywhere else. A maintenance system with no work order against a chiller is evidence the chiller is gone; the same system saying nothing about a desk is evidence of nothing, because desks were never in its scope."
+      />
+      <div className="divide-y divide-[var(--color-hairline)]">
+        {evidence.matches.map((match) => (
+          <div key={`${match.source}-${match.on}`} className="space-y-1 px-5 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="good">found</Badge>
+              <span className="text-sm font-medium">{match.sourceLabel}</span>
+              <span className="text-xs text-[var(--color-ink-muted)]">
+                matched on {match.method} · {percent(match.score)} confident
+                {match.lastSeenOn ? ` · last seen ${match.lastSeenOn}` : ''}
+              </span>
+            </div>
+            <p className="text-sm text-[var(--color-ink-secondary)]">{match.affirms}</p>
+            {match.filename ? (
+              <p className="text-xs text-[var(--color-ink-muted)]">{match.filename}</p>
+            ) : null}
+          </div>
+        ))}
+        {evidence.negatives.map((negative) => (
+          <div key={negative.source} className="space-y-1 px-5 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="warning">searched, not found</Badge>
+              <span className="text-sm font-medium">{negative.sourceLabel}</span>
+              <span className="text-xs text-[var(--color-ink-muted)]">
+                {negative.searched.toLocaleString()} records searched
+              </span>
+            </div>
+            <p className="text-sm text-[var(--color-ink-secondary)]">{negative.statement}</p>
+          </div>
+        ))}
+        {evidence.silent.map((silent) => (
+          <div key={silent.source} className="px-5 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone="neutral">not in scope</Badge>
+              <span className="text-xs text-[var(--color-ink-muted)]">{silent.note}</span>
+            </div>
+          </div>
+        ))}
+      </div>
     </Card>
   );
 }

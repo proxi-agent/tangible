@@ -1,5 +1,13 @@
+import type { CapitalizationAdvice, CapitalizationAdviceRequest } from '@tangible/types';
 import type {
+  AcceptanceBoard,
+  AnalysisRun,
+  GrantPortalAccessRequest,
   IntakeFile,
+  PortalUser,
+  RunProgress,
+  UpdatePortalAccessRequest,
+  Viewer,
   IntakeRoute,
   AccountQuery,
   AccountSeries,
@@ -10,6 +18,11 @@ import type {
   AssistantAskResponse,
   AssistantConversation,
   AssistantConversationDetail,
+  DetectionModel,
+  EvidenceBoard,
+  EvidenceColumnMapDto,
+  EvidenceExport,
+  EvidenceSourceKindDto,
   ProtestBriefRecord,
   UnblockPlanRecord,
   ResultLetterRecord,
@@ -39,6 +52,8 @@ import type {
   CommitFindingsRequest,
   CorrectionMotion,
   Engagement,
+  ClientRecoveryStatement,
+  EngagementRecovery,
   EngagementResult,
   EngagementDetail,
   EngagementReturns,
@@ -46,12 +61,21 @@ import type {
   EngagementValuation,
   FarFile,
   FarMapping,
+  InvoiceDetail,
+  InvoiceDocument,
+  InvoiceList,
+  AssessabilityTreatment,
   FilingAgent,
   FilingSeason,
   FilterFacets,
   FindingDecisionResult,
+  FindingRowFilters,
+  FindingQueue,
+  FindingRowPage,
   FindingSet,
   FindingSetSummary,
+  PortalSettings,
+  UpdatePortalSettingsRequest,
   IngestRun,
   JurisdictionSummary,
   LineMappingDecisionResult,
@@ -72,6 +96,7 @@ import type {
   RecordExtensionRequest,
   RecordFilingRequest,
   RecordMotionRequest,
+  RecordSettlementRequest,
   RecordNoticeRequest,
   NoticeRecordProposal,
   AskRecord,
@@ -100,6 +125,9 @@ import type {
   UpdateEngagementRequest,
   UpdateMotionRequest,
   YearTrendPoint,
+  DraftScheduleRequest,
+  DraftScheduleResult,
+  QualityView,
 } from '@tangible/types';
 // Type-only, so nothing from the filing package reaches the client bundle.
 import type {
@@ -238,6 +266,37 @@ export function toSearchParams(query: Partial<AccountQuery>): URLSearchParams {
   return params;
 }
 
+/**
+ * The nine filters as a query string, in the shape `parseFilters` reads.
+ *
+ * Lists are comma-joined and empty ones are omitted entirely, so an untouched
+ * filter bar produces no parameters at all — which keeps the export URL, the
+ * query key and the address bar readable, and makes "no filter" and "every
+ * option ticked" the same request rather than two.
+ */
+export function findingRowParams(
+  findingKey: string,
+  filters: Partial<FindingRowFilters> = {},
+): URLSearchParams {
+  const params = new URLSearchParams({ finding: findingKey });
+  const list = (name: string, values: string[] | undefined) => {
+    if (values && values.length > 0) params.set(name, values.join(','));
+  };
+  list('confidence', filters.confidence);
+  list('locations', filters.locations);
+  list('costCenters', filters.costCenters);
+  list('categories', filters.categories);
+  list('dispositions', filters.dispositions);
+  list('reviewers', filters.reviewers);
+  for (const key of ['acquiredFrom', 'acquiredTo', 'costMin', 'costMax'] as const) {
+    const value = filters[key];
+    if (value !== null && value !== undefined) params.set(key, String(value));
+  }
+  if (filters.evidence && filters.evidence !== 'any') params.set('evidence', filters.evidence);
+  if (filters.query && filters.query.trim() !== '') params.set('query', filters.query.trim());
+  return params;
+}
+
 export const api = {
   jurisdictions: () => request<JurisdictionSummary[]>('/jurisdictions'),
 
@@ -310,6 +369,125 @@ export const api = {
   // -------------------------------------------------------------------------
   // Workspace: clients, engagements, FAR intake
   // -------------------------------------------------------------------------
+
+  /**
+   * Who this browser is signed in as. Decides which product the shell draws;
+   * it is not what decides what the server will answer.
+   */
+  viewer: () => request<Viewer | null>('/viewer'),
+
+  /** Who from the client's side may sign in to this business's portal. */
+  portalUsers: (clientId: string) => request<PortalUser[]>(`/clients/${clientId}/portal-users`),
+
+  grantPortalAccess: (clientId: string, body: GrantPortalAccessRequest) =>
+    request<PortalUser>(`/clients/${clientId}/portal-users`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updatePortalAccess: (clientId: string, grantId: string, body: UpdatePortalAccessRequest) =>
+    request<PortalUser>(`/clients/${clientId}/portal-users/${grantId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  revokePortalAccess: (clientId: string, grantId: string) =>
+    request<{ ok: true }>(`/clients/${clientId}/portal-users/${grantId}`, { method: 'DELETE' }),
+
+  /** Every analysis run for a season, newest first. */
+  runs: (engagementId: string) => request<AnalysisRun[]>(`/engagements/${engagementId}/runs`),
+
+  /** Ask for a fresh run. Returns the queued row, not a report. */
+  requestRun: (engagementId: string) =>
+    request<AnalysisRun>(`/engagements/${engagementId}/runs`, {
+      method: 'POST',
+      body: JSON.stringify({ trigger: 'manual' }),
+    }),
+
+  /** The published report a client reads, and whatever run is in flight. */
+  publishedReport: (engagementId: string) =>
+    request<{
+      report: SavingsReport | null;
+      runId: string | null;
+      publishedAt: string | null;
+      inFlight: RunProgress | null;
+    }>(`/engagements/${engagementId}/report`),
+
+  // -------------------------------------------------------------------------
+  // One finding, row by row
+  // -------------------------------------------------------------------------
+
+  /** The population behind a finding, filtered, with each row's decision on it. */
+  findingRows: (
+    engagementId: string,
+    findingKey: string,
+    filters: Partial<FindingRowFilters> = {},
+    page: { offset?: number; limit?: number } = {},
+  ) => {
+    const params = findingRowParams(findingKey, filters);
+    if (page.offset) params.set('offset', String(page.offset));
+    if (page.limit) params.set('limit', String(page.limit));
+    return request<FindingRowPage>(`/engagements/${engagementId}/findings/rows?${params}`);
+  },
+
+  /**
+   * Accept, reject or park a batch of rows. The answer is the same filtered
+   * page the decision was made in, so the table redraws in place rather than
+   * jumping back to the whole finding.
+   */
+  decideFindingRows: (
+    engagementId: string,
+    body: {
+      findingKey: string;
+      assetIds: string[];
+      status: 'accepted' | 'rejected' | 'pending-client' | null;
+      note?: string;
+    },
+    filters: Partial<FindingRowFilters> = {},
+  ) =>
+    request<FindingRowPage>(
+      `/engagements/${engagementId}/findings/rows?${findingRowParams(body.findingKey, filters)}`,
+      { method: 'POST', body: JSON.stringify(body) },
+    ),
+
+  /**
+   * A download, so it is a URL rather than a fetch — the browser saves the file
+   * without the app holding a workbook in memory to hand back to it.
+   */
+  findingRowsExportUrl: (
+    engagementId: string,
+    findingKey: string,
+    filters: Partial<FindingRowFilters> = {},
+  ) =>
+    `${BASE_URL}/api/engagements/${engagementId}/findings/rows/export?${findingRowParams(findingKey, filters)}`,
+
+  /**
+   * The whole report as one ranked list of decisions.
+   *
+   * A separate call from `findingRows` rather than a filter over it, because it
+   * is not a view of a finding — it crosses all of them, and what it ranks on
+   * (expected recovery) is a quantity no single category page can order by.
+   * Offset is a window on one ordering the server holds, so paging forward
+   * never re-offers a row the diversity cap already placed.
+   */
+  findingQueue: (engagementId: string, page: { offset?: number; size?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (page.offset) params.set('offset', String(page.offset));
+    if (page.size) params.set('size', String(page.size));
+    const query = params.toString();
+    return request<FindingQueue>(
+      `/engagements/${engagementId}/findings/queue${query === '' ? '' : `?${query}`}`,
+    );
+  },
+
+  portalSettings: (clientId: string) =>
+    request<PortalSettings>(`/clients/${clientId}/portal-settings`),
+
+  updatePortalSettings: (clientId: string, body: UpdatePortalSettingsRequest) =>
+    request<PortalSettings>(`/clients/${clientId}/portal-settings`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
 
   clients: () => request<ClientListItem[]>('/clients'),
 
@@ -426,6 +604,123 @@ export const api = {
   },
 
   farFile: (fileId: string) => request<FarFile>(`/files/${fileId}`),
+
+  // -------------------------------------------------------------------------
+  // The systems outside the register
+  // -------------------------------------------------------------------------
+
+  /**
+   * Firm-side only, and not in the portal allowlist.
+   *
+   * A client's own maintenance export coming back at them through this product
+   * would be a strange thing to show, and the coverage figure beside it is a
+   * statement about how thoroughly the firm has done its own job.
+   */
+  evidence: (engagementId: string) =>
+    request<EvidenceBoard>(`/engagements/${engagementId}/evidence`),
+
+  /** Multipart for the same boundary reason as `uploadFar`. */
+  uploadEvidence: async (
+    engagementId: string,
+    kind: EvidenceSourceKindDto,
+    file: File,
+  ): Promise<EvidenceExport> => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('kind', kind);
+    const response = await fetch(`${BASE_URL}/api/engagements/${engagementId}/evidence`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      fail(response, body);
+    }
+    return response.json() as Promise<EvidenceExport>;
+  },
+
+  confirmEvidence: (
+    engagementId: string,
+    exportId: string,
+    body: { sheetName: string; headerRow: number; columns: EvidenceColumnMapDto },
+  ) =>
+    request<EvidenceExport>(`/engagements/${engagementId}/evidence/${exportId}/confirm`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  removeEvidence: (engagementId: string, exportId: string) =>
+    request<{ id: string }>(`/engagements/${engagementId}/evidence/${exportId}`, {
+      method: 'DELETE',
+    }),
+
+  // -------------------------------------------------------------------------
+  // Invoices behind the register
+  // -------------------------------------------------------------------------
+
+  /**
+   * Firm-side only, and deliberately not in the portal allowlist.
+   *
+   * Decomposing a capitalized amount is a position taken on a taxpayer's
+   * behalf. Half-read lines and unconfirmed links are working paper; what a
+   * client sees is the finding they support, once somebody stands behind it.
+   */
+  invoices: (engagementId: string) => request<InvoiceList>(`/engagements/${engagementId}/invoices`),
+
+  /** Multipart for the same boundary reason as `uploadFar`. */
+  uploadInvoice: async (engagementId: string, file: File): Promise<InvoiceDocument> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await fetch(`${BASE_URL}/api/engagements/${engagementId}/invoices`, {
+      method: 'POST',
+      body: form,
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      fail(response, body);
+    }
+    return response.json() as Promise<InvoiceDocument>;
+  },
+
+  invoice: (engagementId: string, documentId: string) =>
+    request<InvoiceDetail>(`/engagements/${engagementId}/invoices/${documentId}`),
+
+  /**
+   * `reread` runs the model again; `accept` is a person saying they have read
+   * the document themselves, which is what lifts the unreviewed discount.
+   */
+  invoiceAction: (engagementId: string, documentId: string, action: 'accept' | 'reread') =>
+    request<InvoiceDetail>(`/engagements/${engagementId}/invoices/${documentId}`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    }),
+
+  /** Every one of these answers with the whole document: one line moves the split. */
+  correctInvoiceLine: (
+    engagementId: string,
+    documentId: string,
+    body: { lineId: string; treatment: AssessabilityTreatment; reason?: string | null },
+  ) =>
+    request<InvoiceDetail>(`/engagements/${engagementId}/invoices/${documentId}/lines`, {
+      method: 'PATCH',
+      body: JSON.stringify({ ...body, reason: body.reason ?? null }),
+    }),
+
+  linkInvoice: (
+    engagementId: string,
+    documentId: string,
+    body: { assetId: string; status?: 'suggested' | 'confirmed'; share?: number },
+  ) =>
+    request<InvoiceDetail>(`/engagements/${engagementId}/invoices/${documentId}/links`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  unlinkInvoice: (engagementId: string, documentId: string, assetId: string) =>
+    request<InvoiceDetail>(
+      `/engagements/${engagementId}/invoices/${documentId}/links?assetId=${encodeURIComponent(assetId)}`,
+      { method: 'DELETE' },
+    ),
 
   // -------------------------------------------------------------------------
   // Multi-file intake
@@ -553,6 +848,16 @@ export const api = {
       body: JSON.stringify({ question }),
     }),
 
+  /**
+   * Price a purchase nobody has made yet. Writes nothing — ask about the same
+   * quote twice and the second answer is as free as the first.
+   */
+  advise: (engagementId: string, body: CapitalizationAdviceRequest) =>
+    request<{ advice: CapitalizationAdvice }>(`/engagements/${engagementId}/advice`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   // -------------------------------------------------------------------------
   // The assistant
   // -------------------------------------------------------------------------
@@ -633,6 +938,24 @@ export const api = {
     request<PracticeSeason>(`/season${taxYear ? `?taxYear=${taxYear}` : ''}`),
 
   /**
+   * Precision per finding type per jurisdiction, the rules repository, and the
+   * release gate. Firm-only — the client wing cannot reach it.
+   */
+  quality: () => request<QualityView>('/quality'),
+  /**
+   * The acceptance rates the engine now uses, and the closed positions behind
+   * each one. Also firm-only, and for a stronger reason: it is pooled across
+   * every client the practice has.
+   */
+  acceptance: () => request<AcceptanceBoard>('/quality/acceptance'),
+  model: () => request<DetectionModel>('/quality/model'),
+  draftSchedule: (body: DraftScheduleRequest) =>
+    request<DraftScheduleResult>('/quality/rule-drafts', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /**
    * Last season's returns against this season's register, asset by asset.
    *
    * The comparison the paper cannot do: two renditions side by side show two
@@ -658,6 +981,32 @@ export const api = {
    */
   engagementResult: (engagementId: string) =>
     request<EngagementResult>(`/engagements/${engagementId}/result`),
+
+  /**
+   * Every position taken to a district on this engagement, with what came back.
+   *
+   * Read at the asset grain even though it is displayed grouped, because the
+   * grouping a screen wants and the grain a claim is stored at are different
+   * questions and only one of them is settled.
+   */
+  recovery: (engagementId: string) =>
+    request<EngagementRecovery>(`/engagements/${engagementId}/recovery`),
+
+  /**
+   * Record what a district did about those positions.
+   *
+   * Naming each one is the strong form. A single figure is split in proportion
+   * and marked as such — reportable, and excluded from anything that learns.
+   */
+  recordSettlement: (engagementId: string, body: RecordSettlementRequest) =>
+    request<EngagementRecovery>(`/engagements/${engagementId}/recovery`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  /** The client's copy of the same record. Used by the portal. */
+  recoveryStatement: (engagementId: string) =>
+    request<ClientRecoveryStatement>(`/engagements/${engagementId}/recovery/statement`),
 
   /**
    * Write down a 25.25 motion that has gone in.

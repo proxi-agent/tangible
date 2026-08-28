@@ -3,12 +3,15 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   AlertTriangle,
+  BadgeCheck,
   BarChart3,
   Briefcase,
   Building2,
   CalendarRange,
   Database,
+  FlaskConical,
   FolderUp,
+  ListOrdered,
   LogOut,
   Menu,
   MessageCircleQuestion,
@@ -30,6 +33,7 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { ThemeToggle } from '@/components/theme-toggle';
 import { CoverageGuideButton } from '@/components/coverage-guide';
 import { AssistantProvider, AssistantTrigger } from '@/components/assistant/assistant-provider';
+import { useViewer } from '@/components/viewer-context';
 
 /**
  * Two wings, one shell. The Workspace is client engagements — FAR intake,
@@ -65,7 +69,10 @@ const ASSISTANT_NAV = {
  * Same portal, other side of the engagement. A business's whole relationship
  * with us is four questions — did you get my files, what do you still need from
  * me, is my return going out on time, and what did it save me — and the wing is
- * those four questions in that order. Nothing here takes an id from the URL:
+ * those four questions in that order. The last of them went unanswered for a
+ * long time: the report says what a position is worth, which is not the same
+ * claim as what it recovered, and until the results page existed a client could
+ * only be told the first. Nothing here takes an id from the URL:
  * the identity is held by the portal layout, so there is no address a client
  * can edit into somebody else's account.
  *
@@ -83,6 +90,15 @@ const PORTAL_NAV = [
     hint: 'What we found in your register, and what it is worth.',
   },
   {
+    // Second, not first. The report is what a business asks for; this is what
+    // they do about it, and it only makes sense once they have read the top of
+    // the other page.
+    href: '/portal/queue',
+    label: 'What to do first',
+    icon: ListOrdered,
+    hint: 'Every finding as one ranked list, worth the most first.',
+  },
+  {
     href: '/portal/documents',
     label: 'Documents',
     icon: FolderUp,
@@ -93,6 +109,15 @@ const PORTAL_NAV = [
     label: 'Questions',
     icon: MessageCircleQuestion,
     hint: 'Things only you can answer about your own property.',
+  },
+  {
+    // The fourth question, and the last one to have an answer. Everything above
+    // is what a position is worth; this is what came back from the district,
+    // and it stays empty until something actually has.
+    href: '/portal/results',
+    label: 'What it saved',
+    icon: BadgeCheck,
+    hint: 'What we claimed on your behalf, and what the district allowed.',
   },
 ];
 
@@ -111,6 +136,15 @@ const WORKSPACE_NAV = [
     label: 'Clients',
     icon: Briefcase,
     hint: 'The client list, and each client’s engagements, sites and filings.',
+  },
+  // Firm-only, and about the tooling rather than about any client. It sits in
+  // the workspace nav because the people who work the queues are the people
+  // whose decisions the numbers are made of.
+  {
+    href: '/quality',
+    label: 'Quality',
+    icon: FlaskConical,
+    hint: 'How often each finding type is right, and the citation behind every rule the engine applies.',
   },
 ];
 
@@ -162,7 +196,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const scope = useScope();
   const [navOpen, setNavOpen] = useState(false);
 
-  const onMarket = isMarketPath(pathname);
+  const { viewer } = useViewer();
+  const isClient = viewer?.audience === 'client';
+
+  const onMarket = isMarketPath(pathname) && !isClient;
 
   // A drawer that survives the navigation it just performed covers the page the
   // reader asked for.
@@ -242,9 +279,13 @@ export function AppShell({ children }: { children: ReactNode }) {
 
               {/* On every page, market or not: the questions worth asking are
                 asked at whatever is on screen. */}
-              <div className="order-1 ml-auto flex shrink-0 items-center gap-2 lg:order-3 lg:ml-0">
-                <AssistantTrigger />
-              </div>
+              {/* Not for a client: the assistant answers across every client and
+                the county roll, which is the firm's own instrument. */}
+              {isClient ? null : (
+                <div className="order-1 ml-auto flex shrink-0 items-center gap-2 lg:order-3 lg:ml-0">
+                  <AssistantTrigger />
+                </div>
+              )}
 
               {onMarket ? (
                 <div
@@ -367,7 +408,13 @@ function NavRail({
   onNavigate: () => void;
 }) {
   const router = useRouter();
-  const wing = wingOf(pathname);
+  const { viewer } = useViewer();
+  // A client signs in to one product. There is no second wing behind the
+  // toggle for them — every link it would offer answers 404 — so the control
+  // is absent rather than disabled: a disabled control still advertises that
+  // something is there.
+  const isClient = viewer?.audience === 'client';
+  const wing = isClient ? 'client' : wingOf(pathname);
 
   return (
     <>
@@ -387,31 +434,33 @@ function NavRail({
       {/* Which side of the engagement you are looking from. It sits above the
         nav rather than inside it because it does not select a page — it
         selects which pages exist. */}
-      <div className="px-3 pb-3">
-        <Segmented
-          ariaLabel="Point of view"
-          grow
-          size="sm"
-          className="w-full"
-          value={wing}
-          options={[
-            {
-              value: 'proxi',
-              label: 'Proxi',
-              title: 'The firm\u2019s workspace and county analysis.',
-            },
-            {
-              value: 'client',
-              label: 'Client',
-              title: 'The portal a client sees: send files, answer questions, watch the return.',
-            },
-          ]}
-          onChange={(next) => {
-            onNavigate();
-            router.push(next === 'client' ? '/portal' : '/season');
-          }}
-        />
-      </div>
+      {isClient ? null : (
+        <div className="px-3 pb-3">
+          <Segmented
+            ariaLabel="Point of view"
+            grow
+            size="sm"
+            className="w-full"
+            value={wing}
+            options={[
+              {
+                value: 'proxi',
+                label: 'Proxi',
+                title: 'The firm\u2019s workspace and county analysis.',
+              },
+              {
+                value: 'client',
+                label: 'Client',
+                title: 'The portal a client sees: send files, answer questions, watch the return.',
+              },
+            ]}
+            onChange={(next) => {
+              onNavigate();
+              router.push(next === 'client' ? '/portal' : '/season');
+            }}
+          />
+        </div>
+      )}
 
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
         {wing === 'client' ? (

@@ -16,6 +16,12 @@ export {
   type MemoryRecord,
 } from './decide.js';
 export {
+  bundledComponents,
+  includedComponents,
+  type BundleSignal,
+  type IncludedSignal,
+} from './bundles.js';
+export {
   CLASSIFICATION_KEYS,
   EXCLUSION_CATEGORIES,
   EXCLUSION_KEYS,

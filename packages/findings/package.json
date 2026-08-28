@@ -19,6 +19,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
+    "@tangible/classification": "workspace:*",
     "@tangible/filing": "workspace:*",
     "@tangible/types": "workspace:*"
   },

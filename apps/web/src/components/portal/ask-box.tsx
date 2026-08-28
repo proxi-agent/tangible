@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { Button, TextArea } from '@/components/ui/controls';
 import { Card, CardHeader } from '@/components/ui/primitives';
 import { usePortal } from '@/components/portal/portal-context';
+import { ReadOnlyNote } from '@/components/portal/read-only';
 
 /**
  * A question box over the client's own record.
@@ -22,7 +23,7 @@ import { usePortal } from '@/components/portal/portal-context';
  * thing on this card.
  */
 export function AskBox() {
-  const { engagementId } = usePortal();
+  const { engagementId, canAct } = usePortal();
   const [question, setQuestion] = useState('');
   const [answered, setAnswered] = useState<GraphAskRecord | null>(null);
 
@@ -44,48 +45,58 @@ export function AskBox() {
         description="Answered from your own register and the district’s schedules — nothing else."
         help="The answer is assembled from the same record this report was built on. If your question cannot be settled from it, you will be told that rather than given a guess."
       />
-      <div className="space-y-3 px-5 py-4">
-        <TextArea
-          rows={2}
-          value={question}
-          placeholder="Why is the software line coming off?"
-          onChange={(event) => setQuestion(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && ready) {
-              ask.mutate(question.trim());
-            }
-          }}
-        />
-        <div className="flex items-center gap-3">
-          <Button
-            onClick={() => ask.mutate(question.trim())}
-            variant="primary"
-            disabled={!ready || ask.isPending}
-          >
-            <Sparkles size={14} className="mr-1.5" />
-            {ask.isPending ? 'Reading your record…' : 'Ask'}
-          </Button>
-          {ask.error ? (
-            <span className="text-sm text-[var(--color-bad)]">
-              That could not be answered just now. Try again in a moment.
-            </span>
-          ) : null}
+      {/* Every question here costs a model call against the client's own
+        record, and the endpoint refuses a viewer for that reason. Hiding the
+        box rather than letting it fail keeps the refusal off the screen of
+        somebody who did nothing wrong. */}
+      {!canAct ? (
+        <div className="px-5 py-4">
+          <ReadOnlyNote what="Asking a question" />
         </div>
-
-        {answered ? (
-          <div className="rounded-[var(--radius-control)] bg-[var(--color-sunken)] px-4 py-3">
-            <p className="text-sm font-medium">{answered.question}</p>
-            <p className="mt-2 text-sm whitespace-pre-wrap">{answered.answer.answer}</p>
-            {answered.answer.limits.length > 0 ? (
-              <ul className="mt-2 space-y-1 text-xs text-[var(--color-ink-muted)]">
-                {answered.answer.limits.map((limit) => (
-                  <li key={limit}>· {limit}</li>
-                ))}
-              </ul>
+      ) : (
+        <div className="space-y-3 px-5 py-4">
+          <TextArea
+            rows={2}
+            value={question}
+            placeholder="Why is the software line coming off?"
+            onChange={(event) => setQuestion(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && (event.metaKey || event.ctrlKey) && ready) {
+                ask.mutate(question.trim());
+              }
+            }}
+          />
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={() => ask.mutate(question.trim())}
+              variant="primary"
+              disabled={!ready || ask.isPending}
+            >
+              <Sparkles size={14} className="mr-1.5" />
+              {ask.isPending ? 'Reading your record…' : 'Ask'}
+            </Button>
+            {ask.error ? (
+              <span className="text-sm text-[var(--color-bad)]">
+                That could not be answered just now. Try again in a moment.
+              </span>
             ) : null}
           </div>
-        ) : null}
-      </div>
+
+          {answered ? (
+            <div className="rounded-[var(--radius-control)] bg-[var(--color-sunken)] px-4 py-3">
+              <p className="text-sm font-medium">{answered.question}</p>
+              <p className="mt-2 text-sm whitespace-pre-wrap">{answered.answer.answer}</p>
+              {answered.answer.limits.length > 0 ? (
+                <ul className="mt-2 space-y-1 text-xs text-[var(--color-ink-muted)]">
+                  {answered.answer.limits.map((limit) => (
+                    <li key={limit}>· {limit}</li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      )}
     </Card>
   );
 }

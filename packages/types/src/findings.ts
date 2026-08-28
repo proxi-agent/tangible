@@ -207,9 +207,7 @@ export const UpdateFindingDispositionRequestSchema = z.object({
   note: z.string().trim().max(2000).nullable().optional(),
 });
 
-export type UpdateFindingDispositionRequest = z.infer<
-  typeof UpdateFindingDispositionRequestSchema
->;
+export type UpdateFindingDispositionRequest = z.infer<typeof UpdateFindingDispositionRequestSchema>;
 
 /**
  * What a decision returns. The set travels with the row because the header's
@@ -222,3 +220,182 @@ export const FindingDecisionResultSchema = z.object({
 });
 
 export type FindingDecisionResult = z.infer<typeof FindingDecisionResultSchema>;
+
+/* ── Decisions at the row ──────────────────────────────────────────────────── */
+
+/**
+ * What was decided about one asset under one finding.
+ *
+ * The category disposition above answers "are we taking this position at all".
+ * This answers the question a controller actually has, which is narrower and
+ * more useful: *these eleven of your forty disposed assets are genuinely gone,
+ * these three were sold in March and belong on the return, and I do not
+ * recognise the rest.* A category-level accept cannot say that, and a report
+ * that cannot say it is one the client has to re-do in a spreadsheet.
+ *
+ * Stored append-only. `decidedAt` is the newest record's; a reversal writes a
+ * second record rather than editing this one, and `revisions` says how many
+ * times the row has been turned over — which is worth seeing, because a row
+ * that has been accepted, rejected and accepted again is a row somebody is
+ * unsure about.
+ */
+export const FindingRowDecisionSchema = z.object({
+  status: FindingDispositionStatusSchema,
+  note: z.string().nullable(),
+  decidedBy: z.string().nullable(),
+  /** 'firm' | 'client'. The reviewer filter, and the first thing a firm asks. */
+  decidedByAudience: z.string().nullable(),
+  decidedAt: z.string().datetime(),
+  /** What the row claimed at the moment of the decision. */
+  decidedValue: z.number().nullable(),
+  decidedTaxAtRisk: z.number().nullable(),
+  /** How many decisions this row has had, this one included. */
+  revisions: z.number().int().positive(),
+  /**
+   * True when the row's value has moved since it was decided. The decision
+   * stands — it was the client's to make — but accepting $12,000 is not consent
+   * to the $40,000 the same row claims after a new register lands.
+   */
+  hasMovedSinceDecision: z.boolean(),
+});
+
+export type FindingRowDecision = z.infer<typeof FindingRowDecisionSchema>;
+
+/**
+ * One decision, or several at once.
+ *
+ * Bulk because that is how the work is actually done: a reviewer filters to
+ * high-confidence disposals over $10,000 and accepts the twenty rows in front
+ * of them in one gesture. Sending twenty requests to do that would make the
+ * page slower than the spreadsheet it replaces, and would let the batch land
+ * half-applied.
+ *
+ * A null status clears the rows back to undecided — which, being append-only,
+ * is itself a record rather than a deletion.
+ */
+export const DecideFindingRowsRequestSchema = z.object({
+  findingKey: z.string(),
+  source: FindingSourceSchema.default('savings'),
+  assetIds: z.array(z.string().uuid()).min(1).max(1000),
+  status: FindingDispositionStatusSchema.nullable(),
+  note: z.string().trim().max(2000).nullable().optional(),
+});
+
+export type DecideFindingRowsRequest = z.infer<typeof DecideFindingRowsRequestSchema>;
+
+/* ── Reviewing rows ────────────────────────────────────────────────────────── */
+
+/**
+ * The nine filters, as one object.
+ *
+ * They are applied on the server, not in the browser, for a reason that is not
+ * performance: an uncapped population is the whole point of per-asset rows, and
+ * a register of any size means the filtered view has to be computed where the
+ * rows are. The client sends what it wants and gets back a page plus the totals
+ * *for the whole filtered set*, so the number at the top of the screen always
+ * describes the rows the filter selected rather than the ones that fit on it.
+ *
+ * Every list filter is "any of", and an empty list means no constraint — never
+ * "match nothing", which would make a freshly-loaded page show an empty table.
+ */
+export const FindingRowFiltersSchema = z.object({
+  confidence: z.array(z.enum(['high', 'medium', 'low'])).default([]),
+  /** Site ids. The literal 'unplaced' selects rows with no site. */
+  locations: z.array(z.string()).default([]),
+  costCenters: z.array(z.string()).default([]),
+  /** Classification keys — the asset class filter. */
+  categories: z.array(z.string()).default([]),
+  acquiredFrom: z.number().int().nullable().default(null),
+  acquiredTo: z.number().int().nullable().default(null),
+  costMin: z.number().nullable().default(null),
+  costMax: z.number().nullable().default(null),
+  /** 'any' | 'present' | 'absent' — whether the row can be tied to a document. */
+  evidence: z.enum(['any', 'present', 'absent']).default('any'),
+  /** Disposition, with 'undecided' for the rows nobody has answered. */
+  dispositions: z
+    .array(z.enum(['accepted', 'rejected', 'pending-client', 'undecided']))
+    .default([]),
+  /** Who decided. Free text, matched exactly against `decidedBy`. */
+  reviewers: z.array(z.string()).default([]),
+  /** Kept from the old page: description, tag, or year. */
+  query: z.string().default(''),
+});
+
+export type FindingRowFilters = z.infer<typeof FindingRowFiltersSchema>;
+
+/** A row with whatever has been decided about it. */
+export const ReviewableRowSchema = z.object({
+  row: z.unknown(),
+  decision: FindingRowDecisionSchema.nullable(),
+});
+
+export type ReviewableRow = {
+  row: import('./savings.js').FindingRow;
+  decision: FindingRowDecision | null;
+};
+
+/**
+ * What the filter bar offers, drawn from the rows themselves.
+ *
+ * Facets come from the finding's whole population rather than from the current
+ * filter, so the options do not disappear as you narrow — a controller who
+ * filters to Houston and then wants Dallas should not have to clear the filter
+ * to find out Dallas exists.
+ */
+export interface FindingRowFacets {
+  locations: { id: string; label: string; count: number }[];
+  costCenters: { value: string; count: number }[];
+  categories: { key: string; label: string; count: number }[];
+  reviewers: { value: string; count: number }[];
+  acquired: { min: number; max: number } | null;
+  cost: { min: number; max: number } | null;
+  confidence: { high: number; medium: number; low: number };
+  dispositions: { accepted: number; rejected: number; 'pending-client': number; undecided: number };
+}
+
+export interface FindingRowTotals {
+  rows: number;
+  originalCost: number;
+  /** Null-safe sums: a row that could not be priced contributes nothing. */
+  valueRemoved: number;
+  taxAtRisk: number;
+  /** Rows the filter matched that carry no price at all. */
+  unpricedRows: number;
+}
+
+/** One page of rows, with everything the screen around them needs. */
+export interface FindingRowPage {
+  engagementId: string;
+  findingKey: string;
+  title: string;
+  kind: 'measured' | 'modeled' | 'screening';
+  summary: string;
+  basis: string;
+  assumption: string | null;
+  question: string | null;
+  /** The published run these rows came from, and when it was published. */
+  runId: string | null;
+  publishedAt: string | null;
+  blendedTaxRate: number;
+  jurisdictionName: string | null;
+  detection: import('./savings.js').DetectionBasis[];
+  confidenceMix: { high: number; medium: number; low: number };
+  facets: FindingRowFacets;
+  /**
+   * The filter as the server read it, echoed back.
+   *
+   * Anything unparseable in the query string is dropped rather than rejected,
+   * so the client's idea of the filter and the server's can differ by one
+   * silently discarded parameter. Returning what was actually applied lets the
+   * screen — and the workbook, which prints it — describe the list it is
+   * showing rather than the list it asked for.
+   */
+  appliedFilters: FindingRowFilters;
+  /** The finding's whole population, however the filter is set. */
+  population: FindingRowTotals;
+  /** What the current filter selected — the numbers printed above the table. */
+  filtered: FindingRowTotals;
+  rows: ReviewableRow[];
+  offset: number;
+  limit: number;
+}

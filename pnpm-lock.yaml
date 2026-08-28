@@ -138,6 +138,12 @@ importers:
       '@tangible/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@tangible/eval':
+        specifier: workspace:*
+        version: link:../../packages/eval
+      '@tangible/evidence':
+        specifier: workspace:*
+        version: link:../../packages/evidence
       '@tangible/far':
         specifier: workspace:*
         version: link:../../packages/far
@@ -327,6 +333,44 @@ importers:
         specifier: 'catalog:'
         version: 7.0.2
 
+  packages/eval:
+    dependencies:
+      '@tangible/savings':
+        specifier: workspace:*
+        version: link:../savings
+      '@tangible/types':
+        specifier: workspace:*
+        version: link:../types
+      '@tangible/valuation':
+        specifier: workspace:*
+        version: link:../valuation
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.2.0
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@26.2.0)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12))
+
+  packages/evidence:
+    dependencies:
+      '@tangible/types':
+        specifier: workspace:*
+        version: link:../types
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 26.2.0
+      typescript:
+        specifier: 'catalog:'
+        version: 7.0.2
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.10(@types/node@26.2.0)(vite@8.2.1(@types/node@26.2.0)(esbuild@0.28.2)(jiti@2.7.0)(tsx@4.23.12))
+
   packages/far:
     dependencies:
       '@tangible/types':
@@ -382,6 +426,9 @@ importers:
 
   packages/findings:
     dependencies:
+      '@tangible/classification':
+        specifier: workspace:*
+        version: link:../classification
       '@tangible/filing':
         specifier: workspace:*
         version: link:../filing
@@ -463,6 +510,9 @@ importers:
       '@tangible/classification':
         specifier: workspace:*
         version: link:../classification
+      '@tangible/evidence':
+        specifier: workspace:*
+        version: link:../evidence
       '@tangible/types':
         specifier: workspace:*
         version: link:../types

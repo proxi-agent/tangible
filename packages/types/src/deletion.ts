@@ -32,6 +32,15 @@ export const DeletionCountsSchema = z.object({
    */
   memoryRows: z.number().int(),
   /**
+   * Sign-ins that stop working.
+   *
+   * The only count on this list a person outside the firm feels directly: each
+   * row is somebody at the client who can open the portal today and cannot
+   * tomorrow. Worth reading before confirming, because it is the one part of a
+   * deletion that produces a phone call.
+   */
+  portalLogins: z.number().int(),
+  /**
    * Assistant turns that named this client.
    *
    * The assistant answers over the record, so a turn can quote register lines,

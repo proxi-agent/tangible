@@ -23,6 +23,7 @@ export {
   type ClassificationRequest,
 } from './classify.js';
 export { extractNotice, extractRendition } from './extract.js';
+export { extractInvoice } from './invoice.js';
 export { peekDocument } from './peek.js';
 export {
   mapLineTypes,
@@ -42,6 +43,7 @@ export { draftUnblockPlan } from './unblock.js';
 export { draftResultLetter } from './letter.js';
 export { answerGraphQuestion } from './ask.js';
 export { draftCorrectionMotion } from './motion-draft.js';
+export { draftSchedule } from './rule-author.js';
 export {
   runToolLoop,
   type AgentTool,

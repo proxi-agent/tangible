@@ -395,7 +395,7 @@ export function buildRendition(input: RenditionInput): Rendition {
       anythingToFile: buckets.size > 0,
       plan,
     }),
-    deadlines: deadlinesFor(input.taxYear),
+    deadlines: deadlinesFor(input.taxYear, input.jurisdictionId),
   };
 }
 

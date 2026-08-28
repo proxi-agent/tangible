@@ -202,6 +202,56 @@ export const clients = pgTable('clients', {
 }).enableRLS();
 
 /**
+ * Who from the client's own side may sign in and see their report.
+ *
+ * The portal used to ask the reader which business they were, out of a dropdown
+ * of every business the firm holds. This table is what replaces that question
+ * with an answer. A row is an access grant: the firm writes one against an
+ * email address, and the person it names reaches exactly one client's wing.
+ *
+ * Keyed on the email rather than on a Supabase auth user, because the grant has
+ * to exist before the account does — the firm adds a controller to an
+ * engagement on Tuesday and they sign in on Friday. `authUserId` is stamped the
+ * first time somebody actually claims the grant, which is also the audit record
+ * of *which* identity claimed it. Matching on a verified email is the same
+ * thing the firm allowlist already does; what makes it safe in both places is
+ * that Supabase will not issue a session for an address it has not confirmed.
+ *
+ * Not a foreign key onto `auth.users`: that table lives in a schema this app
+ * neither owns nor migrates, and a reference across it would make every
+ * `drizzle-kit push` depend on the auth schema being present.
+ *
+ * One email, one business. A person who genuinely sits at two client entities
+ * is real and rare, and the honest failure is a refusal at the gate naming both
+ * rows — not a silent pick between them, which is how a report reaches the
+ * wrong company.
+ */
+export const portalUsers = pgTable(
+  'portal_users',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    /** Stored lowercased. The unique index below is what enforces one grant. */
+    email: text('email').notNull(),
+    /** 'admin' | 'viewer'. See PORTAL_ROLES. */
+    role: text('role').notNull().default('admin'),
+    /** The Supabase auth user that claimed this grant. Null until first sign-in. */
+    authUserId: uuid('auth_user_id'),
+    claimedAt: timestamp('claimed_at', { withTimezone: true }),
+    /** The preparer who granted it. Null where auth was not configured. */
+    invitedBy: text('invited_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('portal_users_email_unique').on(table.email),
+    index('portal_users_client_idx').on(table.clientId),
+  ],
+).enableRLS();
+
+/**
  * A physical situs. BPP is assessed where property sits on January 1, so a
  * client with three sites is three renditions — locations cannot be a text
  * column on the client. `jurisdictionId` is a loose reference to the warehouse
@@ -963,6 +1013,160 @@ export const priorReturnLines = pgTable(
     ),
     /** The review queue: lines on this document still waiting on a person. */
     index('prior_return_lines_mapping_idx').on(table.documentId, table.mappingStatus),
+  ],
+).enableRLS();
+
+/**
+ * Supplier invoices behind capitalized register lines.
+ *
+ * A separate family from `prior_documents` rather than a `kind` on it, because
+ * almost nothing is shared beyond "a file somebody sent us". A rendition is one
+ * document about a whole return; an invoice is one of hundreds about individual
+ * assets, it links to register rows, and its extraction is checked by
+ * per-line confidence rather than by whether the form foots.
+ *
+ * Storage is the same private bucket as everything else — an invoice is the
+ * client's confidential business record under Tax Code 22.27 no less than the
+ * return is.
+ */
+export const invoiceDocuments = pgTable(
+  'invoice_documents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    originalFilename: text('original_filename').notNull(),
+    storagePath: text('storage_path').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    checksum: text('checksum'),
+    contentType: text('content_type'),
+    /** 'uploaded' | 'extracting' | 'extracted' | 'needs-review' | 'accepted' | 'failed'. */
+    status: text('status').notNull().default('uploaded'),
+    error: text('error'),
+    /**
+     * What the invoice says about itself, denormalized out of the extraction so
+     * a list can be scanned without opening anything — and so that an invoice
+     * billed to a different company is visible before its numbers are used.
+     */
+    vendorName: text('vendor_name'),
+    invoiceNumber: text('invoice_number'),
+    invoiceDate: text('invoice_date'),
+    billedTo: text('billed_to'),
+    purchaseOrder: text('purchase_order'),
+    /** As printed on the document. */
+    statedTotal: doublePrecision('stated_total'),
+    /** What the extracted lines add to. Kept beside the stated total, never replacing it. */
+    derivedTotal: doublePrecision('derived_total'),
+    /**
+     * The weakest line on the document, not the average. One badly-read
+     * $80,000 line is exactly what an average hides, and it is the whole reason
+     * this field exists.
+     */
+    extractionConfidence: doublePrecision('extraction_confidence'),
+    extractionModel: text('extraction_model'),
+    /** ExtractedInvoice, exactly as the model returned it. */
+    extracted: jsonb('extracted'),
+    /** string[] of what could not be read, in the model's own words. */
+    unreadable: jsonb('unreadable').notNull().default([]),
+    uploadedBy: text('uploaded_by'),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('invoice_documents_engagement_idx').on(table.engagementId, table.status),
+    index('invoice_documents_vendor_idx').on(table.engagementId, table.vendorName),
+  ],
+).enableRLS();
+
+/**
+ * One charge on an invoice, and what it is for tax.
+ *
+ * The reading and the ruling live on the same row but are recorded separately:
+ * `description`/`amount` are what the document says and are replaced wholesale
+ * when a document is re-extracted, while `treatment` is a conclusion. A
+ * treatment a person corrected carries `is_corrected`, and re-extraction
+ * preserves nothing — the rules re-run and the correction is lost, which is why
+ * re-extracting is an explicit act rather than something a background job does.
+ */
+export const invoiceLines = pgTable(
+  'invoice_lines',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => invoiceDocuments.id, { onDelete: 'cascade' }),
+    /** Position on the document, so the screen can print it in the vendor's order. */
+    lineNumber: integer('line_number').notNull(),
+    /** The vendor's wording, verbatim. Never normalized on the way in. */
+    description: text('description').notNull(),
+    amount: doublePrecision('amount'),
+    quantity: doublePrecision('quantity'),
+    unitPrice: doublePrecision('unit_price'),
+    partNumber: text('part_number'),
+    sourcePage: integer('source_page'),
+    /** How well the row was read, 0 to 1. Distinct from confidence in the ruling. */
+    readConfidence: doublePrecision('read_confidence').notNull().default(0),
+    /** 'assessable' | 'non-assessable' | 'unclear'. */
+    treatment: text('treatment').notNull().default('unclear'),
+    treatmentReason: text('treatment_reason'),
+    treatmentAuthority: text('treatment_authority'),
+    /** 'rule' | 'human'. Nothing else decides a treatment. */
+    treatmentSource: text('treatment_source').notNull().default('rule'),
+    treatmentConfidence: doublePrecision('treatment_confidence').notNull().default(0),
+    /** Which rule in the jurisdiction table produced it, for auditing the table itself. */
+    ruleId: text('rule_id'),
+    isCorrected: boolean('is_corrected').notNull().default(false),
+    correctedBy: text('corrected_by'),
+    correctedAt: timestamp('corrected_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('invoice_lines_document_idx').on(table.documentId, table.lineNumber),
+    /** The review queue: what nobody has ruled on yet. */
+    index('invoice_lines_treatment_idx').on(table.documentId, table.treatment),
+  ],
+).enableRLS();
+
+/**
+ * Which register lines an invoice paid for.
+ *
+ * Many-to-many on purpose. One invoice routinely covers several capitalized
+ * lines, and one capitalized line — a phased project — is routinely several
+ * invoices. Collapsing either direction would work for the easy half of a
+ * register and quietly mis-attribute the expensive half.
+ *
+ * `share` is what makes the difference visible. Linked to one asset, it is 1
+ * and the split is a measurement. Linked to three, it is an allocation, and
+ * every finding built on it is discounted and says so on its face.
+ */
+export const invoiceAssetLinks = pgTable(
+  'invoice_asset_links',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    documentId: uuid('document_id')
+      .notNull()
+      .references(() => invoiceDocuments.id, { onDelete: 'cascade' }),
+    assetId: uuid('asset_id')
+      .notNull()
+      .references(() => assets.id, { onDelete: 'cascade' }),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    share: doublePrecision('share').notNull().default(1),
+    /** 'suggested' | 'confirmed'. A matcher proposed it, or a person agreed. */
+    status: text('status').notNull().default('suggested'),
+    /** Why the matcher proposed it — vendor and amount, a PO number, a person. */
+    reason: text('reason'),
+    linkedBy: text('linked_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('invoice_asset_links_unique').on(table.documentId, table.assetId),
+    index('invoice_asset_links_asset_idx').on(table.assetId),
+    index('invoice_asset_links_engagement_idx').on(table.engagementId, table.status),
   ],
 ).enableRLS();
 
@@ -1734,6 +1938,244 @@ export const findingDispositions = pgTable(
 ).enableRLS();
 
 /**
+ * What was decided about one asset under one finding.
+ *
+ * A second table rather than a wider `finding_dispositions`, and the difference
+ * is not grain but *lifetime*. That table holds one current answer per finding
+ * and is written in place: a category accepted twice leaves one row saying so.
+ * This one is **append-only**. Nothing here is ever updated or deleted, and the
+ * current state of a row is the newest record for its
+ * (engagement, source, finding, asset) — which makes one table do three jobs at
+ * once, none of which can drift from the others:
+ *
+ *   - the write-back, because the newest record is the answer;
+ *   - the audit trail, because a reversal is a second record and the first one
+ *     is still there, with who and when on it — and a client's report is a
+ *     document a district may eventually ask about, so "who took this off"
+ *     needs an answer that does not depend on us having kept a log;
+ *   - the training set, because a decision paired with the signals that were
+ *     showing when it was made is a label, and a decision without them is an
+ *     opinion. `signals` and `confidence` are stamped at decision time for
+ *     exactly that reason: the engine will be retuned, and a label recorded
+ *     against weights nobody can reconstruct teaches nothing.
+ *
+ * `decidedValue` carries the same warning as its sibling on the category: an
+ * accepted $12,000 row is not consent to the $40,000 the same row claims after
+ * the next register lands.
+ */
+export const findingRowDecisions = pgTable(
+  'finding_row_decisions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** 'savings' | 'register-comparison', matching the category disposition. */
+    source: text('source').notNull(),
+    findingKey: text('finding_key').notNull(),
+    /**
+     * Deliberately *not* a foreign key to `assets`.
+     *
+     * A decision is a statement somebody made, and deleting the asset it was
+     * about does not unmake it. The asset table is also rebuilt by import; a
+     * cascade here would silently erase the audit trail on a re-import, which
+     * is the one thing this table exists to prevent.
+     */
+    assetId: uuid('asset_id').notNull(),
+    /** 'accepted' | 'rejected' | 'pending-client'. Undecided has no record. */
+    status: text('status').notNull(),
+    note: text('note'),
+    /** Who decided, and from which side of the engagement. */
+    decidedBy: text('decided_by'),
+    /** 'firm' | 'client' — the reviewer filter, and the thing a firm asks first. */
+    decidedByAudience: text('decided_by_audience'),
+    decidedAt: timestamp('decided_at', { withTimezone: true }).notNull().defaultNow(),
+    /** What the row claimed when the decision was made. */
+    decidedValue: doublePrecision('decided_value'),
+    decidedTaxAtRisk: doublePrecision('decided_tax_at_risk'),
+    /** The tier and score showing on screen at that moment. */
+    confidenceTier: text('confidence_tier'),
+    confidenceScore: doublePrecision('confidence_score'),
+    /** DetectionSignal[] — what the decision was actually a judgement about. */
+    signals: jsonb('signals'),
+    /** The published run the client was looking at, where there was one. */
+    decidedRunId: uuid('decided_run_id'),
+  },
+  (table) => [
+    // The read path: newest first for one finding's rows.
+    index('finding_row_decisions_current_idx').on(
+      table.engagementId,
+      table.source,
+      table.findingKey,
+      table.decidedAt,
+    ),
+    index('finding_row_decisions_asset_idx').on(table.engagementId, table.assetId),
+  ],
+).enableRLS();
+
+/**
+ * The client's own settings for their portal.
+ *
+ * One row per client, and today one setting: the confidence floor beneath which
+ * a finding row is not shown by default. It belongs to the client rather than
+ * to the browser because it is a statement about how they want to work — a
+ * controller who only wants to see positions their auditor would not blink at
+ * should not have to re-say that on their phone, and a colleague opening the
+ * same report should see the same report.
+ *
+ * A floor hides rows; it never removes them from a total. The report's headline
+ * is what the engine found, and a client who has narrowed their working view is
+ * still told what the whole population is — otherwise the setting quietly
+ * becomes a way to be shown a smaller number than the truth.
+ */
+export const portalSettings = pgTable('portal_settings', {
+  clientId: uuid('client_id')
+    .primaryKey()
+    .references(() => clients.id, { onDelete: 'cascade' }),
+  /** 'high' | 'medium' | 'low' — the lowest tier shown by default. */
+  confidenceFloor: text('confidence_floor').notNull().default('low'),
+  updatedBy: text('updated_by'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+}).enableRLS();
+
+/**
+ * An analysis run: the job that produced a report, and the record that it was
+ * published.
+ *
+ * The firm keeps reading the report derived on read — settling one more row in
+ * the review queue still moves the number under them immediately, which is what
+ * a working screen should do. This table exists because the *client* must not
+ * read that report. A taxpayer who opens their report twice and finds two
+ * different totals has been given nothing they can act on, and the number they
+ * quoted in an email last March has to still mean what it meant.
+ *
+ * So the client wing reads the last run that reached `published`, and every
+ * figure it prints cites this row's id. A run that failed publishes nothing and
+ * leaves the previous report standing, which is the correct behaviour on both
+ * counts: the customer's report does not disappear because our detector threw,
+ * and nobody is shown a partial one.
+ *
+ * `setId` points at the committed `finding_sets` row rather than storing a
+ * report here, so a published run and a partner's committed set are the same
+ * object seen from two sides — and the dispositions already keyed on
+ * (engagement, source, key) keep working without knowing runs exist.
+ */
+export const analysisRuns = pgTable(
+  'analysis_runs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /**
+     * Denormalized from the engagement so a run can be listed and dated without
+     * the join. It is also the year the client would name, and a run outlives
+     * the reason anybody had to look it up.
+     */
+    taxYear: integer('tax_year').notNull(),
+    /** 'savings' | 'register-comparison', matching finding_sets.source. */
+    source: text('source').notNull().default('savings'),
+
+    /** 'queued' | 'running' | 'published' | 'failed'. See RUN_STATUSES. */
+    status: text('status').notNull().default('queued'),
+    /** 'upload' | 'manual' | 'refresh'. Decides whether publishing sends mail. */
+    trigger: text('trigger').notNull().default('manual'),
+    /** Which stage a running job is on, in the customer's words. See RUN_STEPS. */
+    step: text('step'),
+
+    /**
+     * The set this run committed. Not cascaded to on delete: a deleted set
+     * should leave the run standing as the record that something was published,
+     * rather than erasing the fact along with the document.
+     */
+    setId: uuid('set_id').references(() => findingSets.id, { onDelete: 'set null' }),
+
+    /**
+     * The three things that make a published number reproducible: what the
+     * client's data looked like, which detectors ran, and which depreciation
+     * guide was applied. All null until the worker has actually read them —
+     * a queued run has not looked at anything yet, and defaulting them to the
+     * current values would assert that it had.
+     */
+    inputFingerprint: text('input_fingerprint'),
+    rulesVersion: text('rules_version'),
+    scheduleVersion: text('schedule_version'),
+
+    requestedBy: text('requested_by'),
+    requestedAt: timestamp('requested_at', { withTimezone: true }).notNull().defaultNow(),
+    startedAt: timestamp('started_at', { withTimezone: true }),
+    publishedAt: timestamp('published_at', { withTimezone: true }),
+    failedAt: timestamp('failed_at', { withTimezone: true }),
+    /** Written for whoever debugs it. Never rendered in the client wing. */
+    error: text('error'),
+    /**
+     * Picked-up count. A worker that dies mid-run leaves a row in `running`
+     * with no process behind it, and the only way to tell that from a long job
+     * is elapsed time — so the reaper requeues it, and this is what stops a job
+     * that crashes deterministically from being retried forever.
+     */
+    attempts: integer('attempts').notNull().default(0),
+    /** Moved on every state change, so the reaper can find stalled runs. */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('analysis_runs_engagement_idx').on(table.engagementId, table.source, table.requestedAt),
+    /**
+     * The claim query's index: the runner asks for the oldest row that is
+     * queued, and the reaper for the oldest that is running. One partial index
+     * over both is not possible, so this covers the ordering and the status
+     * filter narrows it.
+     */
+    index('analysis_runs_status_idx').on(table.status, table.requestedAt),
+  ],
+).enableRLS();
+
+/**
+ * Every message this app has sent to a person outside it.
+ *
+ * A row per recipient per message, written whether the send succeeded or not.
+ * Three reasons it is a table rather than a log line. A client who says "you
+ * never told me" is answered by a date and an address, and the answer has to
+ * outlive a log retention window. A publish that emails twice because a retry
+ * re-ran the notification is worse than one that emails late, so the sender
+ * checks here first. And mail that silently stopped going out is invisible
+ * without somewhere to see the failures — `sent_at` null with `error` set is
+ * the shape a monitoring query looks for.
+ *
+ * Deliberately not a queue. Nothing here is retried: a report that published is
+ * on the portal whether the mail landed or not, and a second copy of a stale
+ * notification a week later would confuse rather than help.
+ */
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Scoped to a season, because every message this app sends is about one. */
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    /** 'report-published' | 'question-waiting' | 'answer-received'. */
+    kind: text('kind').notNull(),
+    /** The run this was about, where there was one. */
+    runId: uuid('run_id').references(() => analysisRuns.id, { onDelete: 'set null' }),
+    /** Lowercased, one row each — never a comma-joined To: line. */
+    recipient: text('recipient').notNull(),
+    subject: text('subject').notNull(),
+    /** Null means it did not go: see `error`. */
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    error: text('error'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    /** The suppression lookup: "have we already said this about this season?" */
+    index('notifications_engagement_idx').on(table.engagementId, table.kind, table.createdAt),
+  ],
+).enableRLS();
+
+/**
  * Us, as Form 50-162 names us. One row, id `agent`.
  *
  * A singleton table rather than environment config, because it is printed onto
@@ -1970,6 +2412,16 @@ export type FindingRow = typeof findings.$inferSelect;
 export type NewFindingRow = typeof findings.$inferInsert;
 export type FindingDispositionRow = typeof findingDispositions.$inferSelect;
 export type NewFindingDispositionRow = typeof findingDispositions.$inferInsert;
+export type FindingRowDecisionRow = typeof findingRowDecisions.$inferSelect;
+export type NewFindingRowDecisionRow = typeof findingRowDecisions.$inferInsert;
+export type PortalSettingsRow = typeof portalSettings.$inferSelect;
+export type NewPortalSettingsRow = typeof portalSettings.$inferInsert;
+export type NotificationRow = typeof notifications.$inferSelect;
+export type NewNotificationRow = typeof notifications.$inferInsert;
+export type AnalysisRunRow = typeof analysisRuns.$inferSelect;
+export type NewAnalysisRunRow = typeof analysisRuns.$inferInsert;
+export type PortalUserRow = typeof portalUsers.$inferSelect;
+export type NewPortalUserRow = typeof portalUsers.$inferInsert;
 export type FilingAgentRow = typeof filingAgent.$inferSelect;
 export type NewFilingAgentRow = typeof filingAgent.$inferInsert;
 export type AgentAppointmentRow = typeof agentAppointments.$inferSelect;
@@ -1978,3 +2430,279 @@ export type AssistantConversationRow = typeof assistantConversations.$inferSelec
 export type NewAssistantConversationRow = typeof assistantConversations.$inferInsert;
 export type AssistantTurnRow = typeof assistantTurns.$inferSelect;
 export type NewAssistantTurnRow = typeof assistantTurns.$inferInsert;
+
+/* -------------------------------------------------------------------------- */
+/*  What a position was actually worth                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A position taken to a district, recorded at the moment it goes out.
+ *
+ * Everything upstream of this table is a claim about what a finding *should* be
+ * worth. This is the first table in the product that records what somebody
+ * actually asked a district for, and it exists so the next table can record
+ * what they got. Without both, every acceptance rate in this codebase stays a
+ * constant somebody typed.
+ *
+ * The grain is one asset, one finding, one tax year — deliberately finer than
+ * the district works at. A district settles a whole account for a year and
+ * hands back one number; it does not say which of eleven positions it agreed
+ * with. So the asset grain is *ours*, and the allocation from their number to
+ * our rows is an explicit, labelled step rather than an assumption buried in a
+ * query. See `recoveryOutcomes.allocation`.
+ *
+ * Rows are never edited. A claim that was recorded wrongly is voided and a new
+ * one recorded, the same rule filed renditions and protest resolutions follow,
+ * and for the same reason: this is the dataset the learned models will be
+ * trained on, and a training set that rewrites its own history cannot be
+ * audited when a model starts behaving strangely.
+ */
+export const recoveryClaims = pgTable(
+  'recovery_claims',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /**
+     * Carried alongside the engagement so a claim survives into the practice's
+     * history when a season is archived, and so the acceptance model can pool
+     * across a client's engagements without a join through a table that may
+     * have been reorganised between seasons.
+     */
+    clientId: uuid('client_id')
+      .notNull()
+      .references(() => clients.id, { onDelete: 'cascade' }),
+    /** Restricted, like every other outcome row: closing a site settles nothing. */
+    locationId: uuid('location_id').references(() => clientLocations.id, {
+      onDelete: 'restrict',
+    }),
+    accountId: text('account_id'),
+    taxYear: integer('tax_year').notNull(),
+
+    /**
+     * Not a foreign key, for the reason `finding_row_decisions.assetId` is not:
+     * import rebuilds the asset table, and a cascade here would erase the
+     * record of what was asked for the moment somebody re-imported a register.
+     *
+     * Null is meaningful and common. A category-level position — "remove the
+     * $84,000 of freight inside Schedule E" — names no single asset, and a
+     * claim that invented one to satisfy a column would be a claim nobody could
+     * check against the return that carried it.
+     */
+    assetId: uuid('asset_id'),
+    findingKey: text('finding_key').notNull(),
+
+    /**
+     * How this position reached the district. Not the same question as which
+     * statute it rests on — a position can ride out on a timely rendition and
+     * never be a claim at all in the correction sense, and that is the most
+     * common case by far.
+     *
+     * 'rendition' | 'protest' | '25.25-c' | '25.25-c-1' | '25.25-d' |
+     * 'fl-refund' | 'fl-vab'.
+     */
+    route: text('route').notNull(),
+    /** The statute, spelled as a report would print it. */
+    authority: text('authority'),
+
+    /** Appraised value the position asks the district to take off. */
+    valueClaimed: doublePrecision('value_claimed'),
+    /** That value at the rate on file, which is what the client was promised. */
+    taxClaimed: doublePrecision('tax_claimed'),
+    /** The confidence showing when it went out — the model's own prediction. */
+    predictedConfidence: doublePrecision('predicted_confidence'),
+    /** The acceptance rate the model assumed. The number this table exists to replace. */
+    predictedAcceptance: doublePrecision('predicted_acceptance'),
+
+    /** What carried it: a filed rendition, a protest, a motion. */
+    filingId: uuid('filing_id').references(() => renditionFilings.id, { onDelete: 'set null' }),
+    motionId: uuid('motion_id').references(() => correctionMotions.id, { onDelete: 'set null' }),
+
+    claimedOn: date('claimed_on').notNull(),
+
+    /** 'recorded' | 'void'. Superseding happens on the outcome, not the claim. */
+    status: text('status').notNull().default('recorded'),
+    note: text('note'),
+    recordedBy: text('recorded_by'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    voidedBy: text('voided_by'),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidReason: text('void_reason'),
+  },
+  (table) => [
+    index('recovery_claims_engagement_idx').on(table.engagementId, table.taxYear, table.status),
+    index('recovery_claims_asset_idx').on(table.engagementId, table.assetId),
+    /** The read the acceptance model makes: every claim of a kind, across clients. */
+    index('recovery_claims_learning_idx').on(table.findingKey, table.taxYear, table.status),
+  ],
+).enableRLS();
+
+/**
+ * What the district actually did with a claim.
+ *
+ * One row per claim per recording, newest not-void row winning — the same
+ * shape as protest resolutions, because it is the same kind of fact: a thing
+ * that happened on a date, which somebody may later have recorded better.
+ *
+ * `allocation` is the column that keeps this table honest. A district that
+ * agrees to take $600,000 off an account has not told anybody which claims it
+ * agreed with, and three different people will split that $600,000 three
+ * different ways. So the split is named:
+ *
+ *   - **itemized** — the district's own letter or the ARB order says which
+ *     positions it allowed. The only allocation that is a fact.
+ *   - **stated** — the appraiser said it verbally, or the firm's own notes
+ *     record which arguments landed. A person's word, recorded as such.
+ *   - **pro-rata** — nobody said, so the settlement was split across the claims
+ *     in proportion to what each asked for. An assumption, and it must never be
+ *     fed to the acceptance model as though it were an observation.
+ *
+ * That last exclusion is the reason this column exists rather than being
+ * inferred. A pro-rata split makes every claim look partially accepted, which
+ * would train the model toward a universal middling acceptance rate no matter
+ * what districts actually concede.
+ */
+export const recoveryOutcomes = pgTable(
+  'recovery_outcomes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    claimId: uuid('claim_id')
+      .notNull()
+      .references(() => recoveryClaims.id, { onDelete: 'cascade' }),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+
+    /** 'accepted' | 'partial' | 'rejected' | 'withdrawn'. */
+    outcome: text('outcome').notNull(),
+    /** 'itemized' | 'stated' | 'pro-rata'. See the table note. */
+    allocation: text('allocation').notNull(),
+
+    /** Appraised value the district actually took off for this claim. */
+    valueAllowed: doublePrecision('value_allowed'),
+    /**
+     * Tax actually recovered or avoided. Kept separately from value × rate
+     * because a refund cheque is a fact and a rate multiplication is a model,
+     * and the whole point of this table is to stop confusing the two.
+     */
+    taxRecovered: doublePrecision('tax_recovered'),
+    /** True where `taxRecovered` came off a cheque, a bill or a refund notice. */
+    taxIsDocumented: boolean('tax_is_documented').notNull().default(false),
+
+    /** Where the outcome came from, where it came from a recorded resolution. */
+    resolutionId: uuid('resolution_id').references(() => protestResolutions.id, {
+      onDelete: 'set null',
+    }),
+    resolvedOn: date('resolved_on').notNull(),
+
+    /** 'recorded' | 'superseded' | 'void'. */
+    status: text('status').notNull().default('recorded'),
+    note: text('note'),
+    recordedBy: text('recorded_by'),
+    recordedAt: timestamp('recorded_at', { withTimezone: true }).notNull().defaultNow(),
+    voidedBy: text('voided_by'),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidReason: text('void_reason'),
+  },
+  (table) => [
+    index('recovery_outcomes_claim_idx').on(table.claimId, table.status),
+    index('recovery_outcomes_engagement_idx').on(table.engagementId, table.status),
+  ],
+).enableRLS();
+
+export type RecoveryClaimRow = typeof recoveryClaims.$inferSelect;
+export type NewRecoveryClaimRow = typeof recoveryClaims.$inferInsert;
+export type RecoveryOutcomeRow = typeof recoveryOutcomes.$inferSelect;
+export type NewRecoveryOutcomeRow = typeof recoveryOutcomes.$inferInsert;
+
+/**
+ * An export out of a system that is not the register, and what it holds.
+ *
+ * Two tables rather than one blob, and the split is not a preference. A
+ * maintenance export is tens of thousands of rows; storing it as jsonb would
+ * mean the whole file is read, parsed and held in memory to answer "how many
+ * records were searched", which is the number every negative statement in this
+ * product rests on. Rows also make the file inspectable — a reviewer arguing
+ * with a match can be shown the record it matched, by id, without the app
+ * re-reading the original upload.
+ *
+ * The original file is kept too, under the same private bucket as a register.
+ * These exports are client data of exactly the same kind, and a match nobody
+ * can trace back to a line in the file somebody sent is a match the firm cannot
+ * defend.
+ */
+export const evidenceExports = pgTable(
+  'evidence_exports',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** An EvidenceSourceKind. What this system is, which is what it can prove. */
+    kind: text('kind').notNull(),
+    originalFilename: text('original_filename').notNull(),
+    /** Path inside the private far-uploads bucket, under evidence/. */
+    storagePath: text('storage_path').notNull(),
+    byteSize: integer('byte_size').notNull(),
+    checksum: text('checksum'),
+    contentType: text('content_type'),
+    /** SheetSummary[] once parsed — the same shape a register upload produces. */
+    sheetSummaries: jsonb('sheet_summaries'),
+    /** Which sheet the records were read from, once a human settled it. */
+    sheetName: text('sheet_name'),
+    headerRow: integer('header_row'),
+    /** EvidenceColumnMap proposed from the header, before anybody looked. */
+    proposedColumns: jsonb('proposed_columns'),
+    /** EvidenceColumnMap as confirmed. The only one records are read under. */
+    confirmedColumns: jsonb('confirmed_columns'),
+    /** 'parsed' | 'imported' | 'failed'. Nothing matches until 'imported'. */
+    status: text('status').notNull().default('parsed'),
+    error: text('error'),
+    recordCount: integer('record_count').notNull().default(0),
+    /**
+     * Rows the file carried that produced nothing matchable — every mapped
+     * field blank. Reported rather than dropped silently, because the gap
+     * between "20,000 rows" and "14,300 records" is exactly the gap a person
+     * needs to see before leaning on this export's silence.
+     */
+    skippedCount: integer('skipped_count').notNull().default(0),
+    uploadedBy: text('uploaded_by'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index('evidence_exports_engagement_idx').on(table.engagementId, table.status)],
+).enableRLS();
+
+/**
+ * One row of an external system, reduced to the six fields a match can use.
+ *
+ * Deliberately not the whole row. Everything else in a CMMS export — the
+ * technician, the cost centre, the failure code — is client operational data
+ * this product has no business retaining, and keeping it would mean a firm's
+ * evidence store slowly becomes a copy of its clients' maintenance systems.
+ * `sourceRow` is the pointer back to the file for anything not held here.
+ */
+export const evidenceRecords = pgTable(
+  'evidence_records',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    exportId: uuid('export_id')
+      .notNull()
+      .references(() => evidenceExports.id, { onDelete: 'cascade' }),
+    /** 0-based row in the source sheet, for the audit trail. */
+    sourceRow: integer('source_row').notNull(),
+    assetTag: text('asset_tag'),
+    serial: text('serial'),
+    model: text('model'),
+    description: text('description'),
+    amount: doublePrecision('amount'),
+    lastSeenOn: text('last_seen_on'),
+  },
+  (table) => [index('evidence_records_export_idx').on(table.exportId)],
+).enableRLS();
+
+export type EvidenceExportRow = typeof evidenceExports.$inferSelect;
+export type NewEvidenceExportRow = typeof evidenceExports.$inferInsert;
+export type EvidenceRecordRow = typeof evidenceRecords.$inferSelect;
+export type NewEvidenceRecordRow = typeof evidenceRecords.$inferInsert;

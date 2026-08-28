@@ -1,4 +1,4 @@
-import { CATEGORY_BY_KEY } from './categories.js';
+import { categoryFor } from './categories.js';
 import type {
   CategoryRule,
   DepreciationSchedule,
@@ -43,7 +43,7 @@ export type LifeSource =
 export interface Appraisal {
   category: CategoryRule;
   /** The table actually used, after any override. */
-  schedule: LifeClass | SpecialSchedule | 'none';
+  schedule: LifeClass | SpecialSchedule | 'none' | 'exempt';
   indexFactor: number;
   percentGood: number;
   /** Original cost trended to replacement cost new. */
@@ -57,6 +57,17 @@ export interface Appraisal {
    * that gap is the finding.
    */
   atFloor: boolean;
+  /**
+   * True where this jurisdiction does not tax this class of property at all,
+   * in which case `marketValue` is zero and the reason says why.
+   *
+   * Distinct from a zero that fell out of the arithmetic: a fully depreciated
+   * asset is worth nothing *and still belongs on the return*, while exempt
+   * property should never have been on it. The report treats the two as
+   * completely different findings, so the flag travels with the value.
+   */
+  exempt: boolean;
+  exemptReason: string | null;
   /** Which authority decided the life. */
   lifeSource: LifeSource;
   /**
@@ -130,7 +141,7 @@ function lookupIndexFactor(schedule: DepreciationSchedule, year: number): number
 }
 
 export function appraise(input: AppraisalInput, schedule: DepreciationSchedule): AppraisalResult {
-  const category = CATEGORY_BY_KEY[input.categoryKey];
+  const category = categoryFor(schedule, input.categoryKey);
   if (!category) {
     return {
       ok: false,
@@ -139,6 +150,27 @@ export function appraise(input: AppraisalInput, schedule: DepreciationSchedule):
   }
   if (!Number.isFinite(input.originalCost)) {
     return { ok: false, gap: { reason: 'no-cost', detail: 'No original cost to value' } };
+  }
+
+  // Property this jurisdiction does not tax. Valued at nothing, and the answer
+  // carries its authority rather than arriving as a bare zero.
+  if (category.schedule === 'exempt') {
+    return {
+      ok: true,
+      value: {
+        category,
+        schedule: 'exempt',
+        indexFactor: 1,
+        percentGood: 0,
+        replacementCostNew: input.originalCost,
+        marketValue: 0,
+        atFloor: false,
+        exempt: true,
+        exemptReason: category.exemptAuthority ?? 'Not taxable property in this jurisdiction',
+        lifeSource: 'category',
+        sicProfile: null,
+      },
+    };
   }
 
   // Inventory and supplies are carried at full cost — no index, no percent
@@ -154,6 +186,8 @@ export function appraise(input: AppraisalInput, schedule: DepreciationSchedule):
         replacementCostNew: input.originalCost,
         marketValue: input.originalCost,
         atFloor: false,
+        exempt: false,
+        exemptReason: null,
         lifeSource: 'category',
         sicProfile: null,
       },
@@ -175,7 +209,7 @@ export function appraise(input: AppraisalInput, schedule: DepreciationSchedule):
     category.sicDriven && input.businessSic ? lookupSicProfile(schedule, input.businessSic) : null;
 
   let lifeSource: LifeSource = 'category';
-  let resolved: LifeClass | SpecialSchedule | 'none' = category.schedule;
+  let resolved: LifeClass | SpecialSchedule | 'none' | 'exempt' = category.schedule;
   if (input.lifeClassOverride !== undefined) {
     resolved = input.lifeClassOverride;
     lifeSource = 'override';
@@ -227,6 +261,8 @@ export function appraise(input: AppraisalInput, schedule: DepreciationSchedule):
       replacementCostNew,
       marketValue,
       atFloor: found.atFloor,
+      exempt: false,
+      exemptReason: null,
       lifeSource,
       sicProfile: profile
         ? {

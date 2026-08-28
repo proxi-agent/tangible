@@ -1,4 +1,4 @@
-import type { CategoryRule } from './types.js';
+import type { CategoryRule, DepreciationSchedule } from './types.js';
 
 /**
  * Asset categories and the schedule each is valued on, transcribed from page 1
@@ -135,3 +135,24 @@ export const HCAD_CATEGORY_KEYS = [
 ] as const;
 
 export type HcadCategoryKey = (typeof HCAD_CATEGORY_KEYS)[number];
+
+/**
+ * How this jurisdiction values this category.
+ *
+ * The lookup order is the whole point of the second state: a jurisdiction's own
+ * answer wins, and the HCAD table is what everywhere else falls back to. Note
+ * that a jurisdiction can only *re-answer* a key, never invent one — the keys
+ * are the classification vocabulary, and a schedule that carried a category
+ * nothing can be classified into would be a table with no way to reach it.
+ */
+export function categoryFor(
+  schedule: DepreciationSchedule | null,
+  key: string,
+): CategoryRule | undefined {
+  return schedule?.categories?.[key] ?? CATEGORY_BY_KEY[key];
+}
+
+/** Every category as this jurisdiction values it, in the shared display order. */
+export function categoriesFor(schedule: DepreciationSchedule | null): CategoryRule[] {
+  return HCAD_CATEGORIES.map((category) => schedule?.categories?.[category.key] ?? category);
+}

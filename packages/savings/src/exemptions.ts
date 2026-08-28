@@ -1,3 +1,5 @@
+import { POLICY_BY_STATE, type StatePolicy } from '@tangible/types';
+
 /**
  * Statutory exemptions applied after the schedules have done their work.
  *
@@ -22,8 +24,78 @@
  */
 export const TX_EXEMPTION_2026 = 125_000;
 
-/** No exemption is assumed for a jurisdiction we have not looked up. */
+/**
+ * Florida's tangible personal property exemption, s. 196.183, F.S.
+ *
+ * $25,000, flat since the 2008 constitutional amendment, and its shape is not
+ * the Texas one. It is granted **per return, per location, per county** — a
+ * client with four Florida sites in two counties files four returns and claims
+ * it four times, where the same client in Texas gets one exemption per taxing
+ * unit against a single account. Modelling it as one subtraction against a
+ * client's whole position understates it, and by more the more sites they have.
+ *
+ * The second thing a reader has to carry is that it is not automatic. An
+ * account has to file a DR-405 once to claim it, and a taxpayer who never filed
+ * because they were under the threshold is not exempt — they are unfiled, and
+ * s. 193.072 penalties run on the tax that would have been due.
+ */
+export const FL_EXEMPTION = 25_000;
+
+/**
+ * The exemption in force, from the state's own policy table.
+ *
+ * Written against `POLICY_BY_STATE` rather than a chain of `startsWith` because
+ * the second state is the point: a state absent from that table returns zero,
+ * which is the honest answer for a jurisdiction nobody has looked up, and
+ * adding a third state is a row there rather than a branch here.
+ *
+ * The answer is per *return*, and in Florida a return is per location per
+ * county. Callers holding a whole client's position across several sites should
+ * apply this once per site rather than once per client; see
+ * `exemptionForSites`.
+ */
 export function exemptionFor(jurisdictionId: string | null, taxYear: number): number {
-  if (!jurisdictionId?.startsWith('tx-')) return 0;
-  return taxYear >= 2026 ? TX_EXEMPTION_2026 : 2_500;
+  const policy = policyFor(jurisdictionId);
+  if (!policy) return 0;
+  const known = policy.exemptionByYear[taxYear];
+  if (known !== undefined) return known;
+  // A year outside the published range takes the nearest published one, in the
+  // direction it falls. Texas 2027 is the 2026 figure until HB 9's successor
+  // says otherwise; Texas 2019 is the pre-HB 9 figure, not the new one.
+  const years = Object.keys(policy.exemptionByYear).map(Number);
+  if (years.length === 0) return 0;
+  const nearest = taxYear > Math.max(...years) ? Math.max(...years) : Math.min(...years);
+  return policy.exemptionByYear[nearest] ?? 0;
+}
+
+/**
+ * The exemption a client actually gets across their sites in one jurisdiction.
+ *
+ * Texas grants it against the account; Florida grants it against each return,
+ * and a return is one location in one county. So the multiplier is the site
+ * count in Florida and one everywhere else, and a report that quoted $25,000 to
+ * a six-site Florida client would be understating their position by $125,000 of
+ * value.
+ */
+export function exemptionForSites(
+  jurisdictionId: string | null,
+  taxYear: number,
+  siteCount: number,
+): number {
+  const each = exemptionFor(jurisdictionId, taxYear);
+  if (each === 0) return 0;
+  const perReturn = stateOf(jurisdictionId) === 'FL';
+  return perReturn ? each * Math.max(1, siteCount) : each;
+}
+
+/** The state a jurisdiction id names, upper-cased for `POLICY_BY_STATE`. */
+function stateOf(jurisdictionId: string | null): string | null {
+  if (!jurisdictionId) return null;
+  const dash = jurisdictionId.indexOf('-');
+  return (dash === -1 ? jurisdictionId : jurisdictionId.slice(0, dash)).toUpperCase();
+}
+
+function policyFor(jurisdictionId: string | null): StatePolicy | undefined {
+  const state = stateOf(jurisdictionId);
+  return state ? POLICY_BY_STATE[state] : undefined;
 }

@@ -7,6 +7,7 @@ import { mediaTypeFor } from '@/lib/priors';
 import { HttpError, handle } from '@/lib/route';
 import { uploadFarFile } from '@/lib/far-storage';
 import { intakeFileDto } from '@/lib/intake';
+import { requireEngagementScope, requirePortalRole } from '@/lib/viewer';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -33,6 +34,10 @@ export function POST(
 ): Promise<Response> {
   return handle(async () => {
     const { engagementId } = await params;
+    await requireEngagementScope(engagementId);
+    // Sending a register is an act, not a read: what lands here becomes the
+    // return. A colleague forwarded the report link should not be able to.
+    await requirePortalRole('admin');
     await fetchEngagement(engagementId);
 
     const form = await request.formData();
@@ -187,6 +192,7 @@ export function GET(
 ): Promise<Response> {
   return handle(async () => {
     const { engagementId } = await params;
+    await requireEngagementScope(engagementId);
     await fetchEngagement(engagementId);
 
     const db = requireDb();

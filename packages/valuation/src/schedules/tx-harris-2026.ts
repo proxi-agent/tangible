@@ -27,6 +27,36 @@ import type { DepreciationSchedule } from '../types.js';
 import { TX_HARRIS_2026_SIC } from './tx-harris-2026-sic.js';
 
 export const TX_HARRIS_2026: DepreciationSchedule = {
+  provenance: {
+    ruleId: 'valuation:tx-harris:2026',
+    title: 'Harris County BPP depreciation schedules, tax year 2026',
+    citation:
+      'HCAD Business & Industrial Personal Property Division, Schedule Value Calculation Guidelines, Tax Year 2026, pp. 3-4. Method authorised by Tex. Tax Code 23.01(b) (market value determined by generally accepted appraisal methods).',
+    source: {
+      title: 'HCAD BPP Schedule Value Calculation Guidelines, Tax Year 2026',
+      url: 'https://hcad.org/assets/uploads/pdf/resources/2026/2026-PP-Calc-Guide.pdf',
+      pages: '3-4',
+    },
+    // The guide governs one tax year. Written as the year rather than as the
+    // day the next guide appears, because the next guide's date is unknowable
+    // and a window that ends "when something else happens" never closes.
+    effectiveFrom: '2026-01-01',
+    effectiveTo: '2026-12-31',
+    jurisdictions: ['tx-harris'],
+    taxYears: [2026],
+    authoredBy: 'kajmeri',
+    authoredAt: '2026-08-20',
+    /**
+     * Null, and it should stay null until somebody with standing has actually
+     * checked these tables against the published guide page by page. The gate
+     * reports it; the baseline acknowledges it with a date, so the fact that
+     * this is outstanding is visible rather than absent.
+     */
+    approvedBy: null,
+    approvedAt: null,
+    notes:
+      'Transcribed from the published PDF and checked against the invariant that percent good never rises as an asset ages. Not yet re-checked cell by cell by a licensed preparer.',
+  },
   jurisdictionId: 'tx-harris',
   jurisdictionName: 'Harris County, TX',
   taxYear: 2026,
@@ -277,4 +307,5 @@ export const TX_HARRIS_2026: DepreciationSchedule = {
     },
   },
   sicProfiles: TX_HARRIS_2026_SIC,
+  status: 'committed',
 };

@@ -8,7 +8,7 @@ import type {
   LineMappingSource,
   PriorDocumentStatus,
 } from '@tangible/types';
-import { Badge } from '@/components/ui/primitives';
+import { Badge, type BadgeTone } from '@/components/ui/primitives';
 
 const CLIENT_TONES: Record<ClientStatus, 'neutral' | 'accent' | 'good'> = {
   prospect: 'accent',
@@ -86,6 +86,29 @@ const PRIOR_TONES: Record<
   failed: { tone: 'critical', label: 'failed' },
 };
 
+/**
+ * Where an invoice is, in the words that matter to a preparer.
+ *
+ * `needs-review` is not a failure — it is the extractor saying the reading was
+ * weak or the rules did not recognize enough of what they read, which is a
+ * different problem from a document that would not open. And `extracted` is
+ * deliberately not the end of the road: nothing is trusted at full weight until
+ * somebody has said they read it, which is what `accepted` records.
+ */
+const INVOICE_TONES: Record<string, { tone: BadgeTone; label: string }> = {
+  uploaded: { tone: 'neutral', label: 'uploaded' },
+  extracting: { tone: 'accent', label: 'reading' },
+  extracted: { tone: 'accent', label: 'read' },
+  'needs-review': { tone: 'warning', label: 'needs review' },
+  accepted: { tone: 'good', label: 'reviewed' },
+  failed: { tone: 'critical', label: 'failed' },
+};
+
+export function InvoiceStatusBadge({ status }: { status: string }) {
+  const meta = INVOICE_TONES[status] ?? { tone: 'neutral' as BadgeTone, label: status };
+  return <Badge tone={meta.tone}>{meta.label}</Badge>;
+}
+
 export function PriorDocumentStatusBadge({ status }: { status: PriorDocumentStatus }) {
   const { tone, label } = PRIOR_TONES[status] ?? PRIOR_TONES.uploaded;
   return <Badge tone={tone}>{label}</Badge>;
@@ -104,7 +127,9 @@ const LINE_SOURCE_LABELS: Record<LineMappingSource, string> = {
 };
 
 export function LineMappingSourceBadge({ source }: { source: LineMappingSource }) {
-  return <Badge tone={source === 'schedule' ? 'accent' : 'neutral'}>{LINE_SOURCE_LABELS[source]}</Badge>;
+  return (
+    <Badge tone={source === 'schedule' ? 'accent' : 'neutral'}>{LINE_SOURCE_LABELS[source]}</Badge>
+  );
 }
 
 /**
@@ -115,14 +140,12 @@ export function LineMappingSourceBadge({ source }: { source: LineMappingSource }
  * coming from us in March than from the district in an audit letter. Rendered
  * in red it would read as a failure.
  */
-const EFFECT_META: Record<
-  FindingEffect,
-  { tone: 'good' | 'warning' | 'neutral'; label: string }
-> = {
-  saving: { tone: 'good', label: 'saving' },
-  exposure: { tone: 'warning', label: 'exposure' },
-  neutral: { tone: 'neutral', label: 'no effect' },
-};
+const EFFECT_META: Record<FindingEffect, { tone: 'good' | 'warning' | 'neutral'; label: string }> =
+  {
+    saving: { tone: 'good', label: 'saving' },
+    exposure: { tone: 'warning', label: 'exposure' },
+    neutral: { tone: 'neutral', label: 'no effect' },
+  };
 
 export function FindingEffectBadge({ effect }: { effect: FindingEffect }) {
   const { tone, label } = EFFECT_META[effect];

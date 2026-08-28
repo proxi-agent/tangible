@@ -35,6 +35,11 @@ export function deletionWarnings(counts: DeletionCounts): string[] {
       `${plural(counts.assistantTurns, 'assistant answer')} that named this client will be removed, and any thread left with nothing in it goes too. Answers quote the record, so they carry the same confidentiality as the record does.`,
     );
   }
+  if (counts.portalLogins > 0) {
+    warnings.push(
+      `${counts.portalLogins} ${counts.portalLogins === 1 ? 'person' : 'people'} at this business can sign in today and will not be able to tomorrow. They are not told — nobody is emailed — so somebody should say so before the next time they try.`,
+    );
+  }
   if (counts.storageObjects > 0) {
     warnings.push(
       `${plural(counts.storageObjects, 'uploaded file')} will be removed from the private bucket after the rows are gone. A file the bucket refuses is named on the receipt rather than assumed gone.`,

@@ -23,7 +23,7 @@ export function PortalHeader({
   description?: ReactNode;
   actions?: ReactNode;
 }) {
-  const { detail, seasons, engagement, setEngagementId, setClientId } = usePortal();
+  const { detail, seasons, engagement, setEngagementId } = usePortal();
 
   return (
     <PageHeader
@@ -49,18 +49,10 @@ export function PortalHeader({
           </label>
         ) : null
       }
-      actions={
-        <>
-          {actions}
-          <button
-            type="button"
-            onClick={() => setClientId(null)}
-            className="cursor-pointer text-xs text-[var(--color-ink-muted)] underline-offset-2 transition-colors outline-none hover:text-[var(--color-ink)] hover:underline"
-          >
-            Not {detail.client.name}?
-          </button>
-        </>
-      }
+      // The "Not <name>?" escape hatch left with the identity picker. A reader
+      // signed in as this business has nothing to switch to, and a preparer
+      // previewing has the banner and the back button.
+      actions={actions}
     />
   );
 }

@@ -1,6 +1,7 @@
 import { AskGraphRequestSchema } from '@tangible/types';
 import { askGraph, listGraphAsks } from '@/lib/ask-graph';
 import { handle } from '@/lib/route';
+import { requireEngagementScope, requirePortalRole } from '@/lib/viewer';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -13,6 +14,7 @@ export function GET(
 ): Promise<Response> {
   return handle(async () => {
     const { engagementId } = await params;
+    await requireEngagementScope(engagementId);
     return { asks: await listGraphAsks(engagementId) };
   });
 }
@@ -30,6 +32,10 @@ export function POST(
 ): Promise<Response> {
   return handle(async () => {
     const { engagementId } = await params;
+    await requireEngagementScope(engagementId);
+    // The digest this answers from is the whole engagement record. A read-only
+    // viewer can read the report; they do not get a model pointed at the file.
+    await requirePortalRole('admin');
     const { question } = AskGraphRequestSchema.parse(await request.json());
     return { ask: await askGraph(engagementId, question) };
   });

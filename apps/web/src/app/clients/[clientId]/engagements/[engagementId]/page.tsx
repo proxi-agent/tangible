@@ -22,14 +22,18 @@ import { FarFileStatusBadge } from '@/components/workspace/badges';
 import { CarryForwardCard } from '@/components/workspace/carry-forward-card';
 import { DownloadButton } from '@/components/workspace/download-button';
 import { EngagementPipeline } from '@/components/workspace/engagement-pipeline';
+import { EvidenceCard } from '@/components/workspace/evidence-card';
+import { PrecapAdvisor } from '@/components/workspace/precap-advisor';
 import { ClassificationCard } from '@/components/workspace/classification-card';
 import { FindingsCard } from '@/components/workspace/findings-card';
 import { OpenYearsCard } from '@/components/workspace/open-years-card';
 import { PriorsCard } from '@/components/workspace/priors-card';
+import { RecoveryCard } from '@/components/workspace/recovery-card';
 import { ResultCard } from '@/components/workspace/result-card';
 import { ReturnsBoard } from '@/components/workspace/returns-board';
 import { SitesCard } from '@/components/workspace/sites-card';
 import { IntakeCard } from '@/components/workspace/intake-card';
+import { InvoicesCard } from '@/components/workspace/invoices-card';
 import { ValuationCard } from '@/components/workspace/valuation-card';
 import { Button, ChipGroup, Select, TextInput } from '@/components/ui/controls';
 import { DataTable } from '@/components/ui/data-table';
@@ -59,11 +63,17 @@ const TABS = [
   { id: 'overview', label: 'Overview' },
   { id: 'intake', label: 'Intake' },
   { id: 'assets', label: 'Assets' },
+  { id: 'invoices', label: 'Invoices' },
   { id: 'value', label: 'Value' },
   { id: 'sites', label: 'Sites' },
   { id: 'findings', label: 'Findings' },
   { id: 'results', label: 'Results' },
   { id: 'priors', label: 'Prior years' },
+  // The one tab that does not look at this season. Prior years look backwards at
+  // filings already made; this looks forwards at a purchase nobody has made yet,
+  // which is the same engine pointed the only direction where changing the
+  // answer is free.
+  { id: 'advice', label: 'Advice' },
 ] as const;
 
 type TabId = (typeof TABS)[number]['id'];
@@ -255,6 +265,19 @@ function TabBody({
           <AssetsCard detail={detail} clientId={clientId} engagementId={engagementId} />
         </>
       );
+    case 'invoices':
+      // After the register and before the value, because that is the order the
+      // question arrives in: here is a $340,000 line, and here is the document
+      // saying a fifth of it was freight, labour and sales tax. It is the only
+      // leakage the register cannot see at any level of care.
+      if (!hasAssets) {
+        return (
+          <Card>
+            <EmptyState title="Nothing to read an invoice against yet">{intake}</EmptyState>
+          </Card>
+        );
+      }
+      return <InvoicesCard clientId={clientId} engagementId={engagementId} />;
     case 'value':
       if (!hasAssets) {
         return (
@@ -285,10 +308,12 @@ function TabBody({
     case 'findings':
       // The comparison feeds the findings, so it reads first — and stays
       // deliberately absent on a first season, where there is nothing to
-      // compare against.
+      // compare against. The outside systems read next for the same reason:
+      // whether an asset still exists is settled before a finding says so.
       return (
         <>
           {hasAssets ? <CarryForwardCard engagementId={engagementId} /> : null}
+          {hasAssets ? <EvidenceCard engagementId={engagementId} /> : null}
           <FindingsCard
             clientId={clientId}
             engagementId={engagementId}
@@ -305,18 +330,26 @@ function TabBody({
         </>
       );
     case 'results':
+      // Two scoreboards, and the order is the argument. The site-and-year one
+      // is what the district's roll says; the one under it is which of our own
+      // arguments produced that, which is the only half that says anything
+      // about next season. The recovery card draws nothing until a position has
+      // actually gone out, so an engagement mid-season still reads as one card.
       return (
-        <ResultCard
-          engagementId={engagementId}
-          empty={
-            <Card>
-              <EmptyState title="No returns out yet">
-                The scoreboard starts once a return has gone out — what was rendered, what the
-                district noticed, and where the value stands.
-              </EmptyState>
-            </Card>
-          }
-        />
+        <>
+          <ResultCard
+            engagementId={engagementId}
+            empty={
+              <Card>
+                <EmptyState title="No returns out yet">
+                  The scoreboard starts once a return has gone out — what was rendered, what the
+                  district noticed, and where the value stands.
+                </EmptyState>
+              </Card>
+            }
+          />
+          <RecoveryCard engagementId={engagementId} />
+        </>
       );
     case 'priors':
       return (
@@ -341,6 +374,12 @@ function TabBody({
           }
         />
       );
+    case 'advice':
+      // No `hasAssets` gate, deliberately. Every other tab needs a register
+      // because it is about property the client already owns; this one is about
+      // property they do not own yet, and it is at its most useful on an
+      // engagement that has barely started.
+      return <PrecapAdvisor engagementId={engagementId} />;
   }
 }
 

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AssetEvidenceSchema } from './evidence.js';
 import { AssetSchema } from './far.js';
 
 /**
@@ -344,9 +345,7 @@ export const AssetAppraisalStateSchema = z.discriminatedUnion('state', [
     schedule: z.union([z.number(), z.string()]),
     lifeSource: z.enum(['override', 'sic', 'category']),
     atFloor: z.boolean(),
-    sic: z
-      .object({ code: z.string(), description: z.string(), life: z.number() })
-      .nullable(),
+    sic: z.object({ code: z.string(), description: z.string(), life: z.number() }).nullable(),
     /** The blended rate the estimate used — an estimate, never the bill. */
     taxRate: z.number(),
     estimatedTax: z.number(),
@@ -420,6 +419,13 @@ export const AssetProfileSchema = z.object({
   findings: z.array(AssetFindingRefSchema),
   events: z.array(AssetEventSchema),
   versions: z.array(AssetVersionSummarySchema),
+  /**
+   * What the systems outside the register say about this asset — and what they
+   * were never in a position to say. Null where no export has been imported,
+   * which is not the same as three empty lists: an asset nothing was asked
+   * about must not read as an asset nothing could find.
+   */
+  evidence: AssetEvidenceSchema.nullable(),
   /** The source row's cells exactly as parsed, for the lineage view. */
   raw: z.record(z.string(), z.unknown()).nullable(),
 });

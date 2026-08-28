@@ -9,8 +9,15 @@ import type {
 } from '@tangible/types';
 import { appraise, scheduleFor, type LifeClass } from '@tangible/valuation';
 import { lookupRate } from '@/lib/analysis';
-import { assetDto, assetGraphColumns, engagementAssetsWhere, type AssetGraphRow } from '@/lib/asset-graph';
+import { assetEvidence } from '@/lib/evidence';
+import {
+  assetDto,
+  assetGraphColumns,
+  engagementAssetsWhere,
+  type AssetGraphRow,
+} from '@/lib/asset-graph';
 import { handle, notFound } from '@/lib/route';
+import { requireEngagementScope } from '@/lib/viewer';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -34,6 +41,10 @@ export function GET(
 ): Promise<Response> {
   return handle(async (): Promise<AssetProfile> => {
     const { engagementId, assetId } = await params;
+    // Reachable from the portal now, so the engagement has to be asserted as
+    // the caller's own. The proxy has only decided that this shape of path is
+    // one a client may address at all.
+    const viewer = await requireEngagementScope(engagementId);
     const { engagement } = await fetchEngagement(engagementId);
     const db = requireDb();
 
@@ -56,89 +67,101 @@ export function GET(
     }
     const asset = assetDto(current as AssetGraphRow);
 
-    const [classificationRows, placementRows, sightingRows, eventRows, versionRows, filingRows, setRows] =
-      await Promise.all([
-        db
-          .select()
-          .from(schema.assetClassifications)
-          .where(eq(schema.assetClassifications.assetId, assetId)),
-        durable.locationId
-          ? db
-              .select()
-              .from(schema.clientLocations)
-              .where(eq(schema.clientLocations.id, durable.locationId))
-          : Promise.resolve([]),
-        db
-          .select({
-            batchId: schema.importBatches.id,
-            appliedAt: schema.importBatches.appliedAt,
-            createdAt: schema.importBatches.createdAt,
-            fileName: schema.farFiles.originalFilename,
-          })
-          .from(schema.importBatches)
-          .leftJoin(schema.farFiles, eq(schema.farFiles.id, schema.importBatches.farFileId))
-          .where(inArray(schema.importBatches.id, [durable.firstSeenBatchId, durable.lastSeenBatchId])),
-        db
-          .select()
-          .from(schema.assetEvents)
-          .where(eq(schema.assetEvents.assetId, assetId))
-          .orderBy(desc(schema.assetEvents.occurredAt), desc(schema.assetEvents.id)),
-        db
-          .select({
-            versionId: schema.assetVersions.id,
-            batchId: schema.assetVersions.batchId,
-            engagementId: schema.assetVersions.engagementId,
-            isCurrent: schema.assetVersions.isCurrent,
-            createdAt: schema.assetVersions.createdAt,
-            sourceSheet: schema.assetVersions.sourceSheet,
-            sourceRow: schema.assetVersions.sourceRow,
-            originalCost: schema.assetVersions.originalCost,
-            accumulatedDepreciation: schema.assetVersions.accumulatedDepreciation,
-            netBookValue: schema.assetVersions.netBookValue,
-            category: schema.assetVersions.category,
-            location: schema.assetVersions.location,
-            isDisposed: schema.assetVersions.isDisposed,
-            batchStatus: schema.importBatches.status,
-            fileName: schema.farFiles.originalFilename,
-          })
-          .from(schema.assetVersions)
-          .innerJoin(schema.importBatches, eq(schema.importBatches.id, schema.assetVersions.batchId))
-          .leftJoin(schema.farFiles, eq(schema.farFiles.id, schema.assetVersions.farFileId))
-          .where(eq(schema.assetVersions.assetId, assetId))
-          .orderBy(desc(schema.assetVersions.createdAt), desc(schema.assetVersions.id)),
-        // Every filed return that carried this asset, across the client's
-        // engagements. Read off the filing record's own asset list — observed
-        // at the moment of filing, not reconstructed.
-        db
-          .select({
-            filingId: schema.renditionFilings.id,
-            engagementId: schema.renditionFilings.engagementId,
-            taxYear: schema.renditionFilings.taxYear,
-            jurisdictionId: schema.renditionFilings.jurisdictionId,
-            locationLabel: schema.renditionFilings.locationLabel,
-            status: schema.renditionFilings.status,
-            scheduleValue: schema.renditionFilings.scheduleValue,
-            recordedAt: schema.renditionFilings.recordedAt,
-          })
-          .from(schema.renditionFilings)
-          .innerJoin(schema.engagements, eq(schema.engagements.id, schema.renditionFilings.engagementId))
-          .where(
-            and(
-              eq(schema.engagements.clientId, engagement.clientId),
-              sql`${schema.renditionFilings.assetIds} @> ${JSON.stringify([assetId])}::jsonb`,
-            ),
-          )
-          .orderBy(desc(schema.renditionFilings.taxYear), desc(schema.renditionFilings.recordedAt)),
-        db
-          .select({
-            id: schema.findingSets.id,
-            source: schema.findingSets.source,
-            committedAt: schema.findingSets.committedAt,
-          })
-          .from(schema.findingSets)
-          .where(eq(schema.findingSets.engagementId, engagementId))
-          .orderBy(desc(schema.findingSets.committedAt)),
-      ]);
+    const [
+      classificationRows,
+      placementRows,
+      sightingRows,
+      eventRows,
+      versionRows,
+      filingRows,
+      setRows,
+    ] = await Promise.all([
+      db
+        .select()
+        .from(schema.assetClassifications)
+        .where(eq(schema.assetClassifications.assetId, assetId)),
+      durable.locationId
+        ? db
+            .select()
+            .from(schema.clientLocations)
+            .where(eq(schema.clientLocations.id, durable.locationId))
+        : Promise.resolve([]),
+      db
+        .select({
+          batchId: schema.importBatches.id,
+          appliedAt: schema.importBatches.appliedAt,
+          createdAt: schema.importBatches.createdAt,
+          fileName: schema.farFiles.originalFilename,
+        })
+        .from(schema.importBatches)
+        .leftJoin(schema.farFiles, eq(schema.farFiles.id, schema.importBatches.farFileId))
+        .where(
+          inArray(schema.importBatches.id, [durable.firstSeenBatchId, durable.lastSeenBatchId]),
+        ),
+      db
+        .select()
+        .from(schema.assetEvents)
+        .where(eq(schema.assetEvents.assetId, assetId))
+        .orderBy(desc(schema.assetEvents.occurredAt), desc(schema.assetEvents.id)),
+      db
+        .select({
+          versionId: schema.assetVersions.id,
+          batchId: schema.assetVersions.batchId,
+          engagementId: schema.assetVersions.engagementId,
+          isCurrent: schema.assetVersions.isCurrent,
+          createdAt: schema.assetVersions.createdAt,
+          sourceSheet: schema.assetVersions.sourceSheet,
+          sourceRow: schema.assetVersions.sourceRow,
+          originalCost: schema.assetVersions.originalCost,
+          accumulatedDepreciation: schema.assetVersions.accumulatedDepreciation,
+          netBookValue: schema.assetVersions.netBookValue,
+          category: schema.assetVersions.category,
+          location: schema.assetVersions.location,
+          isDisposed: schema.assetVersions.isDisposed,
+          batchStatus: schema.importBatches.status,
+          fileName: schema.farFiles.originalFilename,
+        })
+        .from(schema.assetVersions)
+        .innerJoin(schema.importBatches, eq(schema.importBatches.id, schema.assetVersions.batchId))
+        .leftJoin(schema.farFiles, eq(schema.farFiles.id, schema.assetVersions.farFileId))
+        .where(eq(schema.assetVersions.assetId, assetId))
+        .orderBy(desc(schema.assetVersions.createdAt), desc(schema.assetVersions.id)),
+      // Every filed return that carried this asset, across the client's
+      // engagements. Read off the filing record's own asset list — observed
+      // at the moment of filing, not reconstructed.
+      db
+        .select({
+          filingId: schema.renditionFilings.id,
+          engagementId: schema.renditionFilings.engagementId,
+          taxYear: schema.renditionFilings.taxYear,
+          jurisdictionId: schema.renditionFilings.jurisdictionId,
+          locationLabel: schema.renditionFilings.locationLabel,
+          status: schema.renditionFilings.status,
+          scheduleValue: schema.renditionFilings.scheduleValue,
+          recordedAt: schema.renditionFilings.recordedAt,
+        })
+        .from(schema.renditionFilings)
+        .innerJoin(
+          schema.engagements,
+          eq(schema.engagements.id, schema.renditionFilings.engagementId),
+        )
+        .where(
+          and(
+            eq(schema.engagements.clientId, engagement.clientId),
+            sql`${schema.renditionFilings.assetIds} @> ${JSON.stringify([assetId])}::jsonb`,
+          ),
+        )
+        .orderBy(desc(schema.renditionFilings.taxYear), desc(schema.renditionFilings.recordedAt)),
+      db
+        .select({
+          id: schema.findingSets.id,
+          source: schema.findingSets.source,
+          committedAt: schema.findingSets.committedAt,
+        })
+        .from(schema.findingSets)
+        .where(eq(schema.findingSets.engagementId, engagementId))
+        .orderBy(desc(schema.findingSets.committedAt)),
+    ]);
 
     // Findings that name this asset, from the latest committed set of each
     // source — the sets the findings tab is working, not every run ever made.
@@ -167,9 +190,7 @@ export function GET(
             )
             .orderBy(schema.findings.ordinal)
         : [];
-    const committedAtBySetId = new Map(
-      [...latestSets.values()].map((s) => [s.id, s.committedAt]),
-    );
+    const committedAtBySetId = new Map([...latestSets.values()].map((s) => [s.id, s.committedAt]));
 
     const classificationRow = classificationRows[0] ?? null;
     const classification: AssetProfileClassification | null = classificationRow
@@ -192,10 +213,17 @@ export function GET(
     const placementRow = placementRows[0] ?? null;
     // Where the asset's return files: the site's own district when it names
     // one, the engagement's otherwise — the same fallback the rendition uses.
-    const effectiveJurisdiction =
-      placementRow?.jurisdictionId ?? engagement.jurisdictionId ?? null;
+    const effectiveJurisdiction = placementRow?.jurisdictionId ?? engagement.jurisdictionId ?? null;
 
     const appraisal = await appraisalState();
+    /**
+     * Read after the appraisal rather than beside it, because it is the one
+     * part of this page that depends on files somebody uploaded rather than on
+     * the graph. It returns three empty lists when nothing has been imported,
+     * and the page turns that into "nothing was asked" rather than "nothing was
+     * found" — the distinction the whole evidence model exists to keep.
+     */
+    const evidence = await assetEvidence(engagementId, assetId);
 
     async function appraisalState(): Promise<AssetAppraisalState> {
       if (asset.isDisposed) return { state: 'disposed' };
@@ -229,8 +257,7 @@ export function GET(
           acquisitionYear: asset.acquisitionYear ?? Number.NaN,
           categoryKey,
           lifeClassOverride: (classification.lifeClassOverride ?? undefined) as
-            | LifeClass
-            | undefined,
+            LifeClass | undefined,
           businessSic: engagement.sicCode,
         },
         schedule,
@@ -270,7 +297,7 @@ export function GET(
       };
     };
 
-    return {
+    const profile: AssetProfile = {
       asset,
       clientId: durable.clientId,
       naturalKey: durable.naturalKey,
@@ -346,7 +373,43 @@ export function GET(
         location: v.location,
         isDisposed: v.isDisposed,
       })),
+      evidence:
+        evidence.matches.length === 0 &&
+        evidence.negatives.length === 0 &&
+        evidence.silent.length === 0
+          ? null
+          : evidence,
       raw: (current.raw as Record<string, unknown> | null) ?? null,
     };
+
+    return viewer.audience === 'client' ? withoutInternals(profile) : profile;
   });
+}
+
+/**
+ * The same page, with the firm's own working taken off it.
+ *
+ * Not a different endpoint and not a different shape: a client asking about
+ * their own lathe should get the same answer we have, and building a parallel
+ * read would guarantee the two drift. What comes off is narrow and it is all
+ * one kind of thing — *who at the firm touched this, and when*. A taxpayer is
+ * owed the reasoning, the confidence and the arithmetic; they are not owed the
+ * name of the associate who confirmed a category, the model that proposed it,
+ * or the hour at which either happened. None of it would change a decision they
+ * could make, and all of it invites an argument with a person rather than with
+ * the position.
+ *
+ * Deliberately still here: `rationale`, `confidence`, `source` and `status`.
+ * Those are the *why*, and withholding the why while showing the conclusion is
+ * how you get a client who has to take a $40,000 claim about their property on
+ * trust.
+ */
+function withoutInternals(profile: AssetProfile): AssetProfile {
+  return {
+    ...profile,
+    classification: profile.classification
+      ? { ...profile.classification, model: null, reviewedBy: null, reviewedAt: null }
+      : profile.classification,
+    events: profile.events.map((event) => ({ ...event, actor: null })),
+  };
 }

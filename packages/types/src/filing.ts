@@ -114,8 +114,17 @@ export type FilingBlocker = z.infer<typeof FilingBlockerSchema>;
 export const FilingDeadlineSchema = z.object({
   key: z.string(),
   label: z.string(),
-  /** ISO date. */
-  date: z.string(),
+  /**
+   * ISO date, or null for a deadline that is real but not yet dated.
+   *
+   * Texas computes every date off the calendar. Florida does not: the VAB
+   * petition runs 25 days from a TRIM notice the county mails when it chooses,
+   * so the deadline exists all season with no date on it until the notice
+   * arrives. Null is that state, and it is deliberately different from the
+   * deadline being absent — a screen that hid it would be telling a Florida
+   * client they have no petition clock.
+   */
+  date: z.string().nullable(),
   basis: z.string(),
 });
 

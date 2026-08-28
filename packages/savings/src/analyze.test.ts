@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { TX_HARRIS_2026 as S } from '@tangible/valuation';
 import { analyzeSavings, type SavingsAsset, type SavingsInput } from './analyze.js';
-import { exemptionFor, TX_EXEMPTION_2026 } from './exemptions.js';
+import { exemptionFor, exemptionForSites, FL_EXEMPTION, TX_EXEMPTION_2026 } from './exemptions.js';
 
 let nextId = 0;
 const asset = (over: Partial<SavingsAsset> = {}): SavingsAsset => ({
@@ -139,7 +139,7 @@ describe('findings', () => {
 });
 
 describe('duplicate capitalization', () => {
-  it('asks about identical valued lines and never prices the question', () => {
+  it('prices near-identical lines rather than asking about them', () => {
     const report = run([
       asset({ description: 'CNC lathe HAAS ST-20', originalCost: 185_000 }),
       asset({ description: 'CNC lathe HAAS ST-20', originalCost: 185_000 }),
@@ -147,16 +147,23 @@ describe('duplicate capitalization', () => {
     ]);
     const finding = find(report, 'duplicate-capitalization')!;
     expect(finding).toBeDefined();
-    expect(finding.kind).toBe('screening');
-    expect(finding.valueRemoved).toBeNull();
+    // Four things agreeing — wording, cost, timing, department — is a position,
+    // not a question, which is the whole change here.
+    expect(finding.kind).toBe('modeled');
     expect(finding.assetCount).toBe(2);
-    // The scale is every line involved; the excess past one copy per group is
-    // stated in the summary, not invented as a saving.
+    // The scale is every line involved; the saving is the excess past one copy.
     expect(finding.originalCost).toBe(370_000);
-    expect(finding.summary).toContain('$185,000');
-    expect(report.totalValueRemoved).toBe(0);
-    // Both copies still stand in the corrected position until somebody answers.
-    expect(report.farOriginalCost).toBe(400_000);
+    expect(finding.valueRemoved).toBeGreaterThan(0);
+    expect(finding.valueRemoved).toBeCloseTo(finding.rows[1]!.valueRemoved!, 6);
+    expect(report.totalValueRemoved).toBeCloseTo(finding.valueRemoved!, 6);
+  });
+
+  it('keeps one copy per group on the return', () => {
+    const report = run([asset(), asset()]);
+    const rows = find(report, 'duplicate-capitalization')!.rows;
+    expect(rows).toHaveLength(2);
+    expect(rows.filter((r) => r.valueRemoved === 0)).toHaveLength(1);
+    expect(rows[0]!.confidence.signals.some((s) => s.code === 'kept-copy')).toBe(true);
   });
 
   it('folds case, whitespace and punctuation the way the asset graph does', () => {
@@ -167,18 +174,49 @@ describe('duplicate capitalization', () => {
     expect(find(report, 'duplicate-capitalization')).toBeDefined();
   });
 
-  it('treats a different cost or year as a different asset', () => {
+  it('matches a phase split across two invoices that no exact key would see', () => {
+    // The case the old exact-match detector was blind to, and the reason the
+    // finding is worth pricing: a project booked in two parts, three weeks and
+    // $150 apart, in the same department.
     const report = run([
-      asset({ originalCost: 100_000 }),
-      asset({ originalCost: 100_000.5 }),
-      asset({ originalCost: 90_000, acquisitionYear: 2021 }),
+      asset({
+        description: 'CONVEYOR SYSTEM',
+        originalCost: 84_000,
+        acquisitionDate: '2023-03-02',
+        costCenter: 'PLANT 1',
+      }),
+      asset({
+        description: 'CONVEYOR SYSTEM PHASE 2',
+        originalCost: 84_150,
+        acquisitionDate: '2023-03-23',
+        costCenter: 'PLANT 1',
+      }),
+    ]);
+    expect(find(report, 'duplicate-capitalization')).toBeDefined();
+  });
+
+  it('will not match across cost centres, or past the cost tolerance', () => {
+    const separate = run([
+      asset({ description: 'Laptop', originalCost: 2_400, costCenter: 'SALES' }),
+      asset({ description: 'Laptop', originalCost: 2_400, costCenter: 'ENGINEERING' }),
+    ]);
+    expect(find(separate, 'duplicate-capitalization')).toBeUndefined();
+
+    const apart = run([asset({ originalCost: 100_000 }), asset({ originalCost: 130_000 })]);
+    expect(find(apart, 'duplicate-capitalization')).toBeUndefined();
+  });
+
+  it('will not match two different model numbers', () => {
+    const report = run([
+      asset({ description: 'PUMP MDX-400' }),
+      asset({ description: 'PUMP MDX-700' }),
     ]);
     expect(find(report, 'duplicate-capitalization')).toBeUndefined();
   });
 
   it('ignores duplicates already leaving the rendition for their own reason', () => {
     // Disposed and excluded rows are ghost/non-taxable findings; flagging them
-    // again as duplicates would double-count the same dollars as two questions.
+    // again as duplicates would double-count the same dollars twice.
     const report = run([
       asset({ isDisposed: true }),
       asset({ isDisposed: true }),
@@ -188,11 +226,11 @@ describe('duplicate capitalization', () => {
     expect(find(report, 'duplicate-capitalization')).toBeUndefined();
   });
 
-  it('counts the group in the leakage leads', () => {
+  it('counts the group in the jurisdiction rollup at the excess, not the whole', () => {
     const report = run([asset(), asset()]);
-    expect(find(report, 'duplicate-capitalization')).toBeDefined();
-    expect(report.leakage.leadCount).toBe(1);
-    expect(report.leakage.leadCost).toBe(200_000);
+    const finding = find(report, 'duplicate-capitalization')!;
+    const rollup = report.leakage.byJurisdiction[0]!;
+    expect(rollup.modeledValue).toBeCloseTo(finding.valueRemoved!, 6);
   });
 });
 
@@ -249,7 +287,135 @@ describe('exemptionFor', () => {
   });
 
   it('assumes nothing for a jurisdiction it has not looked up', () => {
-    expect(exemptionFor('fl-miami-dade', 2026)).toBe(0);
+    // Georgia is a real BPP state with a real exemption. Nobody here has read
+    // it, and the honest answer to that is zero rather than a neighbour's.
+    expect(exemptionFor('ga-fulton', 2026)).toBe(0);
     expect(exemptionFor(null, 2026)).toBe(0);
+  });
+
+  it('knows Florida, and knows a Florida return is per location', () => {
+    expect(exemptionFor('fl-miami-dade', 2026)).toBe(FL_EXEMPTION);
+    // Four sites in Florida is four returns and four exemptions; four sites in
+    // Texas is still one exemption against the account.
+    expect(exemptionForSites('fl-miami-dade', 2026, 4)).toBe(FL_EXEMPTION * 4);
+    expect(exemptionForSites('tx-harris', 2026, 4)).toBe(TX_EXEMPTION_2026);
+  });
+});
+
+describe('per-asset rows', () => {
+  it('prices each row, and the rows add to the category', () => {
+    const report = run([
+      asset({ isDisposed: true, originalCost: 100_000, disposalDate: '2025-03-04' }),
+      asset({ isDisposed: true, originalCost: 40_000, disposalDate: '2025-06-01' }),
+    ]);
+    const ghost = find(report, 'ghost-assets')!;
+    expect(ghost.rows).toHaveLength(2);
+    // Every row's own arithmetic: what it carries as filed, what it should
+    // carry, the difference, and the difference priced.
+    for (const row of ghost.rows) {
+      expect(row.correctedValue).toBe(0);
+      expect(row.valueRemoved).toBe(row.assessedAsFiled);
+      expect(row.taxAtRisk).toBeCloseTo((row.valueRemoved ?? 0) * 0.025, 6);
+      // Phase 3: the row is scored, not pending. Discounted by how sure we
+      // are and how often a district agrees, so it is always below the raw
+      // tax at risk and never zero for a row worth something.
+      expect(row.expectedRecovery).toBeGreaterThan(0);
+      expect(row.expectedRecovery!).toBeLessThan(row.taxAtRisk!);
+    }
+    // And the category total is the sum of them, not a parallel figure.
+    const summed = ghost.rows.reduce((total, row) => total + (row.valueRemoved ?? 0), 0);
+    expect(summed).toBeCloseTo(ghost.valueRemoved ?? 0, 6);
+  });
+
+  it('prints a sample that is literally the top of the population', () => {
+    const many = Array.from({ length: 40 }, (_, i) =>
+      asset({ isDisposed: true, originalCost: (i + 1) * 1_000, disposalDate: '2025-02-02' }),
+    );
+    const ghost = find(run(many), 'ghost-assets')!;
+    expect(ghost.rows).toHaveLength(40);
+    expect(ghost.evidence).toHaveLength(25);
+    // Same objects, same order — the two cannot disagree.
+    expect(ghost.evidence.map((e) => e.assetId)).toEqual(
+      ghost.rows.slice(0, 25).map((r) => r.assetId),
+    );
+    expect(ghost.rows[0].originalCost).toBe(40_000);
+  });
+
+  it('carries the filters a client will reach for', () => {
+    const report = run([
+      asset({
+        isDisposed: true,
+        disposalDate: '2025-01-30',
+        costCenter: 'Plant 2',
+        locationId: 'loc-1',
+        site: { label: 'Houston', jurisdictionId: 'tx-harris', jurisdictionName: 'Harris County' },
+        serialNumber: 'SN-4471',
+      }),
+    ]);
+    const row = find(report, 'ghost-assets')!.rows[0];
+    expect(row.costCenter).toBe('Plant 2');
+    expect(row.locationId).toBe('loc-1');
+    expect(row.siteLabel).toBe('Houston');
+    expect(row.jurisdictionName).toBe('Harris County');
+    expect(row.evidencePresent).toBe(true);
+    expect(row.categoryLabel).toBe('Machinery and equipment');
+    // Stable across runs, because a disposition is recorded against it.
+    expect(row.rowKey).toBe(`ghost-assets:${row.assetId}`);
+  });
+});
+
+describe('confidence', () => {
+  it('drops a disposal that had not happened by January 1', () => {
+    // The rendition is a snapshot of January 1. An asset sold in March was
+    // owned on the lien date and belongs on that year's return, however plainly
+    // the register says it is gone.
+    const report = run([
+      asset({ isDisposed: true, disposalDate: '2025-11-02' }),
+      asset({ isDisposed: true, disposalDate: '2026-03-15' }),
+    ]);
+    const rows = find(report, 'ghost-assets')!.rows;
+    const before = rows.find((r) =>
+      r.confidence.signals.some((s) => s.code === 'gone-before-january'),
+    )!;
+    const after = rows.find((r) =>
+      r.confidence.signals.some((s) => s.code === 'owned-on-january-1'),
+    )!;
+    expect(before.confidence.tier).toBe('high');
+    expect(after.confidence.tier).toBe('low');
+    expect(after.confidence.score).toBeLessThan(before.confidence.score);
+  });
+
+  it('says what is working against a row, not only for it', () => {
+    const report = run([asset({ isDisposed: true, disposalDate: null })]);
+    const row = find(report, 'ghost-assets')!.rows[0];
+    expect(row.confidence.why).toContain('Against it:');
+    expect(row.confidence.why.toLowerCase()).toContain('no date recorded');
+  });
+
+  it('backs off a duplicate group whose lines carry their own serial numbers', () => {
+    const twins = (over: Partial<SavingsAsset>) =>
+      asset({ description: 'Forklift', originalCost: 55_000, acquisitionYear: 2023, ...over });
+    const anonymous = find(run([twins({}), twins({})]), 'duplicate-capitalization')!;
+    const serialled = find(
+      run([twins({ serialNumber: 'A1' }), twins({ serialNumber: 'B2' })]),
+      'duplicate-capitalization',
+    )!;
+    expect(anonymous.rows[0].confidence.score).toBeGreaterThan(serialled.rows[0].confidence.score);
+    expect(serialled.confidenceMix.low).toBe(2);
+    // One copy per group stays on the return, and is printed anyway.
+    expect(serialled.rows).toHaveLength(2);
+    expect(serialled.rows.filter((r) => r.valueRemoved === 0)).toHaveLength(1);
+  });
+
+  it('counts the tiers and the signals it counted them from', () => {
+    const report = run([
+      asset({ isDisposed: true, disposalDate: '2025-02-02' }),
+      asset({ isDisposed: true, disposalDate: null }),
+    ]);
+    const ghost = find(report, 'ghost-assets')!;
+    expect(ghost.confidenceMix.high + ghost.confidenceMix.medium + ghost.confidenceMix.low).toBe(2);
+    const basis = ghost.detection.find((d) => d.code === 'no-disposal-date')!;
+    expect(basis.assetCount).toBe(1);
+    expect(basis.originalCost).toBe(100_000);
   });
 });
