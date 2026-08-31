@@ -19,6 +19,10 @@ export function ThemeToggle() {
 
   useEffect(() => {
     const stored = localStorage.getItem('tangible-theme') as Theme | null;
+    // localStorage does not exist on the server, so the stored theme can only
+    // be adopted after hydration. Initializing the state from it directly would
+    // render one toggle on the server and a different one in the browser.
+    // oxlint-disable-next-line react/set-state-in-effect
     if (stored) setTheme(stored);
   }, []);
 

@@ -516,6 +516,12 @@ function Listbox({
 
   if (typeof document === 'undefined') return null;
 
+  // Read during render on purpose. The layout effect below measures
+  // `panel.offsetWidth` as the panel's natural width, and that measurement is
+  // taken against this `minWidth` — so the trigger's width has to be known on
+  // the very first pass. Moving it into state would measure a 200px-wide
+  // control's panel at 160px and then pin it there.
+  // oxlint-disable-next-line react/refs
   const triggerWidth = triggerRef.current?.getBoundingClientRect().width ?? 0;
 
   return createPortal(

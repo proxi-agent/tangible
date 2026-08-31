@@ -109,6 +109,9 @@ export function PortalProvider({ children }: { children: ReactNode }) {
   const [pickedSeason, setPickedSeason] = useState<string | null>(null);
 
   useEffect(() => {
+    // Seeding this state during render would read localStorage on the server,
+    // where it does not exist, and hydrate a different tree than was sent.
+    // oxlint-disable-next-line react/set-state-in-effect
     setPickedSeason(read(SEASON_KEY));
     setSeasonReady(true);
   }, []);

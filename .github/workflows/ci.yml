@@ -30,10 +30,11 @@ jobs:
       # `--type-aware` is the point of running this at all: the rules that
       # caught the real bugs here (a floating promise, a header spread that
       # silently dropped headers) need the type checker, not just the syntax
-      # tree. The warning ceiling is a ratchet — the thirteen open warnings are
-      # judgment calls left standing on purpose, and this stops a fourteenth
-      # from arriving unnoticed.
-      - run: pnpm lint --max-warnings 14
+      # tree. The ceiling is zero: every warning that was standing has either
+      # been fixed or carries an `oxlint-disable-next-line` at the line, with the
+      # reason written above it. A judgment call belongs next to the code it is
+      # about, not in a number here.
+      - run: pnpm lint --max-warnings 0
 
   typecheck:
     name: Typecheck

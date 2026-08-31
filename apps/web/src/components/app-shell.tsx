@@ -226,7 +226,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   const onMarket = isMarketPath(pathname) && !isClient;
 
   // A drawer that survives the navigation it just performed covers the page the
-  // reader asked for.
+  // reader asked for. `pathname` is the trigger, not a value the body reads, and
+  // closing the drawer is the effect itself — there is nothing to derive during
+  // render.
+  // oxlint-disable-next-line react/set-state-in-effect, react/exhaustive-effect-dependencies
   useEffect(() => setNavOpen(false), [pathname]);
 
   // Carry the current scope across market navigation so switching tabs never

@@ -104,6 +104,9 @@ export default function MappingReviewPage() {
   const { mutate: proposeMutate, isPending: proposePending } = propose;
   useEffect(() => {
     if (!file) return;
+    // Adopted once, when the fetched file arrives, and edited by hand after
+    // that — so there is no render-time value to derive it from.
+    // oxlint-disable-next-line react/set-state-in-effect
     setMapping((current) => current ?? initialMapping(file));
     if (file.status === 'parsed' && !file.proposal && !autoProposed.current) {
       autoProposed.current = true;

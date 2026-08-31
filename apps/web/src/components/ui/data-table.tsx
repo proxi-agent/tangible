@@ -178,6 +178,8 @@ export function DataTable<T extends RowData>({
       right: box.scrollLeft + box.clientWidth < box.scrollWidth - 1,
     });
   }, []);
+  // `data` is in the dependencies as a trigger, not as a value the body reads:
+  // a new page replaces every row, and each new row has to be observed.
   useEffect(() => {
     syncOverflow();
     const box = scrollBox.current;
@@ -186,6 +188,7 @@ export function DataTable<T extends RowData>({
     observer.observe(box);
     for (const child of Array.from(box.children)) observer.observe(child);
     return () => observer.disconnect();
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [syncOverflow, data]);
 
   if (data.length === 0 && empty && !loading) {

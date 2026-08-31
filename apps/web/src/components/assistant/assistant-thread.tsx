@@ -86,8 +86,10 @@ export function AssistantThread({
 
   // Follow the conversation down as it grows, including while an answer is
   // still being written — the pending question is the thing to keep in view.
+  // Both dependencies are triggers rather than values the body reads.
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [turns.length, pending]);
 
   const submit = () => {

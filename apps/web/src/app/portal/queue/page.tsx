@@ -89,7 +89,10 @@ export default function PortalQueuePage() {
   // positions or it does not.
   const acceptanceEvidence = published.report?.recoveryModel.acceptanceEvidence ?? [];
 
-  const items = queue.data?.items ?? [];
+  // Memoized on the query result rather than rebuilt each render: the fallback
+  // `[]` is a fresh array every time, and both hooks below key off this array's
+  // identity, so an unmemoized empty list makes them re-run forever.
+  const items = useMemo(() => queue.data?.items ?? [], [queue.data]);
 
   const selected = useMemo(
     () => items.find((item) => item.row.rowKey === selectedKey) ?? items[0] ?? null,
@@ -102,6 +105,9 @@ export default function PortalQueuePage() {
     if (items.length === 0) return;
     if (selectedKey !== null && items.some((item) => item.row.rowKey === selectedKey)) return;
     const next = items.find((item) => decided[item.row.rowKey] === undefined) ?? items[0];
+    // The rows arrive asynchronously, so which one to open cannot be derived at
+    // render time; the two guards above make this fire once per arriving page.
+    // oxlint-disable-next-line react/set-state-in-effect
     if (next) setSelectedKey(next.row.rowKey);
   }, [items, selectedKey, decided]);
 
