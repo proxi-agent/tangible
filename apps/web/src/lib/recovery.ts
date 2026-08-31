@@ -22,7 +22,7 @@ import type {
 import { currentActor } from '@/lib/actor';
 import { lookupRate } from '@/lib/analysis';
 import { allRowDecisions } from '@/lib/finding-rows';
-import { HttpError, notFound } from '@/lib/route';
+import { HttpError, notFound } from '@/lib/http';
 import { publishedReport } from '@/lib/runs';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -312,6 +312,7 @@ export async function clientRecovery(engagementId: string): Promise<ClientRecove
       assets: 0,
       valueClaimed: 0,
       valueAllowed: 0,
+      allowedWithoutFigure: 0,
       pending: 0,
       standing: '',
     };
@@ -319,6 +320,16 @@ export async function clientRecovery(engagementId: string): Promise<ClientRecove
     line.valueClaimed += claim.valueClaimed ?? 0;
     line.valueAllowed += claim.outcome?.valueAllowed ?? 0;
     if (claim.outcome === null) line.pending += 1;
+    // Allowed, in whole or in part, with no amount attached. Counted rather
+    // than valued, and kept apart from the refusals it would otherwise be
+    // indistinguishable from once the amounts are added up.
+    if (
+      claim.outcome !== null &&
+      claim.outcome.valueAllowed === null &&
+      (claim.outcome.outcome === 'accepted' || claim.outcome.outcome === 'partial')
+    ) {
+      line.allowedWithoutFigure += 1;
+    }
     groups.set(key, line);
   }
 
@@ -340,11 +351,25 @@ function lineStanding(line: ClientRecoveryLine): string {
   if (line.pending === line.assets) return 'With the district, no answer yet.';
   const settled = line.assets - line.pending;
   const part = line.pending > 0 ? ` ${line.pending} of ${line.assets} still open.` : '';
-  if (line.valueAllowed <= 0)
+  const unpriced = line.allowedWithoutFigure;
+
+  // The one case where nothing in the amount column is not a refusal. Said as
+  // its own sentence, with a count, because some of the answered items may
+  // genuinely have been refused and the sentence must not speak for those.
+  if (line.valueAllowed <= 0) {
+    if (unpriced > 0) {
+      return `The appraiser said this landed on ${unpriced} of the ${settled} answered, without naming a figure, so no amount is shown against it.${part}`;
+    }
     return `Not allowed on ${settled === 1 ? 'the item' : 'the items'} answered so far.${part}`;
-  if (line.valueAllowed >= line.valueClaimed) return `Allowed in full.${part}`;
+  }
+
+  const also =
+    unpriced > 0
+      ? ` On ${unpriced} more the appraiser said the argument landed without naming a figure, so nothing is added to the amount for ${unpriced === 1 ? 'it' : 'those'}.`
+      : '';
+  if (line.valueAllowed >= line.valueClaimed) return `Allowed in full.${also}${part}`;
   const share = Math.round((line.valueAllowed / line.valueClaimed) * 100);
-  return `Allowed in part — ${share}% of what was asked.${part}`;
+  return `Allowed in part — ${share}% of what was asked.${also}${part}`;
 }
 
 /**
@@ -395,7 +420,13 @@ export async function recordSettlement(
     written = body.perClaim.map((one) => ({
       claimId: one.claimId,
       outcome: one.outcome,
-      allocation: 'itemized' as const,
+      // Per row, from what the caller could actually fill in. A figure is the
+      // district's own arithmetic and the row is `itemized`; no figure is an
+      // appraiser naming the argument without pricing it, which is `stated` —
+      // and the difference is not cosmetic. Both are learnable, only one
+      // reports an amount, and writing `itemized` over a blank would put a
+      // number nobody stated into the client's total.
+      allocation: one.valueAllowed === null ? ('stated' as const) : ('itemized' as const),
       valueAllowed: one.valueAllowed,
       taxRecovered: one.taxRecovered,
       taxIsDocumented: one.taxRecovered !== null,
@@ -630,6 +661,15 @@ function caveatsFor(
   if (proRata > 0) {
     out.push(
       `${proRata} of these positions were settled as part of an account the district did not itemize. Their individual amounts are that settlement split in proportion to what each asked for, not what the district said about each one.`,
+    );
+  }
+  const stated = rows.filter(
+    (one) =>
+      one.realized.outcome?.allocation === 'stated' && one.realized.outcome.valueAllowed === null,
+  ).length;
+  if (stated > 0) {
+    out.push(
+      `On ${stated} of them the appraiser said which arguments landed without pricing them. They count toward what this district accepts and contribute nothing to the value allowed, because no figure was ever stated for them.`,
     );
   }
   const undocumented = rows.filter(

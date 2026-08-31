@@ -129,8 +129,15 @@ export type EngagementRecovery = z.infer<typeof EngagementRecoverySchema>;
  * Record what a district did about a set of claims.
  *
  * One shape covers both cases, and which one it is depends entirely on whether
- * `perClaim` is given. Named claims are `itemized`; a bare `settledValueRemoved`
- * is split `pro-rata` across everything open on that account and year.
+ * `perClaim` is given. A bare `settledValueRemoved` is split `pro-rata` across
+ * everything open on that account and year.
+ *
+ * Named claims split again, per row, on whether the caller gave an amount for
+ * that row. A figure means the district's letter or the ARB order said what it
+ * allowed on that position: `itemized`. No figure means the appraiser named the
+ * argument and never priced it: `stated` — weaker than itemized on the money,
+ * exactly as strong on acceptance, and the distinction is derived rather than
+ * asked for because it is already visible in what the caller could fill in.
  */
 export const RecordSettlementRequestSchema = z
   .object({
@@ -163,6 +170,11 @@ export const RecordSettlementRequestSchema = z
         z.object({
           claimId: z.string().uuid(),
           outcome: ClaimOutcomeSchema,
+          /**
+           * What the district allowed on this position, where it said. Left
+           * null the row is `stated`: the outcome is recorded, the amount is
+           * not invented, and nothing downstream reports a figure for it.
+           */
           valueAllowed: z
             .number()
             .nonnegative()
@@ -214,6 +226,17 @@ export const ClientRecoveryLineSchema = z.object({
   assets: z.number().int(),
   valueClaimed: z.number(),
   valueAllowed: z.number(),
+  /**
+   * Positions the appraiser said the argument landed on without ever pricing
+   * them.
+   *
+   * Carried because without it a zero in `valueAllowed` has two opposite
+   * meanings — the district refused, or the district agreed and named no
+   * figure — and the client's own line would report the second as the first.
+   * It is a count and never an amount: inventing the money is exactly what the
+   * `stated` allocation exists to refuse.
+   */
+  allowedWithoutFigure: z.number().int().nonnegative(),
   pending: z.number().int(),
   standing: z.string(),
 });

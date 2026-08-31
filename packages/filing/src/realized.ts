@@ -173,9 +173,7 @@ export function realize(claim: RecoveryClaim, outcome: RecoveryOutcome | null): 
     };
   }
 
-  const asked = claim.valueClaimed ?? 0;
-  const allowed = outcome.valueAllowed ?? 0;
-  const realizedShare = asked > 0 ? Math.min(1, allowed / asked) : null;
+  const realizedShare = shareOf(claim, outcome);
 
   const notLearnable =
     outcome.outcome === 'withdrawn'
@@ -192,6 +190,40 @@ export function realize(claim: RecoveryClaim, outcome: RecoveryOutcome | null): 
     notLearnable,
     standing: standingFor(claim, outcome, realizedShare),
   };
+}
+
+/**
+ * The share of what was asked that the district allowed.
+ *
+ * Money first, wherever money was stated — that is the observation, and nothing
+ * beats it.
+ *
+ * Where no amount was stated, a zero would be a lie in the exact direction that
+ * costs the most. An appraiser who names the arguments that landed without ever
+ * itemising the money has given the acceptance model its strongest possible
+ * evidence, and reading the missing figure as "allowed nothing" would score an
+ * accepted position at 0% and teach the model the opposite of what happened.
+ * So a valueless outcome takes its share from the label instead.
+ *
+ * Only where the label is unambiguous. `partial` is not: "they allowed some of
+ * it" with no figure is a real fact about acceptance and no fact at all about
+ * how much. A null share is how such a row says the amount is unknown — the
+ * learner drops it for want of a number, which is right, while the row still
+ * reports and still reads.
+ */
+function shareOf(claim: RecoveryClaim, outcome: RecoveryOutcome): number | null {
+  const asked = claim.valueClaimed ?? 0;
+  if (outcome.valueAllowed !== null) {
+    return asked > 0 ? Math.min(1, outcome.valueAllowed / asked) : null;
+  }
+  switch (outcome.outcome) {
+    case 'accepted':
+      return 1;
+    case 'rejected':
+      return 0;
+    default:
+      return null;
+  }
 }
 
 function standingFor(claim: RecoveryClaim, outcome: RecoveryOutcome, share: number | null): string {

@@ -123,6 +123,27 @@ describe('realize', () => {
     expect(row.standing).toContain('still open');
   });
 
+  it('scores an acceptance the appraiser never itemized as an acceptance, not a zero', () => {
+    // The failure this pins is silent and one-directional: before the label
+    // fallback existed, the strongest evidence in the table — an appraiser
+    // saying which arguments landed — trained the model that they had failed.
+    const row = realize(
+      claim('a', 10_000),
+      outcome({ outcome: 'accepted', allocation: 'stated', valueAllowed: null }),
+    );
+    expect(row.realizedShare).toBe(1);
+    expect(row.learnable).toBe(true);
+  });
+
+  it('leaves the share unknown where a partial allowance carries no figure', () => {
+    const row = realize(
+      claim('a', 10_000),
+      outcome({ outcome: 'partial', allocation: 'stated', valueAllowed: null }),
+    );
+    expect(row.realizedShare).toBeNull();
+    expect(row.standing).toBe('Allowed in part. The appraiser said which arguments landed.');
+  });
+
   it('caps the share at one when a district allowed more than was asked', () => {
     expect(realize(claim('a', 10_000), outcome({ valueAllowed: 12_000 })).realizedShare).toBe(1);
   });

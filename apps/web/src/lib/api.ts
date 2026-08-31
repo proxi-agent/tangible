@@ -107,6 +107,7 @@ import type {
   RecordFilingRequest,
   RecordMotionRequest,
   RecordSettlementRequest,
+  VoidClaimRequest,
   RecordNoticeRequest,
   NoticeRecordProposal,
   AskRecord,
@@ -1019,9 +1020,31 @@ export const api = {
       body: JSON.stringify(body),
     }),
 
+  /**
+   * Take back a claim that should never have been recorded.
+   *
+   * Returns nothing but an acknowledgement, so the caller refetches. That is
+   * deliberate rather than lazy: voiding one claim changes every total, every
+   * rate and the caveat list, and a screen patching its own copy of the record
+   * from a bare `ok` would be inventing the new numbers.
+   */
+  voidClaim: (claimId: string, body: VoidClaimRequest) =>
+    request<{ ok: true }>(`/recovery/claims/${claimId}/void`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
   /** The client's copy of the same record. Used by the portal. */
   recoveryStatement: (engagementId: string) =>
     request<ClientRecoveryStatement>(`/engagements/${engagementId}/recovery/statement`),
+
+  /**
+   * Where a business's own returns stand. The portal's twin of `season`, built
+   * from filings and notices rather than from drafts, and carrying none of the
+   * firm's readiness judgment.
+   */
+  returnsStatement: (engagementId: string) =>
+    request<ClientFilingStatement>(`/engagements/${engagementId}/returns/statement`),
 
   /**
    * Write down a 25.25 motion that has gone in.
