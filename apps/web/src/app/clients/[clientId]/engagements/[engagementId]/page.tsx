@@ -390,6 +390,14 @@ const JURISDICTIONS = scheduledJurisdictions();
  * The list is the jurisdictions whose schedules are actually loaded, not every
  * county in the warehouse: picking one we cannot price would set an expectation
  * the valuation card then has to break.
+ *
+ * One of them is on the list and cannot be priced, and it is labelled rather
+ * than hidden. Travis Central Appraisal District publishes no depreciation
+ * tables — not late, not paywalled, not published — so an engagement there
+ * classifies property and values none of it. That is still worth being able to
+ * open: the return is owed on the statutory date whether or not anyone can
+ * price it, and Form 50-144 on a cost basis asks for no schedule. Hiding the
+ * county would block the filing to avoid breaking the estimate.
  */
 function JurisdictionPicker({ engagement }: { engagement: Engagement }) {
   const queryClient = useQueryClient();
@@ -413,7 +421,7 @@ function JurisdictionPicker({ engagement }: { engagement: Engagement }) {
         <option value="">Jurisdiction not set</option>
         {JURISDICTIONS.map((j) => (
           <option key={j.id} value={j.id}>
-            {j.name}
+            {j.status === 'committed' ? j.name : `${j.name} — no schedule published`}
           </option>
         ))}
       </Select>

@@ -37,7 +37,12 @@ export {
   runGate,
   type GateInput,
 } from './gate.js';
+export { TX_BEXAR_2026_VALUATION_GOLDENS } from './goldens/tx-bexar-2026-valuation.js';
+export { TX_COLLIN_2026_VALUATION_GOLDENS } from './goldens/tx-collin-2026-valuation.js';
+export { TX_DALLAS_2026_VALUATION_GOLDENS } from './goldens/tx-dallas-2026-valuation.js';
+export { TX_TARRANT_2026_VALUATION_GOLDENS } from './goldens/tx-tarrant-2026-valuation.js';
 export { TX_HARRIS_2026_VALUATION_GOLDENS } from './goldens/tx-harris-2026-valuation.js';
+export { FL_2026_VALUATION_GOLDENS } from './goldens/fl-2026-valuation.js';
 export { DETECTOR_GOLDENS } from './goldens/detectors.js';
 export {
   ACKNOWLEDGED_FAILURES,

@@ -290,7 +290,15 @@ function SeasonHint({ season }: { season: FilingSeason | undefined }) {
 }
 
 const DISTRICT_NAMES = new Map(APPRAISAL_DISTRICTS.map((d) => [d.id, d.name]));
-const SCHEDULED = new Set(scheduledJurisdictions().map((j) => j.id));
+// Only the districts whose tables are actually loaded. A jurisdiction can be
+// registered with none — Travis publishes no depreciation schedules at all —
+// and it belongs in the warning branch below with the counties we have not got
+// to, because the sentence an operator needs is the same either way.
+const SCHEDULED = new Set(
+  scheduledJurisdictions()
+    .filter((j) => j.status === 'committed')
+    .map((j) => j.id),
+);
 
 /**
  * What choosing a district costs, said before the choice is saved.

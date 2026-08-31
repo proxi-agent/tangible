@@ -29,9 +29,19 @@ export {
   type SpecialSchedule,
 } from './types.js';
 export { FL_DOR_2026 } from './schedules/fl-dor-2026.js';
+export { TX_BEXAR_2026 } from './schedules/tx-bexar-2026.js';
+export { TX_COLLIN_2026 } from './schedules/tx-collin-2026.js';
+export { TX_DALLAS_2026 } from './schedules/tx-dallas-2026.js';
+export { TX_TARRANT_2026 } from './schedules/tx-tarrant-2026.js';
+export { TX_TRAVIS_2026 } from './schedules/tx-travis-2026.js';
 export { TX_HARRIS_2026 } from './schedules/tx-harris-2026.js';
 export { TX_HARRIS_2026_SIC } from './schedules/tx-harris-2026-sic.js';
-export { scheduleFor, scheduledJurisdictions, SCHEDULES } from './registry.js';
+export {
+  scheduleFor,
+  scheduledJurisdictions,
+  SCHEDULES,
+  type ScheduledJurisdiction,
+} from './registry.js';
 export {
   project,
   type ProjectedYear,

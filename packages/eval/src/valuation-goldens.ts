@@ -38,6 +38,14 @@ export interface ValuationGolden {
     percentGood: number;
     marketValue: number;
     atFloor: boolean;
+    /**
+     * Asserted only where a jurisdiction takes the property off the roll
+     * entirely. A bare `marketValue: 0` cannot tell "not taxable here" from
+     * "fully depreciated", and those are opposite findings — one says the line
+     * should never have been rendered, the other says it should still be. Left
+     * undefined the case makes no claim either way.
+     */
+    exempt?: boolean;
   };
   /** Where the expectation came from — the guide page, or the notice. */
   citation: string;
@@ -98,8 +106,19 @@ export function runValuationGolden(golden: ValuationGolden): GoldenOutcome {
       `value $${Math.round(marketValue).toLocaleString('en-US')}, expected $${golden.expected.marketValue.toLocaleString('en-US')}`,
     );
   }
+  if (golden.expected.exempt !== undefined && result.value.exempt !== golden.expected.exempt) {
+    problems.push(
+      result.value.exempt
+        ? 'came back exempt and should have been valued'
+        : 'was valued and should have come back exempt',
+    );
+  }
   if (atFloor !== golden.expected.atFloor) {
-    problems.push(atFloor ? 'hit the schedule floor and should not have' : 'did not hit the floor and should have');
+    problems.push(
+      atFloor
+        ? 'hit the schedule floor and should not have'
+        : 'did not hit the floor and should have',
+    );
   }
 
   return {
@@ -120,12 +139,20 @@ export function runValuationGoldens(goldens: readonly ValuationGolden[]): Golden
 export function valuationCoverage(
   goldens: readonly ValuationGolden[],
 ): { jurisdictionId: string; taxYear: number; cases: number; noticeBacked: number }[] {
-  const byKey = new Map<string, { jurisdictionId: string; taxYear: number; cases: number; noticeBacked: number }>();
+  const byKey = new Map<
+    string,
+    { jurisdictionId: string; taxYear: number; cases: number; noticeBacked: number }
+  >();
   for (const golden of goldens) {
     const key = `${golden.jurisdictionId}:${golden.taxYear}`;
     let entry = byKey.get(key);
     if (!entry) {
-      entry = { jurisdictionId: golden.jurisdictionId, taxYear: golden.taxYear, cases: 0, noticeBacked: 0 };
+      entry = {
+        jurisdictionId: golden.jurisdictionId,
+        taxYear: golden.taxYear,
+        cases: 0,
+        noticeBacked: 0,
+      };
       byKey.set(key, entry);
     }
     entry.cases += 1;

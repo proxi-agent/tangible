@@ -305,6 +305,7 @@ export const TX_HARRIS_2026: DepreciationSchedule = {
       2015: 20,
       2014: 20,
     },
+    veh: {},
   },
   sicProfiles: TX_HARRIS_2026_SIC,
   status: 'committed',

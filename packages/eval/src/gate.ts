@@ -7,6 +7,11 @@ import {
   type ValuationGolden,
 } from './valuation-goldens.js';
 import { detectorsCovered, runDetectorGoldens, type DetectorGolden } from './detector-goldens.js';
+import { FL_2026_VALUATION_GOLDENS } from './goldens/fl-2026-valuation.js';
+import { TX_BEXAR_2026_VALUATION_GOLDENS } from './goldens/tx-bexar-2026-valuation.js';
+import { TX_COLLIN_2026_VALUATION_GOLDENS } from './goldens/tx-collin-2026-valuation.js';
+import { TX_DALLAS_2026_VALUATION_GOLDENS } from './goldens/tx-dallas-2026-valuation.js';
+import { TX_TARRANT_2026_VALUATION_GOLDENS } from './goldens/tx-tarrant-2026-valuation.js';
 import { TX_HARRIS_2026_VALUATION_GOLDENS } from './goldens/tx-harris-2026-valuation.js';
 import { DETECTOR_GOLDENS } from './goldens/detectors.js';
 import {
@@ -44,6 +49,11 @@ export interface GateInput {
 
 export const ALL_VALUATION_GOLDENS: readonly ValuationGolden[] = [
   ...TX_HARRIS_2026_VALUATION_GOLDENS,
+  ...TX_DALLAS_2026_VALUATION_GOLDENS,
+  ...TX_TARRANT_2026_VALUATION_GOLDENS,
+  ...TX_COLLIN_2026_VALUATION_GOLDENS,
+  ...TX_BEXAR_2026_VALUATION_GOLDENS,
+  ...FL_2026_VALUATION_GOLDENS,
 ];
 
 export function runGate(input: GateInput): GateResult {

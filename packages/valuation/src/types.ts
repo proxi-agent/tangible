@@ -11,14 +11,35 @@ import type { RuleProvenance } from '@tangible/types';
  * arithmetic; the schedules themselves are committed data with a citation.
  */
 
-/** Life classes the general age/life table publishes, in years. */
-export const LIFE_CLASSES = [3, 4, 5, 6, 8, 10, 12, 15, 20, 25, 30] as const;
+/**
+ * Life classes the general age/life table publishes, in years.
+ *
+ * The union of what every district publishes, not the intersection, and no
+ * district publishes all of it. Harris County runs to thirty years and has no
+ * eighteen-year column; Dallas publishes eighteen and stops at twenty-five;
+ * Collin is the only one of the four with a seven and a nine and it stops at
+ * twenty. Which is why `percentGood` below is partial: a class a district does
+ * not publish is absent rather than empty, and `appraise` reports a gap for an
+ * asset that resolves to it.
+ *
+ * The list only ever grows, and growing it is cheap — a class no district
+ * publishes is simply absent everywhere. What is not cheap is the reverse:
+ * removing one would silently retire a column some district still prints.
+ */
+export const LIFE_CLASSES = [3, 4, 5, 6, 7, 8, 9, 10, 12, 15, 18, 20, 25, 30] as const;
 export type LifeClass = (typeof LIFE_CLASSES)[number];
 
 /**
  * Schedules keyed by equipment type rather than a life in years. These carry no
  * cost index — HCAD depreciates them straight off original cost, because the
  * equipment does not appreciate in replacement terms the way machinery does.
+ *
+ * `veh` is Collin's, not Harris's. Most districts put licensed vehicles on an
+ * ordinary life class; Collin publishes a separate column for them that is
+ * close to its five-year line without being it, and rounding one onto the other
+ * would be a transcription that reads as a fact. A district that has no such
+ * column leaves the key empty, which nothing reaches, because its `vehicles`
+ * category points at a life class instead.
  */
 export const SPECIAL_SCHEDULES = [
   'pc',
@@ -28,6 +49,7 @@ export const SPECIAL_SCHEDULES = [
   'telecom6',
   'telecom8',
   'solar10',
+  'veh',
 ] as const;
 export type SpecialSchedule = (typeof SPECIAL_SCHEDULES)[number];
 
@@ -105,10 +127,25 @@ export interface DepreciationSchedule {
   jurisdictionName: string;
   taxYear: number;
   source: { title: string; url: string; pages: string };
-  /** Year acquired → cost index factor. */
+  /**
+   * Year acquired → cost index factor. Empty where `costIndexIncluded` is set.
+   */
   indexFactors: Readonly<Record<number, number>>;
-  /** Life class → year acquired → percent good (0–100). */
-  percentGood: Readonly<Record<LifeClass, Readonly<Record<number, number>>>>;
+  /**
+   * Life class → year acquired → percent good (0–100).
+   *
+   * Partial, because life classes are the union across districts and no
+   * district publishes them all. An absent class is not the same as an empty
+   * one and both are handled: `appraise` returns a `no-schedule` gap either
+   * way, which is the only honest answer when the district has published no
+   * column to value the asset against.
+   *
+   * Where `costIndexIncluded` is set these are not percent good at all — see
+   * that field. The figure can then exceed 100 and need not fall as the asset
+   * ages, and both of those are properties of the district's arithmetic rather
+   * than transcription errors.
+   */
+  percentGood: Readonly<Partial<Record<LifeClass, Readonly<Record<number, number>>>>>;
   /** Special schedule → year acquired → percent good (0–100). */
   specialPercentGood: Readonly<Record<SpecialSchedule, Readonly<Record<number, number>>>>;
   /** SIC code → the lives that line of business depreciates on. */
@@ -145,6 +182,43 @@ export interface DepreciationSchedule {
    * and a county schedule, where one exists, is the exception.
    */
   appliesStatewide?: boolean;
+  /**
+   * True where the district folds its cost index into the depreciation table
+   * and publishes one combined figure instead of two.
+   *
+   * Harris County and the Florida Department of Revenue publish the two halves
+   * separately: a factor that trends original cost to replacement cost new,
+   * and a percent good that depreciates it. Dallas publishes the product. Its
+   * worksheet columns are headed "RC/YR LND" — replacement cost less normal
+   * depreciation, stated as a percentage of *original* cost — so the trending
+   * has already happened by the time the number is printed.
+   *
+   * Two consequences, and both are the reason this is a field rather than a
+   * comment. The figure is no longer bounded by 100: a twenty-five-year asset
+   * bought in 2020 is 107% of what it cost, because six years of construction
+   * inflation outran six years of depreciation. And it no longer falls
+   * monotonically with age, because the two halves move in opposite directions
+   * and the index wins for a while in the long-life columns. Every check
+   * elsewhere in this package that asserts otherwise is asserting something
+   * true of percent good and false of RCLND.
+   *
+   * Both of those are consequences of *arithmetic* — of a district printing a
+   * raw product — and not of the flag. Bexar County sets this and does neither:
+   * its table tops out at 97% and falls all the way down, because BCAD does not
+   * publish a product, it publishes a conclusion that Marshall & Swift trends
+   * informed and local experience calibrated. So the flag means one thing only,
+   * and it is the thing below: this schedule has already been trended, do not
+   * trend it again. It is not a licence to expect figures above 100, and a
+   * schedule that sets it is not thereby excused from the monotonicity check —
+   * whether that check applies is a question about how the district publishes,
+   * which each schedule's own tests answer for themselves.
+   *
+   * `appraise` reads this as authoritative and indexes nothing, whatever the
+   * category rules say. A schedule that has already been trended and is trended
+   * again values the asset above its cost twice over — an error that happens to
+   * fall in the safe direction, and would be invisible for exactly that reason.
+   */
+  costIndexIncluded?: boolean;
   status: ScheduleStatus;
   /** Set when `status` is `awaiting-transcription`. Printed, not hidden. */
   awaiting?: ScheduleGap;

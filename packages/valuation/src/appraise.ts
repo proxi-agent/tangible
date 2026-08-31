@@ -238,7 +238,15 @@ export function appraise(input: AppraisalInput, schedule: DepreciationSchedule):
     };
   }
 
-  const indexFactor = category.indexed ? lookupIndexFactor(schedule, input.acquisitionYear) : 1;
+  // A schedule whose tables already carry the index is never indexed again,
+  // whatever the category says. Trusting twelve category rules to each set
+  // `indexed: false` is trusting the wrong thing: the fact belongs to the
+  // district's arithmetic, not to the category, and getting it wrong would
+  // double-trend silently.
+  const indexFactor =
+    category.indexed && !schedule.costIndexIncluded
+      ? lookupIndexFactor(schedule, input.acquisitionYear)
+      : 1;
   if (indexFactor === null) {
     return {
       ok: false,
