@@ -5,7 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { cookies } from 'next/headers';
 import type { PortalRole, Viewer } from '@tangible/types';
 import { audienceFor } from '@/lib/portal-access';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**
@@ -184,7 +184,9 @@ export async function requireAskScope(askId: string): Promise<Viewer> {
     .select({ id: schema.mappingAsks.id })
     .from(schema.mappingAsks)
     .innerJoin(schema.engagements, eq(schema.engagements.id, schema.mappingAsks.engagementId))
-    .where(and(eq(schema.mappingAsks.id, askId), eq(schema.engagements.clientId, viewer.clientId!)));
+    .where(
+      and(eq(schema.mappingAsks.id, askId), eq(schema.engagements.clientId, viewer.clientId!)),
+    );
   if (!row) throw new HttpError(404, 'No record with that id.');
   return viewer;
 }

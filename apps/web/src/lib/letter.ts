@@ -4,7 +4,7 @@ import { assembleLetterFacts, letterBlocker } from '@tangible/filing';
 import { aiUnavailableReason, draftResultLetter, isAiConfigured } from '@tangible/ai';
 import type { LetterFacts, ResultLetter, ResultLetterRecord } from '@tangible/types';
 import { engagementResult } from '@/lib/result';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -27,9 +27,7 @@ function dto(row: LetterRow): ResultLetterRecord {
 }
 
 /** The newest drafted letter for an engagement, or null when none has been. */
-export async function latestResultLetter(
-  engagementId: string,
-): Promise<ResultLetterRecord | null> {
+export async function latestResultLetter(engagementId: string): Promise<ResultLetterRecord | null> {
   await fetchEngagement(engagementId);
   const rows = await requireDb()
     .select()

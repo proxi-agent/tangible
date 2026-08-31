@@ -19,7 +19,7 @@ import type {
   FarMappingProposal,
   SheetSummary,
 } from '@tangible/types';
-import { notFound } from '@/lib/route';
+import { notFound } from '@/lib/http';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**

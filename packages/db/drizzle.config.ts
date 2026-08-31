@@ -1,7 +1,9 @@
 import { defineConfig } from 'drizzle-kit';
 
 export default defineConfig({
-  schema: './src/schema.ts',
+  // policies.ts is listed because push reconciles row-level security too: a
+  // policy the schema does not declare is one push will drop, silently.
+  schema: ['./src/schema.ts', './src/policies.ts'],
   out: './migrations',
   dialect: 'postgresql',
   dbCredentials: {

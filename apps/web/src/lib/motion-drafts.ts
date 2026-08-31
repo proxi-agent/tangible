@@ -10,7 +10,7 @@ import type {
   OpenYear,
 } from '@tangible/types';
 import { engagementOpenYears } from '@/lib/open-years';
-import { HttpError, notFound } from '@/lib/route';
+import { HttpError, notFound } from '@/lib/http';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 

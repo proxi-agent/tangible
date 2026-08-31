@@ -13,7 +13,7 @@ import type {
 import { buildSavingsAnalysis } from '@/lib/analysis';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { engagementResult } from '@/lib/result';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 

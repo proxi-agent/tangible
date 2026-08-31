@@ -1,4 +1,5 @@
 import { buildFindingRowsWorkbook } from '@/lib/export-workbook';
+import { withClientScope } from '@/lib/db-scope';
 import { parseFilters } from '@/lib/finding-rows';
 import { HttpError } from '@/lib/route';
 import { requireEngagementScope } from '@/lib/viewer';
@@ -21,16 +22,24 @@ export async function GET(
 ): Promise<Response> {
   const { engagementId } = await params;
   try {
-    await requireEngagementScope(engagementId);
+    const viewer = await requireEngagementScope(engagementId);
     const url = new URL(request.url);
     const findingKey = url.searchParams.get('finding');
     if (!findingKey) throw new HttpError(400, 'Name the finding to export.');
 
-    const { bytes, filename } = await buildFindingRowsWorkbook(
-      engagementId,
-      findingKey,
-      parseFilters(url),
-    );
+    /**
+     * This is the one route a client can reach that does not go through
+     * `handle()` — it answers with a spreadsheet rather than JSON, so it owns
+     * its own error handling. That also means it does not inherit the tenancy
+     * scope `handle()` opens, and it has to open the same one itself. Any route
+     * added here that returns bytes instead of JSON needs this line too.
+     */
+    const build = () => buildFindingRowsWorkbook(engagementId, findingKey, parseFilters(url));
+    const { bytes, filename } =
+      viewer.audience === 'client' && viewer.clientId
+        ? await withClientScope(viewer.clientId, build)
+        : await build();
+
     return new Response(bytes as unknown as BodyInit, {
       headers: {
         'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',

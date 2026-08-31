@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { UpdateAskRequestSchema } from '@tangible/types';
 import { askDto } from '@/lib/asks';
 import { fireAndLog, notifyAnswerReceived } from '@/lib/notify';
+import { unscoped } from '@/lib/db-scope';
 import { handle, notFound } from '@/lib/route';
 import { requireAskScope, requirePortalRole } from '@/lib/viewer';
 import { requireDb, schema } from '@/lib/workspace-db';
@@ -44,7 +45,13 @@ export function PATCH(
     // The one message that goes to us rather than to them. An answer is what
     // unblocks a screening finding, and nobody on our side watches this table.
     if (updated.status === 'answered') {
-      fireAndLog(notifyAnswerReceived(updated.id), 'answer-received');
+      // Detached, so it outlives the request's scoped transaction — and it
+      // is addressed to the firm, whose own notification row a client
+      // connection could not write even if the timing worked.
+      fireAndLog(
+        unscoped(() => notifyAnswerReceived(updated.id)),
+        'answer-received',
+      );
     }
     return askDto(updated);
   });

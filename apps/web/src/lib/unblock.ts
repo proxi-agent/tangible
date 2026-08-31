@@ -4,7 +4,7 @@ import { assembleUnblockFacts, unblockBlocker } from '@tangible/filing';
 import { aiUnavailableReason, draftUnblockPlan, isAiConfigured } from '@tangible/ai';
 import type { UnblockFacts, UnblockPlan, UnblockPlanRecord } from '@tangible/types';
 import { filingSeason } from '@/lib/season';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 

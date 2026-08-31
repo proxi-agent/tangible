@@ -5,7 +5,7 @@ import { deletionWarnings } from '@tangible/filing';
 import type { DeletionCounts, DeletionPreview, DeletionReceipt } from '@tangible/types';
 import { purgeClientTurns } from '@/lib/assistant/store';
 import { removeFarFiles } from '@/lib/far-storage';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { fetchClient } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 

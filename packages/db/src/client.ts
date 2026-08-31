@@ -20,6 +20,12 @@ const cache: DbCache = ((globalThis as { __tangibleDb?: DbCache }).__tangibleDb 
   db: null,
   sql: null,
 });
+const clientCache: DbCache = ((
+  globalThis as { __tangibleClientDb?: DbCache }
+).__tangibleClientDb ??= {
+  db: null,
+  sql: null,
+});
 
 /** Vercel and Lambda both set these; neither is set by `next dev` on a laptop. */
 function serverless(): boolean {
@@ -62,10 +68,45 @@ export function getDb(connectionString = process.env.DATABASE_URL): Database {
   return cache.db;
 }
 
+/**
+ * The same database, reached as a role that does not bypass row-level security.
+ *
+ * `getDb` connects as the owner, and an owner-level role carries BYPASSRLS — so
+ * the policies in `sql/tenancy.sql` are invisible to it. That is correct for the
+ * firm's own screens, which read across every client by design, and useless as a
+ * boundary. This connection is the boundary: it is what a signed-in client's
+ * request runs on, inside a transaction that first says which client is asking.
+ *
+ * Two pools rather than one connection that switches roles, because `set role`
+ * is reversible by anything that can run SQL and a separate login is not. If the
+ * variable is unset this throws rather than falling back to `getDb`, since the
+ * fallback would be a connection that quietly sees everything.
+ */
+export function getClientDb(connectionString = process.env.CLIENT_DATABASE_URL): Database {
+  if (clientCache.db) return clientCache.db;
+  if (!connectionString) {
+    throw new Error(
+      'CLIENT_DATABASE_URL is not set, so there is no connection that enforces tenancy. Run packages/db/scripts/apply-tenancy.mjs and set the value it prints.',
+    );
+  }
+
+  clientCache.sql = postgres(connectionString, {
+    prepare: false,
+    max: serverless() ? 1 : 10,
+    idle_timeout: 20,
+    connect_timeout: 10,
+  });
+  clientCache.db = drizzle(clientCache.sql, { schema });
+  return clientCache.db;
+}
+
 export async function closeDb(): Promise<void> {
   await cache.sql?.end();
   cache.sql = null;
   cache.db = null;
+  await clientCache.sql?.end();
+  clientCache.sql = null;
+  clientCache.db = null;
 }
 
 /**

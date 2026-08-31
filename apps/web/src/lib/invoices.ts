@@ -12,7 +12,7 @@ import type {
   InvoiceList,
 } from '@tangible/types';
 import { downloadFarFile, uploadFarFile } from '@/lib/far-storage';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**

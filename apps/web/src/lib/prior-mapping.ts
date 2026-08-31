@@ -30,7 +30,7 @@ import type {
   UpdateLineMappingRequest,
 } from '@tangible/types';
 import { rememberDecision } from '@/lib/classification-memory';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**

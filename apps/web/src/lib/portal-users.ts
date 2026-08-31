@@ -2,7 +2,7 @@ import 'server-only';
 import { asc, eq } from 'drizzle-orm';
 import { getSupabaseAdmin } from '@tangible/db';
 import type { GrantPortalAccessRequest, PortalRole, PortalUser } from '@tangible/types';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**

@@ -2,6 +2,9 @@ import 'server-only';
 import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { AccountQuerySchema, type AccountQuery } from '@tangible/types';
+import { HttpError } from '@/lib/http';
+import { withClientScope } from '@/lib/db-scope';
+import { currentViewer } from '@/lib/viewer';
 
 /**
  * Shared plumbing for the API route handlers.
@@ -11,29 +14,30 @@ import { AccountQuerySchema, type AccountQuery } from '@tangible/types';
  * `@tangible/types`, so the browser and the server cannot drift.
  */
 
-export class HttpError extends Error {
-  constructor(
-    readonly status: number,
-    message: string,
-  ) {
-    super(message);
-    this.name = 'HttpError';
-  }
-}
-
-export function notFound(message: string): never {
-  throw new HttpError(404, message);
-}
+export { HttpError, notFound } from '@/lib/http';
 
 /**
  * Run a handler and turn the failures a caller can cause into the right status.
  *
  * A bad query string is the caller's mistake: without this, a `.parse()` failure
  * escapes as a generic 500 and which field was wrong never reaches the client.
+ *
+ * It is also where tenancy stops being something each handler remembers. When
+ * the viewer is a client, the body runs inside `withClientScope`, on a database
+ * role that cannot reach another client's rows whatever the handler does with
+ * the ids it was given. The `require*Scope` checks stay exactly as they were and
+ * still do the useful work of turning a wrong id into a clean 404 — this is the
+ * floor underneath them, not a replacement.
+ *
+ * Resolving the viewer here is free: it is memoized for the request and every
+ * client-reachable route already calls one of the `require*` helpers, so the
+ * lookup was happening anyway. For a firm request nothing happens at all.
  */
 export async function handle<T>(fn: () => Promise<T>): Promise<Response> {
   try {
-    return NextResponse.json(await fn());
+    const viewer = await currentViewer();
+    const clientId = viewer?.audience === 'client' ? viewer.clientId : null;
+    return NextResponse.json(clientId ? await withClientScope(clientId, fn) : await fn());
   } catch (error) {
     if (error instanceof ZodError) {
       return NextResponse.json(

@@ -22,7 +22,9 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "clean": "rm -rf dist .turbo"
+    "clean": "rm -rf dist .turbo",
+    "tenancy:apply": "node scripts/apply-tenancy.mjs",
+    "tenancy:verify": "node scripts/verify-tenancy.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

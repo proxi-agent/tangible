@@ -3,7 +3,7 @@ import { aiUnavailableReason, draftSchedule, isAiConfigured } from '@tangible/ai
 import { reviewDraft } from '@tangible/eval';
 import { scheduleFor } from '@tangible/valuation';
 import type { DraftScheduleRequest, DraftScheduleResult } from '@tangible/types';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 
 /**
  * Offline rule authoring: a model reads the guide, arithmetic checks it, and a

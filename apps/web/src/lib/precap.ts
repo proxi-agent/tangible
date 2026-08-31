@@ -27,7 +27,7 @@ import {
   type LifeClass,
 } from '@tangible/valuation';
 import { lookupRate } from '@/lib/analysis';
-import { notFound } from '@/lib/route';
+import { notFound } from '@/lib/http';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**

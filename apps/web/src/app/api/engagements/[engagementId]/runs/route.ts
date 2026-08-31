@@ -1,6 +1,7 @@
 import { after } from 'next/server';
 import { RequestRunSchema } from '@tangible/types';
 import { currentActor } from '@/lib/actor';
+import { unscoped } from '@/lib/db-scope';
 import { handle } from '@/lib/route';
 import { executeRun, listRuns, requestRun } from '@/lib/runs';
 import { requireEngagementScope, requirePortalRole } from '@/lib/viewer';
@@ -58,7 +59,15 @@ export function POST(
     // Only the run this request created. An already-open row is being worked by
     // whoever queued it, and claiming is conditional anyway — this just avoids
     // a pointless second attempt.
-    if (run.status === 'queued') after(() => executeRun(run.id));
+    /**
+     * `unscoped` because this runs after the response, and the client's scoped
+     * transaction is closed by then — but also because the analysis is the
+     * firm's engine doing work on the client's behalf. It reads schedules,
+     * writes valued assets and raises findings, exactly as it does when the
+     * cron reaper picks up an abandoned run instead. Reaching for the firm's
+     * connection here is the same decision, made in the same place.
+     */
+    if (run.status === 'queued') after(() => unscoped(() => executeRun(run.id)));
 
     return run;
   });

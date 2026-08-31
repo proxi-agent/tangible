@@ -17,7 +17,7 @@ import type {
   AssistantToolCall,
   AssistantTurn,
 } from '@tangible/types';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { agentTools, findTool } from './registry';
 import { knowledgeCitation } from './types';
 import { recentTurns, recordTurn, resolveConversation } from './store';

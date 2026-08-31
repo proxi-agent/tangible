@@ -21,7 +21,7 @@ import type {
   UpdateFilingAgentRequest,
 } from '@tangible/types';
 import { currentActor } from '@/lib/actor';
-import { HttpError, notFound } from '@/lib/route';
+import { HttpError, notFound } from '@/lib/http';
 import { today } from '@/lib/today';
 import { requireDb, schema } from '@/lib/workspace-db';
 

@@ -23,7 +23,7 @@ import type {
   UpdateFindingDispositionRequest,
 } from '@tangible/types';
 import { analysisFingerprint, buildComparisonAnalysis, buildSavingsAnalysis } from '@/lib/analysis';
-import { HttpError, notFound } from '@/lib/route';
+import { HttpError, notFound } from '@/lib/http';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**

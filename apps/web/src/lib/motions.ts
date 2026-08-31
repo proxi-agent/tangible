@@ -14,7 +14,7 @@ import type {
 } from '@tangible/types';
 import { currentActor } from '@/lib/actor';
 import { seedClaimsForMotion } from '@/lib/recovery';
-import { HttpError, notFound } from '@/lib/route';
+import { HttpError, notFound } from '@/lib/http';
 import { today } from '@/lib/today';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';

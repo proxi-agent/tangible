@@ -25,7 +25,7 @@ import {
   type EvidenceExport,
   type SheetSummary,
 } from '@tangible/types';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { downloadFarFile, removeFarFiles, uploadFarFile } from '@/lib/far-storage';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { requireDb, schema } from '@/lib/workspace-db';
@@ -464,9 +464,7 @@ export async function evidenceBoard(engagementId: string): Promise<EvidenceBoard
  * done — which is the wrong direction for a number meant to say what is left to
  * collect.
  */
-async function loadCoverageAssets(
-  engagementId: string,
-): Promise<
+async function loadCoverageAssets(engagementId: string): Promise<
   Array<{
     id: string;
     assetTag: string | null;

@@ -23,7 +23,7 @@ import type {
 import { currentActor } from '@/lib/actor';
 import { seedClaimsForFiling } from '@/lib/recovery';
 import { formInputs } from '@/lib/rendition';
-import { HttpError, notFound } from '@/lib/route';
+import { HttpError, notFound } from '@/lib/http';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 

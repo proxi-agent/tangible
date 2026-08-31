@@ -27,7 +27,7 @@ import type {
   UpdateClassificationRequest,
 } from '@tangible/types';
 import { LIFE_CLASSES } from '@tangible/valuation';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { rememberDecision } from '@/lib/classification-memory';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { requireDb, schema } from '@/lib/workspace-db';

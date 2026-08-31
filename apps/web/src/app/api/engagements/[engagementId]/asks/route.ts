@@ -1,6 +1,7 @@
 import { CreateAskRequestSchema } from '@tangible/types';
 import { createFindingAsk, engagementAsks } from '@/lib/asks';
 import { fireAndLog, notifyQuestionsWaiting } from '@/lib/notify';
+import { unscoped } from '@/lib/db-scope';
 import { handle } from '@/lib/route';
 import { requireEngagementScope, requirePortalRole } from '@/lib/viewer';
 import { fetchEngagement } from '@/lib/workspace';
@@ -58,7 +59,10 @@ export function POST(
      * asks in a row is one message, and a mail failure is not a reason to lose
      * the ask that was just recorded.
      */
-    fireAndLog(notifyQuestionsWaiting(engagementId), 'question-waiting');
+    fireAndLog(
+      unscoped(() => notifyQuestionsWaiting(engagementId)),
+      'question-waiting',
+    );
     return ask;
   });
 }

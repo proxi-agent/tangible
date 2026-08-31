@@ -1,7 +1,7 @@
 import 'server-only';
 import { eq } from 'drizzle-orm';
 import type { DocumentPeek, IntakeFile } from '@tangible/types';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 type IntakeRow = typeof schema.intakeFiles.$inferSelect;
