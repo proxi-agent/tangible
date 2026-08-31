@@ -56,8 +56,27 @@ field in `package.json`, which pnpm 11 ignores), and write down why.
 
 ## Linting
 
-`pnpm lint` runs **oxlint** with `--type-aware` over the whole workspace, in
-about a second and a half. `pnpm lint:fix` applies the fixable subset.
+`pnpm lint` builds the workspace packages through turbo and then runs
+**oxlint** with `--type-aware` over the whole workspace in one pass — about
+seven seconds cold, two once turbo's cache is warm. `pnpm lint:fix` does the
+same and applies the fixable subset.
+
+The build prefix is not optional. `--type-aware` needs the `.d.ts` files in
+`packages/*/dist` to resolve cross-package imports; without them every
+`@tangible/*` type becomes an `error` type acting as `any` and oxlint reports
+around 200 `no-redundant-type-constituents` errors. Running plain
+`oxlint --type-aware` is green on a working machine only because an earlier
+build or `pnpm dev` left `dist/` behind — it fails in a clean clone, which is
+what CI is, and that is why the Lint job was red on every run before this.
+
+The prefix is `turbo run build --filter='./packages/*'`, not a turbo `lint`
+task, for two reasons. A root task (`//#lint`) cannot express the dependency:
+`//` has no workspace dependencies, so `dependsOn: ["^build"]` resolves to
+nothing and turbo runs the lint alone. A per-package `lint` task would express
+it, but it would turn one whole-workspace oxlint pass into eighteen, and the
+type-aware pass is the expensive part. The `./packages/*` glob covers new
+packages automatically and deliberately excludes the two apps, whose builds
+lint does not need.
 
 ## CI
 
