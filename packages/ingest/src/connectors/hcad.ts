@@ -1,5 +1,5 @@
 import type { Jurisdiction, SourceFile } from '@tangible/types';
-import type { CompanionFile, Connector, FileFormat } from '../connector.js';
+import type { CompanionFile, Connector, FileFormat, UnitFile } from '../connector.js';
 
 export const HARRIS_COUNTY: Jurisdiction = {
   id: 'tx-harris',
@@ -124,6 +124,30 @@ export class HcadConnector implements Connector {
       fields: { isExempt: 'TRUE' },
     },
   ];
+
+  /**
+   * `t_jur_value.txt` is one row per account per taxing unit, carrying the
+   * value that unit appraises. Present in every archive from 2021 on, at
+   * roughly 1.5 million rows a year.
+   *
+   * `tax_dist` is the same three-digit code the district uses in
+   * `t_jur_tax_dist_exempt_value_rate.txt`, which is where the adopted rates
+   * come from — so the join between an account and its rate is a code match
+   * with nothing inferred in between.
+   *
+   * `appraised_val` rather than `taxable_val`: taxable is net of exemptions,
+   * and an account whose exemption wipes out one unit's taxable value has not
+   * left that unit's jurisdiction. Using the taxable column would drop units
+   * from the blend and understate the rate — and understating the rate is the
+   * only direction here that flatters a finding.
+   */
+  readonly unitFile: UnitFile = {
+    label: 'taxing units',
+    patterns: [/t_jur_value\.txt$/i, /jur.*value.*\.txt$/i],
+    accountColumn: 'acct',
+    unitColumn: 'tax_dist',
+    valueColumn: 'appraised_val',
+  };
 
   /**
    * The account file carries its own `tax_year`, and a handful of rows per year

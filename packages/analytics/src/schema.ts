@@ -3,10 +3,11 @@ import { lit } from './sql.js';
 import type { Warehouse } from './warehouse.js';
 
 /**
- * The warehouse holds three things: a dimension table of jurisdictions, a
- * policy table of statutory thresholds by state and year, and one wide fact
- * table of account-years. Everything analytical is derived from those at query
- * time — there are no materialized rollups to keep in sync.
+ * The warehouse holds four things: a dimension table of jurisdictions, a policy
+ * table of statutory thresholds by state and year, one wide fact table of
+ * account-years, and — at a finer grain — which taxing units levy on each
+ * account. Everything analytical is derived from those at query time — there
+ * are no materialized rollups to keep in sync.
  */
 export const DDL = /* sql */ `
 CREATE TABLE IF NOT EXISTS jurisdiction (
@@ -72,6 +73,43 @@ CREATE TABLE IF NOT EXISTS account_year (
 
   PRIMARY KEY (jurisdiction_id, tax_year, account_id)
 );
+
+-- Which taxing units levy on an account, and how much of it each one taxes.
+--
+-- The grain is one row per unit per account per year, so a county roll is
+-- roughly nine rows per account — 1.5M a year for Harris. It is a separate
+-- table rather than a column on account_year for that reason alone: it is the
+-- only many-per-account fact the warehouse holds.
+--
+-- The share column is the point of the table and is computed at load time
+-- rather than read from the file. Districts publish an absolute appraised value per unit,
+-- and the account's own total is the largest of them — the county unit, which
+-- covers the whole account by construction. Storing the ratio instead of the
+-- absolutes makes the table immune to the one real defect in the source: a
+-- district's unit file can lag its account file by a certification cycle, and
+-- an account whose per-unit values are last year's still splits this year's
+-- value correctly, because the split is what did not change.
+CREATE TABLE IF NOT EXISTS account_unit (
+  jurisdiction_id  VARCHAR NOT NULL,
+  tax_year         INTEGER NOT NULL,
+  account_id       VARCHAR NOT NULL,
+  unit_code        VARCHAR NOT NULL,
+
+  -- As published, for provenance. Nothing prices off this column.
+  appraised_value  DOUBLE,
+  -- The unit's fraction of the account, in [0, 1]. Ordinarily exactly 1: a
+  -- single-site business sits inside every one of its units. Below 1 only where
+  -- a property straddles a boundary, which is 0.8% of Harris accounts.
+  share            DOUBLE NOT NULL,
+
+  source_file      VARCHAR,
+  ingested_at      TIMESTAMP DEFAULT current_timestamp,
+
+  PRIMARY KEY (jurisdiction_id, tax_year, account_id, unit_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_account_unit_lookup
+  ON account_unit (jurisdiction_id, tax_year, account_id);
 
 CREATE INDEX IF NOT EXISTS idx_account_year_lookup
   ON account_year (jurisdiction_id, tax_year);

@@ -2,6 +2,7 @@ export * from './connector.js';
 export * from './columns.js';
 export * from './download.js';
 export * from './loader.js';
+export * from './units.js';
 export * from './engine.js';
 export * from './fixture.js';
 export * from './connectors/hcad.js';

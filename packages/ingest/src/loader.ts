@@ -22,9 +22,7 @@ async function sniffHasHeader(
   format: FileFormat,
 ): Promise<boolean> {
   const probe = readCsvExpr(path, { ...format, hasHeader: false });
-  const row = await warehouse.queryOne<Record<string, unknown>>(
-    `SELECT * FROM ${probe} LIMIT 1;`,
-  );
+  const row = await warehouse.queryOne<Record<string, unknown>>(`SELECT * FROM ${probe} LIMIT 1;`);
   if (!row) return false;
   return Object.values(row).some(
     (cell) => cell != null && ALL_ALIASES.has(normalizeHeader(String(cell))),
@@ -32,7 +30,7 @@ async function sniffHasHeader(
 }
 
 /** Reads any of the delimited text dumps counties publish, without failing on ragged rows. */
-function readCsvExpr(path: string, format: FileFormat): string {
+export function readCsvExpr(path: string, format: FileFormat): string {
   const options = [
     `delim = ${lit(format.delimiter)}`,
     `header = ${format.hasHeader === true ? 'true' : 'false'}`,
@@ -175,7 +173,7 @@ export async function loadAccountFile(options: LoadOptions): Promise<number> {
     await warehouse.exec(`DROP TABLE IF EXISTS ${stagingTable};`);
     await warehouse.exec(`CREATE TEMP TABLE ${stagingTable} AS SELECT * FROM ${reader};`);
 
-    const described = await warehouse.query<{ column_name: string }>(
+    const described = await warehouse.query<{ column_name: unknown }>(
       `DESCRIBE SELECT * FROM ${stagingTable};`,
     );
     const columns = described.map((d) => String(d.column_name));
@@ -239,10 +237,10 @@ export async function loadAccountFile(options: LoadOptions): Promise<number> {
         );
       `);
 
-      const rows = await warehouse.queryOne<{ n: unknown }>(
-        `SELECT count(*) AS n FROM ${table};`,
+      const rows = await warehouse.queryOne<{ n: unknown }>(`SELECT count(*) AS n FROM ${table};`);
+      logger.info(
+        `  companion '${companion.file.label}': ${num(rows?.n).toLocaleString()} account(s)`,
       );
-      logger.info(`  companion '${companion.file.label}': ${num(rows?.n).toLocaleString()} account(s)`);
 
       companionJoins.push(`LEFT JOIN ${table} ${alias} ON ${alias}.account_id = ${accountExpr}`);
       for (const field of Object.keys(companion.file.fields)) {
@@ -257,7 +255,10 @@ export async function loadAccountFile(options: LoadOptions): Promise<number> {
     };
 
     const exemptExpr = withCompanion('isExempt', expr('isExempt', exemptExprFor(c('isExempt'))));
-    const stateClassExpr = withCompanion('stateClass', expr('stateClass', textExpr(c('stateClass'))));
+    const stateClassExpr = withCompanion(
+      'stateClass',
+      expr('stateClass', textExpr(c('stateClass'))),
+    );
     const ownerExpr = withCompanion('ownerName', expr('ownerName', textExpr(c('ownerName'))));
     const agentExpr = withCompanion('agentName', expr('agentName', textExpr(c('agentName'))));
     const field = (name: CanonicalField) => withCompanion(name, expr(name, textExpr(c(name))));

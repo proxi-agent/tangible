@@ -90,6 +90,44 @@ export interface CompanionFile {
 }
 
 /**
+ * A third file, with many rows per account: which taxing units levy on it.
+ *
+ * This is deliberately not a `CompanionFile`. A companion contributes columns
+ * to the one account row and is joined with `DISTINCT ON (account_id)`, which
+ * is the right shape for an exemption flag and exactly the wrong one here —
+ * an account sits inside eight or nine overlapping units, and picking one of
+ * them arbitrarily would be worse than having no unit data at all.
+ *
+ * What it feeds is the rate. Every dollar figure this product prints is a value
+ * times a rate, and without this file the rate can only be a county-wide
+ * average — which runs above the true rate for nine accounts in ten, and so
+ * overstates the client's position in the one direction that matters.
+ */
+export interface UnitFile {
+  /** Shown in the ingest log, e.g. 'taxing units'. */
+  label: string;
+  /** Filename patterns identifying the file, best first. */
+  patterns: RegExp[];
+  /** Column holding the account number. */
+  accountColumn: string;
+  /** Column holding the taxing unit's code, as the rate table keys it. */
+  unitColumn: string;
+  /**
+   * Column holding the value that unit appraises on the account.
+   *
+   * Read as a proportion, never as an amount: the share stored is this value
+   * over the largest one on the account. That is what makes a unit file which
+   * lags its account roll by a certification cycle still usable — the split is
+   * the part that did not change.
+   */
+  valueColumn: string;
+  /** Optional predicate limiting which rows count. */
+  where?: string;
+  /** File is missing from the archive: warn, or fail the load. */
+  required?: boolean;
+}
+
+/**
  * A connector knows how to get one jurisdiction's public roll onto disk and how
  * to read it. Everything after that — loading, normalizing, analyzing — is
  * shared, so adding a county is a matter of adding a connector.
@@ -111,6 +149,9 @@ export interface Connector {
   /** Companion files keyed by account, joined in at load time. */
   readonly companionFiles?: readonly CompanionFile[];
 
+  /** The per-account list of taxing units, loaded into its own table. */
+  readonly unitFile?: UnitFile;
+
   /**
    * Optional per-connector SQL predicate applied to the staged raw rows before
    * they are inserted into `account_year`. Use for jurisdiction-specific quirks
@@ -130,6 +171,13 @@ export interface IngestContext {
 export interface IngestYearResult {
   taxYear: number;
   rowsLoaded: number;
+  /**
+   * Account-unit rows *this run* loaded, where the connector declares a unit
+   * file. Unlike `rowsLoaded`, a year that already held its units reports
+   * nothing rather than the count already there — the units are the one thing a
+   * skipped year can still do work on, so the field has to distinguish them.
+   */
+  unitRowsLoaded?: number;
   sourceFile: string;
   skipped: boolean;
   reason?: string;

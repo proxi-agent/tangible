@@ -213,7 +213,11 @@ async function main(): Promise<void> {
   const errored = results.filter((r) => r.error).length;
   if (connectors.length === 1) {
     const only = results[0];
-    const loaded = only?.result?.years.some((y) => !y.skipped && y.rowsLoaded > 0);
+    // Units count as work. A warehouse whose accounts predate the unit table
+    // loads nothing but units on its next run, and that run succeeded.
+    const loaded = only?.result?.years.some(
+      (y) => (!y.skipped && y.rowsLoaded > 0) || (y.unitRowsLoaded ?? 0) > 0,
+    );
     if (!loaded) process.exit(1);
   } else if (errored === results.length) {
     process.exit(1);
@@ -235,7 +239,10 @@ function report(
       const status = year.skipped
         ? `skipped (${year.reason ?? 'unknown'})`
         : `${year.rowsLoaded.toLocaleString()} rows`;
-      console.log(`  ${year.taxYear}  ${status}`);
+      const units = year.unitRowsLoaded
+        ? ` + ${year.unitRowsLoaded.toLocaleString()} taxing-unit rows`
+        : '';
+      console.log(`  ${year.taxYear}  ${status}${units}`);
     }
     console.log(`  total: ${(only?.result?.totalRows ?? 0).toLocaleString()} account-years`);
     return;
@@ -247,7 +254,9 @@ function report(
   // check a re-run of 67 already-current counties reports "67 loaded", which
   // reads as 67 fresh downloads.
   const ingested = (r: { result?: IngestResult }) =>
-    r.result?.years.some((y) => !y.skipped && y.rowsLoaded > 0) ?? false;
+    r.result?.years.some(
+      (y) => (!y.skipped && y.rowsLoaded > 0) || (y.unitRowsLoaded ?? 0) > 0,
+    ) ?? false;
 
   const failed = results.filter((r) => r.error);
   const fresh = results.filter((r) => !r.error && ingested(r));

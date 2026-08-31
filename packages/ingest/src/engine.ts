@@ -9,6 +9,7 @@ import type {
   IngestLogger,
   IngestResult,
   IngestYearResult,
+  UnitFile,
 } from './connector.js';
 import {
   downloadFirstAvailable,
@@ -17,6 +18,7 @@ import {
   normalizeSourceRef,
 } from './download.js';
 import { LayoutResolutionError, loadAccountFile } from './loader.js';
+import { loadUnitFile } from './units.js';
 
 export interface RunIngestOptions extends IngestContext {
   warehouse: Warehouse;
@@ -37,7 +39,7 @@ export interface RunIngestOptions extends IngestContext {
  * not infrastructure worth hammering.
  */
 export async function runIngest(options: RunIngestOptions): Promise<IngestResult> {
-  const { warehouse, connector, taxYears, dataDir, force, logger } = options;
+  const { warehouse, connector, taxYears, logger } = options;
   const jurisdictionId = connector.jurisdiction.id;
 
   await upsertJurisdiction(warehouse, connector);
@@ -79,24 +81,32 @@ async function ingestYear(options: RunIngestOptions, taxYear: number): Promise<I
   const { warehouse, connector, dataDir, force, logger } = options;
   const jurisdictionId = connector.jurisdiction.id;
 
+  const yearDir = join(dataDir, jurisdictionId, String(taxYear));
+  const extractDir = join(yearDir, 'extracted');
+
+  let extracted = await safeListFiles(extractDir);
+
   if (!force) {
     const existing = await countExistingRows(warehouse, jurisdictionId, taxYear);
     if (existing > 0) {
       logger.info(`[${taxYear}] ${existing.toLocaleString()} rows already loaded, skipping`);
+      // The accounts being present does not mean the taxing units are. A
+      // warehouse loaded before the unit table existed holds a full roll and no
+      // units at all, and without this it would never acquire any — every
+      // account in it would keep pricing at the county-wide rate through every
+      // future run that was not forced. Loading from the archive already on
+      // disk costs a minute and needs no download.
+      const unitRowsLoaded = await backfillUnits(options, taxYear, extracted);
       return {
         taxYear,
         rowsLoaded: existing,
+        unitRowsLoaded,
         sourceFile: '',
         skipped: true,
         reason: 'already loaded',
       };
     }
   }
-
-  const yearDir = join(dataDir, jurisdictionId, String(taxYear));
-  const extractDir = join(yearDir, 'extracted');
-
-  let extracted = await safeListFiles(extractDir);
 
   if (extracted.length === 0 || force) {
     const overrides = options.urlOverrides?.[taxYear] ?? [];
@@ -181,7 +191,14 @@ async function ingestYear(options: RunIngestOptions, taxYear: number): Promise<I
   });
 
   logger.info(`[${taxYear}] loaded ${rowsLoaded.toLocaleString()} accounts`);
-  return { taxYear, rowsLoaded, sourceFile: accountFile, skipped: false };
+
+  // After the accounts, not before: `account_unit` is only meaningful for
+  // accounts the roll actually holds, and a unit load that succeeded over a
+  // failed account load would leave the warehouse describing rates for
+  // accounts it cannot name.
+  const unitRowsLoaded = await loadUnits(options, taxYear, extracted);
+
+  return { taxYear, rowsLoaded, unitRowsLoaded, sourceFile: accountFile, skipped: false };
 }
 
 async function countExistingRows(
@@ -191,6 +208,18 @@ async function countExistingRows(
 ): Promise<number> {
   const row = await warehouse.queryOne<{ n: unknown }>(
     `SELECT count(*) AS n FROM account_year
+     WHERE jurisdiction_id = ${lit(jurisdictionId)} AND tax_year = ${lit(taxYear)};`,
+  );
+  return num(row?.n);
+}
+
+async function countExistingUnitRows(
+  warehouse: Warehouse,
+  jurisdictionId: string,
+  taxYear: number,
+): Promise<number> {
+  const row = await warehouse.queryOne<{ n: unknown }>(
+    `SELECT count(*) AS n FROM account_unit
      WHERE jurisdiction_id = ${lit(jurisdictionId)} AND tax_year = ${lit(taxYear)};`,
   );
   return num(row?.n);
@@ -211,6 +240,83 @@ export async function upsertJurisdiction(
       ${lit(j.homepageUrl)}, ${lit(j.dataPortalUrl)}
     );
   `);
+}
+
+/**
+ * Load the units for a year whose accounts are already in the warehouse.
+ *
+ * Only when there are none — this runs on every unforced re-run of an already
+ * loaded year, and re-reading 1.5 million rows to arrive at the same answer is
+ * a minute nobody asked for. And only from files already extracted: a year
+ * skipped for having its accounts is a year the operator asked not to spend
+ * bandwidth on, so a missing archive is reported rather than downloaded.
+ */
+async function backfillUnits(
+  options: RunIngestOptions,
+  taxYear: number,
+  extracted: string[],
+): Promise<number | undefined> {
+  const { warehouse, connector, logger } = options;
+  if (!connector.unitFile) return undefined;
+
+  const existing = await countExistingUnitRows(warehouse, connector.jurisdiction.id, taxYear);
+  if (existing > 0) return undefined;
+
+  if (extracted.length === 0) {
+    logger.warn(
+      `  no taxing units loaded for ${taxYear} and the archive is no longer on disk — ` +
+        `re-run with --force to price these accounts at their own rates`,
+    );
+    return undefined;
+  }
+
+  return loadUnits(options, taxYear, extracted);
+}
+
+/**
+ * Load the per-account taxing units, where the connector publishes them.
+ *
+ * A failure here does not fail the year. The account roll is the product's
+ * spine and the unit table is an improvement on one number in it — losing the
+ * improvement means every account falls back to the county-wide rate, which is
+ * exactly the state the product was in before this file existed. Losing the
+ * roll means no report at all. So this is caught and said out loud rather than
+ * thrown.
+ */
+async function loadUnits(
+  options: RunIngestOptions,
+  taxYear: number,
+  extracted: string[],
+): Promise<number | undefined> {
+  const { warehouse, connector, logger } = options;
+  const file: UnitFile | undefined = connector.unitFile;
+  if (!file) return undefined;
+
+  const path = file.patterns.map((pattern) => extracted.find((p) => pattern.test(p))).find(Boolean);
+  if (!path) {
+    const message = `'${file.label}' file not found — every account in ${taxYear} will price at the county-wide rate`;
+    if (file.required) throw new Error(message);
+    logger.warn(`  ${message}`);
+    return undefined;
+  }
+
+  try {
+    return await loadUnitFile({
+      warehouse,
+      jurisdictionId: connector.jurisdiction.id,
+      taxYear,
+      filePath: path,
+      file,
+      format: connector.format,
+      logger,
+    });
+  } catch (error) {
+    logger.warn(
+      `  '${file.label}' failed to load (${(error as Error).message}) — ` +
+        `${taxYear} will price at the county-wide rate`,
+    );
+    return undefined;
+  }
 }
 
 /**

@@ -8,6 +8,7 @@ export * from './series.js';
 export * from './predicates.js';
 export * from './queries/overview.js';
 export * from './queries/accounts.js';
+export * from './queries/units.js';
 export * from './queries/owners.js';
 export * from './queries/trends.js';
 export * from './queries/opportunity.js';
