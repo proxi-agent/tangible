@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ColumnDef } from '@tanstack/react-table';
 import { Plus } from 'lucide-react';
 import Link from 'next/link';
 import { useState } from 'react';
@@ -10,12 +9,12 @@ import { api } from '@/lib/api';
 import { count } from '@/lib/format';
 import { ClientStatusBadge } from '@/components/workspace/badges';
 import { Button, TextInput } from '@/components/ui/controls';
-import { DataTable } from '@/components/ui/data-table';
+import { DataTable, type DataTableColumn } from '@/components/ui/data-table';
 import { Card, CardHeader, ErrorState, PageHeader, Skeleton } from '@/components/ui/primitives';
 
 const dateFormat = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium' });
 
-const COLUMNS: ColumnDef<ClientListItem, unknown>[] = [
+const COLUMNS: DataTableColumn<ClientListItem>[] = [
   {
     id: 'name',
     header: 'Client',

@@ -1,11 +1,17 @@
 'use client';
 
 import {
+  createSortedRowModel,
   flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
+  rowSortingFeature,
+  sortFn_alphanumeric,
+  sortFn_basic,
+  sortFn_datetime,
+  sortFn_text,
+  tableFeatures,
+  useTable,
   type ColumnDef,
+  type RowData,
   type SortingState,
 } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, ChevronsUpDown } from 'lucide-react';
@@ -32,8 +38,54 @@ import { InfoTip } from '@/components/ui/tooltip';
  * is already present and the answer is the same either way.
  */
 
-export interface DataTableProps<T> {
-  columns: ColumnDef<T, unknown>[];
+/**
+ * TanStack v9 wants the feature set declared once, statically, instead of
+ * assembled per table out of `get*RowModel` options. Only what is registered
+ * here exists on the table instance and ships in the bundle, so this list is
+ * the whole of what these tables do.
+ *
+ * Column visibility is deliberately absent. Nothing here hides a column, and
+ * registering the feature to keep calling `row.getVisibleCells()` would be
+ * paying for a filter with nothing to filter — the rows below ask for every
+ * cell instead.
+ *
+ * `sortFns` is the registry the default `auto` sort resolves names against. The
+ * four registered are the four `auto` can pick; an unregistered name falls back
+ * to a plain `<`, which puts "Account 10" above "Account 2".
+ *
+ * `columnMeta` is a type-only slot — the value is stripped at runtime and only
+ * its type is read. It is what makes `columnDef.meta` typed below rather than
+ * `unknown`.
+ */
+const features = tableFeatures({
+  rowSortingFeature,
+  sortedRowModel: createSortedRowModel(),
+  sortFns: {
+    alphanumeric: sortFn_alphanumeric,
+    basic: sortFn_basic,
+    datetime: sortFn_datetime,
+    text: sortFn_text,
+  },
+  columnMeta: {} as ColumnMeta,
+});
+
+/**
+ * The column type these tables take. Exported so callers name this component's
+ * column rather than the vendor's — a v9 `ColumnDef` leads with the feature set
+ * it was built for, which is a detail of this file and not of the pages that
+ * list rows.
+ *
+ * `RowData` is v9's constraint on a row: an object or an array, where v8 would
+ * take anything. Every row listed here is a record, so this costs nothing and
+ * is where the requirement is stated once.
+ */
+export type DataTableColumn<T extends RowData> = ColumnDef<typeof features, T, unknown>;
+
+/** Re-exported for the same reason: the pages sort, they do not use TanStack. */
+export type { SortingState };
+
+export interface DataTableProps<T extends RowData> {
+  columns: DataTableColumn<T>[];
   data: T[];
   getRowId?: (row: T) => string;
   empty?: { title: string; children?: ReactNode };
@@ -66,7 +118,7 @@ export interface DataTableProps<T> {
   loading?: boolean;
 }
 
-export function DataTable<T>({
+export function DataTable<T extends RowData>({
   columns,
   data,
   getRowId,
@@ -81,7 +133,15 @@ export function DataTable<T>({
   const server = sorting !== undefined && onSortingChange !== undefined;
   const [clientSorting, setClientSorting] = useState<SortingState>([]);
 
-  const table = useReactTable({
+  // The sorted row model is registered for every table but only runs for some:
+  // `manualSorting` short-circuits it back to the unsorted rows, which is the
+  // right answer for a server-sorted page — those fifty rows arrived in order
+  // and re-sorting them locally would sort the page, not the roll.
+  //
+  // Pagination is not a registered feature. It is offset-based and server-side
+  // all the way down, and the footer below is the whole of it.
+  const table = useTable({
+    features,
     data,
     columns,
     state: { sorting: server ? sorting : clientSorting },
@@ -92,9 +152,6 @@ export function DataTable<T>({
       else setClientSorting(next);
     },
     manualSorting: server,
-    manualPagination: pagination !== undefined,
-    getCoreRowModel: getCoreRowModel(),
-    ...(server ? {} : { getSortedRowModel: getSortedRowModel() }),
     getRowId: getRowId ? (row) => getRowId(row) : undefined,
   });
 
@@ -284,7 +341,7 @@ export function DataTable<T>({
                   key={row.id}
                   className="border-b border-[var(--color-hairline)] transition-colors last:border-0 hover:bg-[var(--color-sunken)]"
                 >
-                  {row.getVisibleCells().map((cell) => (
+                  {row.getAllCells().map((cell) => (
                     <td
                       key={cell.id}
                       className={cn(
@@ -392,16 +449,16 @@ export interface ColumnMeta {
   help?: ReactNode;
 }
 
-function alignOf(def: { meta?: unknown }): 'right' | undefined {
-  return (def.meta as ColumnMeta | undefined)?.align;
+function alignOf(def: { meta?: ColumnMeta }): 'right' | undefined {
+  return def.meta?.align;
 }
 
-function widthOf(def: { meta?: unknown }): string | undefined {
-  return (def.meta as ColumnMeta | undefined)?.className;
+function widthOf(def: { meta?: ColumnMeta }): string | undefined {
+  return def.meta?.className;
 }
 
-function helpOf(def: { meta?: unknown }): ReactNode | undefined {
-  return (def.meta as ColumnMeta | undefined)?.help;
+function helpOf(def: { meta?: ColumnMeta }): ReactNode | undefined {
+  return def.meta?.help;
 }
 
 /** The header, when it is a plain string — used for labels a tooltip can title. */

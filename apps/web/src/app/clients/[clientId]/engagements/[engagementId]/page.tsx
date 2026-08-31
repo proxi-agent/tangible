@@ -1,7 +1,6 @@
 'use client';
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { ColumnDef, SortingState } from '@tanstack/react-table';
 import {
   FileCheck,
   FileSpreadsheet,
@@ -36,7 +35,7 @@ import { IntakeCard } from '@/components/workspace/intake-card';
 import { InvoicesCard } from '@/components/workspace/invoices-card';
 import { ValuationCard } from '@/components/workspace/valuation-card';
 import { Button, ChipGroup, Select, TextInput } from '@/components/ui/controls';
-import { DataTable } from '@/components/ui/data-table';
+import { DataTable, type DataTableColumn, type SortingState } from '@/components/ui/data-table';
 import {
   BackLink,
   Badge,
@@ -700,7 +699,7 @@ function AssetsCard({
     placeholderData: (previous) => previous,
   });
 
-  const columns: ColumnDef<Asset, unknown>[] = [
+  const columns: DataTableColumn<Asset>[] = [
     {
       id: 'sourceRow',
       header: 'Source',

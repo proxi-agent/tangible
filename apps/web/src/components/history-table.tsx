@@ -1,11 +1,10 @@
 'use client';
 
-import type { ColumnDef } from '@tanstack/react-table';
 import { Check, Minus, X } from 'lucide-react';
 import { useMemo } from 'react';
 import type { AccountYearPoint } from '@tangible/types';
 import { moneyExact } from '@/lib/format';
-import { DataTable, type ColumnMeta } from '@/components/ui/data-table';
+import { DataTable, type ColumnMeta, type DataTableColumn } from '@/components/ui/data-table';
 
 /**
  * One account's years.
@@ -16,7 +15,7 @@ import { DataTable, type ColumnMeta } from '@/components/ui/data-table';
  * slices and delegate sorting to the server for exactly that reason.
  */
 export function HistoryTable({ history }: { history: AccountYearPoint[] }) {
-  const columns = useMemo<ColumnDef<AccountYearPoint, unknown>[]>(
+  const columns = useMemo<DataTableColumn<AccountYearPoint>[]>(
     () => [
       {
         id: 'taxYear',

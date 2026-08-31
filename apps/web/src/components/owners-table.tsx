@@ -1,6 +1,5 @@
 'use client';
 
-import type { ColumnDef, SortingState } from '@tanstack/react-table';
 import Link from 'next/link';
 import { useMemo } from 'react';
 import {
@@ -11,7 +10,12 @@ import {
 } from '@tangible/types';
 import { count, moneyExact } from '@/lib/format';
 import { Badge } from '@/components/ui/primitives';
-import { DataTable, type ColumnMeta } from '@/components/ui/data-table';
+import {
+  DataTable,
+  type ColumnMeta,
+  type DataTableColumn,
+  type SortingState,
+} from '@/components/ui/data-table';
 import { Tooltip } from '@/components/ui/tooltip';
 
 const SORTABLE = new Set<string>(OWNER_SORT_FIELDS);
@@ -45,7 +49,7 @@ export function OwnersTable({
   /** First page still in flight — skeleton rows rather than "nothing matches". */
   loading?: boolean;
 }) {
-  const columns = useMemo<ColumnDef<OwnerRollup, unknown>[]>(
+  const columns = useMemo<DataTableColumn<OwnerRollup>[]>(
     () => [
       {
         id: 'ownerName',
