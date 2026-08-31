@@ -47,12 +47,18 @@ export function AccountsTable({
   /** First page still in flight — skeleton rows rather than "nothing matches". */
   loading?: boolean;
 }) {
+  // Each sortable column carries an `accessorFn` even though nothing on this
+  // table sorts in the browser. TanStack's `getCanSort()` is false without one,
+  // which is what left these headers inert; the accessor reads the same field
+  // the server orders by, so the header and the ORDER BY name one column. The
+  // columns without an accessor are the ones the endpoint cannot sort on, and
+  // their headers stay plain text.
   const columns = useMemo<DataTableColumn<AccountSeries>[]>(
     () => [
       {
         id: 'ownerName',
         header: 'Owner',
-        enableSorting: SORTABLE.has('ownerName'),
+        accessorFn: (row) => row.ownerName,
         meta: {
           className: 'max-w-[280px]',
           help: 'The business the county has on record at this location. Click a name to open its year-by-year history.',
@@ -107,6 +113,7 @@ export function AccountsTable({
       {
         id: 'latestAssessedValue',
         header: 'Equipment value',
+        accessorFn: (row) => row.latestAssessedValue,
         meta: {
           align: 'right',
           help: 'What the county says this business’s equipment, furniture, fixtures and inventory are worth this tax year. The tax bill is a percentage of it.',
@@ -116,6 +123,7 @@ export function AccountsTable({
       {
         id: 'yearsUnfiled',
         header: 'Years missed',
+        accessorFn: (row) => row.yearsUnfiled,
         meta: {
           align: 'right',
           help: 'Businesses must declare their equipment to the county every year — a rendition in Texas, a tangible personal property return in Florida. This is how many years this account skipped it, out of the years it has been on the county’s books.',
@@ -129,6 +137,7 @@ export function AccountsTable({
       {
         id: 'estimatedAnnualPenalty',
         header: 'Penalty / yr',
+        accessorFn: (row) => row.estimatedAnnualPenalty,
         meta: {
           align: 'right',
           help: 'Skipping the declaration adds a 10% penalty on top of the tax bill. This is what that costs the business in one year, estimated at the county’s blended tax rate.',
@@ -140,6 +149,7 @@ export function AccountsTable({
       {
         id: 'estimatedLifetimePenalty',
         header: 'Penalty to date',
+        accessorFn: (row) => row.estimatedLifetimePenalty,
         meta: {
           align: 'right',
           help: 'Every missed year’s penalty added together, across the whole period this account appears in the data.',

@@ -49,11 +49,17 @@ export function OwnersTable({
   /** First page still in flight — skeleton rows rather than "nothing matches". */
   loading?: boolean;
 }) {
+  // Each sortable column carries an `accessorFn` even though nothing on this
+  // table sorts in the browser. TanStack's `getCanSort()` is false without one,
+  // which is what left these headers inert; the accessor reads the same field
+  // the server orders by, so the header and the ORDER BY name one column. The
+  // flags column has no accessor and no header to click.
   const columns = useMemo<DataTableColumn<OwnerRollup>[]>(
     () => [
       {
         id: 'ownerName',
         header: 'Owner',
+        accessorFn: (row) => row.ownerName,
         meta: {
           className: 'max-w-[320px]',
           help: 'The business, with every location it owns rolled into one row. Click a name to see those locations listed individually.',
@@ -77,6 +83,7 @@ export function OwnersTable({
       {
         id: 'accountCount',
         header: 'Locations',
+        accessorFn: (row) => row.accountCount,
         meta: {
           align: 'right',
           help: 'How many separate places this business is taxed at. Each one is its own account, and each one owes its own filing.',
@@ -86,6 +93,7 @@ export function OwnersTable({
       {
         id: 'unfiledAccountCount',
         header: 'Missed filings',
+        accessorFn: (row) => row.unfiledAccountCount,
         meta: {
           align: 'right',
           help: 'How many of those locations skipped the annual equipment declaration in the selected year.',
@@ -99,6 +107,7 @@ export function OwnersTable({
       {
         id: 'totalAssessedValue',
         header: 'Equipment value',
+        accessorFn: (row) => row.totalAssessedValue,
         meta: {
           align: 'right',
           help: 'What the county says this business’s equipment is worth, added up across every location it holds.',
@@ -108,6 +117,7 @@ export function OwnersTable({
       {
         id: 'estimatedAnnualPenalty',
         header: 'Penalty / yr',
+        accessorFn: (row) => row.estimatedAnnualPenalty,
         meta: {
           align: 'right',
           help: 'The 10% late-filing penalty across all of this business’s locations, for one year. One conversation with the owner covers every one of them.',

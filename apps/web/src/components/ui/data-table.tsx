@@ -152,6 +152,16 @@ export function DataTable<T extends RowData>({
       else setClientSorting(next);
     },
     manualSorting: server,
+    // A server-sorted roll is never unsorted — the endpoint always has an
+    // ORDER BY — so the default third click, which clears the sort, would
+    // announce "no order" and then silently land on the default column. Two
+    // states is the truth there. The browser-sorted tables keep the third
+    // click, where returning to the order the rows arrived in means something.
+    //
+    // Multi-sort goes for the same reason: these endpoints take one `sortBy`,
+    // and a shift-click would build a second sort the server never applies.
+    enableSortingRemoval: !server,
+    enableMultiSort: !server,
     getRowId: getRowId ? (row) => getRowId(row) : undefined,
   });
 
