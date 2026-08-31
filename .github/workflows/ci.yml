@@ -60,9 +60,6 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: ./.github/actions/setup
-      # `pnpm build` runs scripts/check-node.mjs first, so this also proves the
-      # runner is on the Node line .nvmrc pins — the same check a developer's
-      # machine gets, rather than a second copy of the rule that could drift.
       - run: pnpm build
 
   audit:

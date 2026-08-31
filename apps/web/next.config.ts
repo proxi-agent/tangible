@@ -15,39 +15,37 @@ try {
 }
 
 /**
- * Two bundler facts, both load-bearing.
+ * The build is Turbopack, on the default settings. Both reasons it was not are
+ * gone, and it is worth writing down which one was a bug and which one was a
+ * measurement mistake.
  *
- * `turbopackScopeHoisting: false` is here because with it on, the Turbopack
- * build dies collecting page data: "Cannot access 'x' before initialization",
- * pointed into @tangible/types. It is not a circular import — that package's 33
- * modules have no cycle, and nothing in the app graph re-enters it. It is the
- * hoisting itself. Turbopack merges every types module into one chunk scope,
- * collapses their separate `import { z } from 'zod'` bindings onto a single
- * name, and then emits a self-referential re-declaration of that name once per
- * merged module — `var nU = nU;`, ninety of them in one chunk, readable in
- * .next/server/chunks. Harmless as `var`; where the same collapse lands in a
- * lexical declaration, evaluating the module is a temporal-dead-zone error.
- * The route named in the failure varies run to run because eleven page-data
- * workers race, so the route is never the cause. Re-try dropping this on a
- * future Next upgrade — the fix is upstream.
+ * The bug was real. `experimental.turbopackScopeHoisting: false` used to sit
+ * here because with hoisting on, the build died collecting page data —
+ * "Cannot access 'x' before initialization", pointed into @tangible/types.
+ * Turbopack merged that package's modules into one chunk scope, collapsed their
+ * separate `import { z } from 'zod'` bindings onto a single name, and emitted a
+ * self-referential re-declaration of it once per merged module. Fixed upstream:
+ * on Next 16.3.3 the default build completes, boots, and traces.
  *
- * `next build --webpack` (package.json) is a separate, softer choice. The
- * webpack build was never affected by the above, and it produces a 15 MB
- * .next/server against Turbopack-without-hoisting's 164 MB. That difference is
- * duplication across 147 routes, not weight on any one function — per-function
- * output peaks at 3.0 MB either way, well inside any platform limit — so it is
- * about build and upload time, not about whether we can deploy. Turbopack
- * builds, boots and traces correctly (both blank Comptroller PDFs and the
- * duckdb bindings land in the route .nft.json files); webpack stays the shipped
- * path because it is proven and cheaper, not because Turbopack is broken.
+ * The measurement was wrong. `next build --webpack` was kept on the grounds
+ * that webpack produced a 15 MB `.next/server` against Turbopack's 164 MB. That
+ * comparison was source maps against no source maps. Turbopack emits server
+ * source maps by default and webpack does not: of Turbopack's 196 MB here, 154
+ * MB is `.map` files, and the emitted JavaScript is 28 MB against webpack's
+ * 18 MB. No `.map` appears in any of the 156 route `.nft.json` files, so none
+ * of it was ever function weight, and the whole `.next` is *smaller* on
+ * Turbopack — 538 MB against 667 MB. Keep the maps: they are what makes a
+ * production stack trace in the incidents surface readable.
+ *
+ * What was left is a build that is roughly 40% faster — 23s against 38s on this
+ * machine — and one bundler shared with `next dev` instead of two that can
+ * disagree.
  */
 const config: NextConfig = {
   reactStrictMode: true,
   // The shared packages ship TypeScript-built ESM; let Next compile them in-place
   // so a change in a package is picked up without a separate build step.
   transpilePackages: ['@tangible/types'],
-
-  experimental: { turbopackScopeHoisting: false },
 
   /**
    * DuckDB is a native addon: a `.node` binding plus a ~70 MB shared library.

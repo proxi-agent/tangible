@@ -1,14 +1,13 @@
 {
   "name": "tangible",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@11.24.0",
   "engines": {
     "node": "24.x"
   },
   "scripts": {
-    "build": "node scripts/check-node.mjs && turbo run build",
-    "check:node": "node scripts/check-node.mjs",
+    "build": "turbo run build",
     "dev": "turbo run dev",
     "typecheck": "turbo run typecheck",
     "lint": "oxlint --type-aware",
