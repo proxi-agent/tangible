@@ -32,7 +32,7 @@ import {
  * that somebody has looked at it.
  */
 export default function PortalDocumentsPage() {
-  const { engagementId, canAct } = usePortal();
+  const { engagementId, canAct, href } = usePortal();
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
@@ -152,7 +152,7 @@ export default function PortalDocumentsPage() {
                   {sent.join(', ')}
                 </p>
                 <div className="mt-2">
-                  <LinkButton href="/portal">See your report</LinkButton>
+                  <LinkButton href={href('/portal')}>See your report</LinkButton>
                 </div>
               </Callout>
             ) : null}

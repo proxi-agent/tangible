@@ -40,7 +40,7 @@ import { usePortal } from '@/components/portal/portal-context';
  */
 export default function PortalAssetPage() {
   const { assetId } = useParams<{ assetId: string }>();
-  const { engagementId } = usePortal();
+  const { engagementId, href } = usePortal();
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['asset-profile', engagementId, assetId],
@@ -77,7 +77,7 @@ export default function PortalAssetPage() {
       <PageHeader
         back={
           <Link
-            href="/portal"
+            href={href('/portal')}
             className="inline-flex items-center gap-1.5 text-xs text-[var(--color-ink-secondary)] hover:text-[var(--color-ink)]"
           >
             <ArrowLeft size={13} />
@@ -266,7 +266,7 @@ export default function PortalAssetPage() {
             {data.findings.map((finding) => (
               <li key={`${finding.setId}:${finding.key}`} className="px-5 py-2.5">
                 <Link
-                  href={`/portal/report/${encodeURIComponent(finding.key)}`}
+                  href={href(`/portal/report/${encodeURIComponent(finding.key)}`)}
                   className="text-sm font-medium text-[var(--color-accent-ink)] hover:underline"
                 >
                   {finding.title}

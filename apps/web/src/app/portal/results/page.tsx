@@ -39,7 +39,7 @@ import { LinkButton } from '@/components/ui/controls';
  *   - An argument still with the district counts as nothing, not as a loss.
  */
 export default function PortalResultsPage() {
-  const { engagementId } = usePortal();
+  const { engagementId, href } = usePortal();
   const query = useQuery({
     queryKey: ['portal-recovery', engagementId],
     queryFn: () => api.recoveryStatement(engagementId!),
@@ -83,7 +83,7 @@ export default function PortalResultsPage() {
         <Card>
           <EmptyState
             title="Nothing has gone to the district yet"
-            action={<LinkButton href="/portal">See your report</LinkButton>}
+            action={<LinkButton href={href('/portal')}>See your report</LinkButton>}
           >
             This page fills in once a return or a correction goes out. Until then, your report is
             what a position is worth — not yet what it recovered.

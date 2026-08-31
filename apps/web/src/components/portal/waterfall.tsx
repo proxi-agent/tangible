@@ -6,6 +6,7 @@ import type { SavingsReport } from '@tangible/types';
 import { cn } from '@/lib/cn';
 import { money, percent } from '@/lib/format';
 import { InfoTip } from '@/components/ui/tooltip';
+import { usePortal } from '@/components/portal/portal-context';
 
 /**
  * Reported value on the left, corrected value on the right, and every finding
@@ -22,6 +23,7 @@ import { InfoTip } from '@/components/ui/tooltip';
  * put a number on the page that the engine refused to invent.
  */
 export function Waterfall({ report }: { report: SavingsReport }) {
+  const { href } = usePortal();
   const steps = report.findings
     .filter((finding) => finding.valueRemoved !== null && finding.valueRemoved > 0)
     .sort((a, b) => (b.valueRemoved ?? 0) - (a.valueRemoved ?? 0));
@@ -90,7 +92,7 @@ export function Waterfall({ report }: { report: SavingsReport }) {
       key: finding.key,
       label: finding.title,
       amount: finding.valueRemoved ?? 0,
-      href: `/portal/report/${encodeURIComponent(finding.key)}`,
+      href: href(`/portal/report/${encodeURIComponent(finding.key)}`),
     })),
     ...(exemption > 0
       ? [

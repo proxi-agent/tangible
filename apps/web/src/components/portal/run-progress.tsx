@@ -3,6 +3,7 @@
 import { RUN_STEPS, RUN_STEP_LABEL, type RunProgress } from '@tangible/types';
 import { Card, EmptyState } from '@/components/ui/primitives';
 import { LinkButton } from '@/components/ui/controls';
+import { usePortal } from '@/components/portal/portal-context';
 
 /**
  * What a client sees while their report is being made.
@@ -17,12 +18,14 @@ import { LinkButton } from '@/components/ui/controls';
  * their own books learns only that something is wrong with them.
  */
 export function RunProgressCard({ run }: { run: RunProgress }) {
+  const { href } = usePortal();
+
   if (run.status === 'failed') {
     return (
       <Card>
         <EmptyState
           title="We hit a problem reading your register"
-          action={<LinkButton href="/portal/documents">Send another file</LinkButton>}
+          action={<LinkButton href={href('/portal/documents')}>Send another file</LinkButton>}
         >
           Nothing you did caused this and nothing you sent was lost. Someone here has been told, and
           will be in touch.

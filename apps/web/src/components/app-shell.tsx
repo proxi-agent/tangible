@@ -75,9 +75,10 @@ const ASSISTANT_NAV = {
  * long time, and for the same reason: the report says what a position is worth,
  * which is neither a statement that anything was filed nor a statement of what
  * came back, and a client who could read only the first was being shown our
- * analysis in place of their own position. Nothing here takes an id from the
- * URL: the identity is held by the portal layout, so there is no address a
- * client can edit into somebody else's account.
+ * analysis in place of their own position. None of these six names a client: a
+ * client's scope is their session, and the id in the address is only ever the
+ * firm's preview of somebody else's wing, which the rail carries along so the
+ * preview survives a click.
  *
  * It is a wing rather than a nav group because the two audiences must not share
  * a rail. A client scrolling past "Market — Accounts, Owners" is looking at a
@@ -238,6 +239,23 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
   const suffix = scopeQuery.toString() ? `?${scopeQuery}` : '';
 
+  /**
+   * Which client's wing the firm is previewing, if any.
+   *
+   * The portal takes its scope from `?client=`, so the rail has to carry it the
+   * same way the pages do — six links that drop it would empty the wing on the
+   * first click. Off the portal it is read from the path instead, which is what
+   * makes the wing switcher work from a client page: a preparer looking at Acme
+   * who flips to Client means Acme's portal, and every other page in the
+   * workspace means no client at all, which the wing says out loud rather than
+   * guessing at.
+   */
+  const previewClient = isClient
+    ? null
+    : pathname.startsWith('/portal')
+      ? searchParams.get('client')
+      : (/^\/clients\/([^/]+)/.exec(pathname)?.[1] ?? null);
+
   const notes = onMarket ? (scope.current?.dataNotes ?? []) : [];
 
   // The login page is its own room, not a view inside the app chrome.
@@ -245,7 +263,14 @@ export function AppShell({ children }: { children: ReactNode }) {
     return <main className="min-h-screen">{children}</main>;
   }
 
-  const rail = <NavRail pathname={pathname} suffix={suffix} onNavigate={() => setNavOpen(false)} />;
+  const rail = (
+    <NavRail
+      pathname={pathname}
+      suffix={suffix}
+      previewClient={previewClient}
+      onNavigate={() => setNavOpen(false)}
+    />
+  );
 
   return (
     <AssistantProvider>
@@ -424,10 +449,12 @@ export function AppShell({ children }: { children: ReactNode }) {
 function NavRail({
   pathname,
   suffix,
+  previewClient,
   onNavigate,
 }: {
   pathname: string;
   suffix: string;
+  previewClient: string | null;
   onNavigate: () => void;
 }) {
   const router = useRouter();
@@ -438,12 +465,15 @@ function NavRail({
   // something is there.
   const isClient = viewer?.audience === 'client';
   const wing = isClient ? 'client' : wingOf(pathname);
+  // A client's own links carry nothing: their scope is the session, and the
+  // parameter is ignored for them anyway.
+  const portalSuffix = previewClient ? `?client=${encodeURIComponent(previewClient)}` : '';
 
   return (
     <>
       <div className="flex h-14 shrink-0 items-center gap-2 px-4">
         <Link
-          href={wing === 'client' ? '/portal' : '/season'}
+          href={wing === 'client' ? `/portal${portalSuffix}` : '/season'}
           onClick={onNavigate}
           className="flex items-center gap-2"
         >
@@ -479,7 +509,7 @@ function NavRail({
             ]}
             onChange={(next) => {
               onNavigate();
-              router.push(next === 'client' ? '/portal' : '/season');
+              router.push(next === 'client' ? `/portal${portalSuffix}` : '/season');
             }}
           />
         </div>
@@ -492,6 +522,7 @@ function NavRail({
               <NavLink
                 key={item.href}
                 {...item}
+                href={`${item.href}${portalSuffix}`}
                 onNavigate={onNavigate}
                 active={
                   item.href === '/portal'

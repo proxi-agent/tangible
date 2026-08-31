@@ -185,7 +185,7 @@ export async function notifyReportPublished(runId: string): Promise<void> {
     body: [
       `Your ${row.engagement.taxYear} business personal property report is ready to read.`,
       '',
-      `${appUrl()}/portal/report`,
+      `${appUrl()}/portal`,
       '',
       'It shows what we found in the register you sent, what it is worth on the',
       "appraisal district's own depreciation schedules, and where we think the",

@@ -42,7 +42,7 @@ import { RunProgressCard } from '@/components/portal/run-progress';
  *     links, not decoration.
  */
 export default function PortalReportPage() {
-  const { engagementId } = usePortal();
+  const { engagementId, href } = usePortal();
 
   const published = usePublishedReport(engagementId);
   const sites = useQuery({
@@ -78,7 +78,7 @@ export default function PortalReportPage() {
       <PortalHeader
         title="Your report"
         description={description}
-        actions={<LinkButton href="/portal/documents">Send more files</LinkButton>}
+        actions={<LinkButton href={href('/portal/documents')}>Send more files</LinkButton>}
       />
 
       {published.isLoading ? (
@@ -107,7 +107,7 @@ export default function PortalReportPage() {
         <Card>
           <EmptyState
             title="Your report is being prepared"
-            action={<LinkButton href="/portal/documents">Send your register</LinkButton>}
+            action={<LinkButton href={href('/portal/documents')}>Send your register</LinkButton>}
           >
             We have not read a fixed asset register for this year yet. Send one and we will email
             you when the report is ready.
@@ -129,6 +129,8 @@ function Report({
   runId: string | null;
   publishedAt: string | null;
 }) {
+  const { href } = usePortal();
+
   // Nothing to price means nothing has been read yet — a report of zeroes
   // reads like a finding of "no savings", which is a different and much worse
   // claim than "we have not looked yet".
@@ -137,7 +139,7 @@ function Report({
       <Card>
         <EmptyState
           title="Your report is being prepared"
-          action={<LinkButton href="/portal/documents">Send your register</LinkButton>}
+          action={<LinkButton href={href('/portal/documents')}>Send your register</LinkButton>}
         >
           We have not read a fixed asset register for this year yet. Send one and we will email you
           when the report is ready.
@@ -252,7 +254,7 @@ function Report({
                 recovery across the report, after allowing for what a district is likely to concede.
               </p>
             </div>
-            <LinkButton href="/portal/queue">Start with the top 25</LinkButton>
+            <LinkButton href={href('/portal/queue')}>Start with the top 25</LinkButton>
           </div>
         </Card>
       ) : null}
@@ -333,7 +335,7 @@ function Report({
 }
 
 function Lead({ finding }: { finding: SavingsFinding }) {
-  const { engagementId } = usePortal();
+  const { engagementId, href } = usePortal();
   const { asks } = usePortalAsks(engagementId);
   const state = askStateFor(asks, finding);
 
@@ -341,7 +343,7 @@ function Lead({ finding }: { finding: SavingsFinding }) {
     <li className="px-5 py-4">
       <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
         <Link
-          href={`/portal/report/${encodeURIComponent(finding.key)}`}
+          href={href(`/portal/report/${encodeURIComponent(finding.key)}`)}
           className="text-sm font-medium hover:text-[var(--color-accent)]"
         >
           {finding.title}

@@ -1,6 +1,8 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import { Building2, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import {
   createContext,
@@ -14,7 +16,8 @@ import {
 import type { ClientDetail, Engagement } from '@tangible/types';
 import { api } from '@/lib/api';
 import { useViewer } from '@/components/viewer-context';
-import { Card, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
+import { TextInput } from '@/components/ui/controls';
+import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
 
 /**
  * Who the portal is speaking to.
@@ -33,6 +36,13 @@ import { Card, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitiv
  * is a preview and says so on screen. It is safe in a way the old picker was
  * not: the parameter only works for a session the server already knows to be
  * the firm, and a client-audience browser ignores it entirely.
+ *
+ * Because the preview lives in the address, it has to be carried: a firm reader
+ * who lands on `/portal?client=…` and clicks "Documents" would otherwise arrive
+ * at a bare `/portal/documents` with no scope at all, and the wing would empty
+ * out under them one click in. `href()` is how every link inside the wing keeps
+ * it, and the rail does the same for its own six. For a client the parameter is
+ * never added, because a client is already their own scope.
  */
 
 const SEASON_KEY = 'tangible-portal-season';
@@ -48,6 +58,8 @@ interface PortalValue {
   setEngagementId: (id: string) => void;
   /** True when the firm is looking at somebody else's wing. */
   previewing: boolean;
+  /** A link inside the wing, with the firm's preview scope carried along. */
+  href: (path: string) => string;
   /** Whether this reader may send files and answer questions. */
   canAct: boolean;
 }
@@ -106,6 +118,17 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     write(SEASON_KEY, id);
   }, []);
 
+  // Every link inside the wing, written once. A client gets the path untouched:
+  // adding `?client=` to their own links would put an id in front of a reader
+  // the server ignores it for, and invite the edit it is designed to defeat.
+  const href = useCallback(
+    (path: string) => {
+      if (!previewing || clientId === null) return path;
+      return `${path}${path.includes('?') ? '&' : '?'}client=${encodeURIComponent(clientId)}`;
+    },
+    [previewing, clientId],
+  );
+
   const detail = useQuery({
     queryKey: ['client', clientId],
     queryFn: () => api.client(clientId!),
@@ -161,19 +184,15 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  // The firm arrived without naming a client. There is nothing to guess at:
-  // opening the newest client, or the first alphabetically, would be a portal
-  // that shows a preparer one business while they believe they are looking at
-  // another.
+  // The firm arrived without naming a client — from the wing switcher, or from
+  // a bookmark. There is still nothing to guess at: opening the newest client,
+  // or the first alphabetically, would be a portal that shows a preparer one
+  // business while they believe they are looking at another. So the page asks
+  // rather than assumes, and asks with the list in hand — a sentence telling a
+  // reader to go somewhere else and come back is a dead end wearing an
+  // explanation.
   if (clientId === null) {
-    return (
-      <Card>
-        <EmptyState title="A portal belongs to a business">
-          Open a client in the workspace and use “View their portal” to see this wing the way they
-          do.
-        </EmptyState>
-      </Card>
-    );
+    return <PreviewChooser />;
   }
 
   if (detail.error) {
@@ -195,6 +214,7 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         engagementId: engagement?.id ?? null,
         setEngagementId,
         previewing,
+        href,
         canAct,
       }}
     >
@@ -217,5 +237,88 @@ function PreviewBanner({ name }: { name: string }) {
       You are looking at <span className="font-medium text-[var(--color-ink)]">{name}</span>’s
       portal as the firm. They see this page without this line.
     </div>
+  );
+}
+
+/**
+ * Which client's portal the firm wants to look at.
+ *
+ * This is not the picker that was deleted. That one answered "who are you" for
+ * a reader whose identity was the whole access decision; this one answers
+ * "which of our clients" for a session the server has already established as
+ * the firm, and every name in it is a name that reader can open in the
+ * workspace anyway. It writes nothing: picking a client sets the same `?client=`
+ * the workspace's own "View their portal" link sets, so the address still says
+ * who is on screen.
+ */
+function PreviewChooser() {
+  const clients = useQuery({ queryKey: ['clients'], queryFn: api.clients, staleTime: 60_000 });
+  const [needle, setNeedle] = useState('');
+
+  const matches = (clients.data ?? []).filter((client) =>
+    client.name.toLowerCase().includes(needle.trim().toLowerCase()),
+  );
+
+  return (
+    <Card>
+      <CardHeader
+        title="A portal belongs to a business"
+        description="Pick a client to see this wing the way they do. The same link sits on their client page, under Portal access."
+        icon={Building2}
+      />
+      {clients.isLoading ? (
+        <div className="px-5 py-5">
+          <Skeleton className="h-24 w-full" />
+        </div>
+      ) : clients.error ? (
+        <div className="px-5 py-5">
+          <ErrorState error={clients.error} />
+        </div>
+      ) : (clients.data?.length ?? 0) === 0 ? (
+        <EmptyState title="No clients yet">
+          The client wing is one business&rsquo;s view of an engagement. There is no engagement to
+          look at until there is a client.
+        </EmptyState>
+      ) : (
+        <>
+          <div className="border-b border-[var(--color-hairline)] px-5 pb-4">
+            <TextInput
+              value={needle}
+              placeholder="Find a client"
+              aria-label="Find a client"
+              onChange={(e) => setNeedle(e.target.value)}
+            />
+          </div>
+          {matches.length === 0 ? (
+            <EmptyState title="No client by that name" />
+          ) : (
+            <ul className="divide-y divide-[var(--color-hairline)]">
+              {matches.map((client) => (
+                <li key={client.id}>
+                  <Link
+                    href={`/portal?client=${encodeURIComponent(client.id)}`}
+                    className="flex items-center gap-3 px-5 py-3 transition-colors hover:bg-[var(--color-sunken)]"
+                  >
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium">
+                      {client.name}
+                    </span>
+                    <span className="shrink-0 text-xs text-[var(--color-ink-muted)]">
+                      {client.engagementCount === 1
+                        ? '1 season'
+                        : `${client.engagementCount} seasons`}
+                    </span>
+                    <ChevronRight
+                      size={15}
+                      strokeWidth={2}
+                      className="shrink-0 text-[var(--color-ink-muted)]"
+                    />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
+    </Card>
   );
 }

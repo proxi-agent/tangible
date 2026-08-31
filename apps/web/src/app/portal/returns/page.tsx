@@ -50,7 +50,7 @@ import { LinkButton } from '@/components/ui/controls';
  * watching; a business that can see it can ring us about it.
  */
 export default function PortalReturnsPage() {
-  const { engagementId } = usePortal();
+  const { engagementId, href } = usePortal();
   const query = useQuery({
     queryKey: ['portal-returns', engagementId],
     queryFn: () => api.returnsStatement(engagementId!),
@@ -94,7 +94,7 @@ export default function PortalReturnsPage() {
         <Card>
           <EmptyState
             title="No return is set up yet"
-            action={<LinkButton href="/portal/documents">Send us your register</LinkButton>}
+            action={<LinkButton href={href('/portal/documents')}>Send us your register</LinkButton>}
           >
             A rendition is filed per business location. Once we know where your property sits, each
             location and its deadline appear here.

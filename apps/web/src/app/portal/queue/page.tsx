@@ -238,6 +238,7 @@ function Board({
   acceptanceIsPlaceholder: boolean;
   acceptanceEvidence: AcceptanceEvidenceView[];
 }) {
+  const { href } = usePortal();
   const done = items.filter((item) => decided[item.row.rowKey] !== undefined).length;
   const finished = items.length > 0 && done === items.length;
   const onThisPage = items.reduce((sum, item) => sum + (item.row.expectedRecovery ?? 0), 0);
@@ -252,7 +253,7 @@ function Board({
           icon={ListOrdered}
           action={
             <Link
-              href="/portal"
+              href={href('/portal')}
               className="text-sm font-medium text-[var(--color-accent)] hover:underline"
             >
               Back to your report
@@ -356,7 +357,7 @@ function Board({
                   </Button>
                 ) : (
                   <Link
-                    href="/portal"
+                    href={href('/portal')}
                     className="text-sm font-medium text-[var(--color-accent)] hover:underline"
                   >
                     Back to your report
@@ -367,7 +368,7 @@ function Board({
               <p className="text-xs text-[var(--color-ink-muted)]">
                 {count(items.length - done)} {plural(items.length - done, 'line')} left on this
                 page. The next twenty-five are offered once these are done — and the{' '}
-                <Link href="/portal" className="text-[var(--color-accent)] hover:underline">
+                <Link href={href('/portal')} className="text-[var(--color-accent)] hover:underline">
                   category view
                 </Link>{' '}
                 is still there for checking that nothing was missed.
@@ -496,6 +497,7 @@ function Evidence({
   acceptanceIsPlaceholder: boolean;
   acceptanceEvidence: AcceptanceEvidenceView[];
 }) {
+  const { href } = usePortal();
   const { row } = item;
 
   return (
@@ -505,7 +507,7 @@ function Evidence({
         description={
           <>
             <Link
-              href={`/portal/report/${encodeURIComponent(row.findingKey)}`}
+              href={href(`/portal/report/${encodeURIComponent(row.findingKey)}`)}
               className="text-[var(--color-accent)] hover:underline"
             >
               {item.findingTitle}

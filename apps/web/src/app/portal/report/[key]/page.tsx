@@ -56,7 +56,7 @@ const KIND_META: Record<
 export default function PortalFindingPage({ params }: { params: Promise<{ key: string }> }) {
   const { key } = use(params);
   const findingKey = decodeURIComponent(key);
-  const { engagementId, clientId, canAct } = usePortal();
+  const { engagementId, clientId, canAct, href } = usePortal();
   const queryClient = useQueryClient();
 
   /**
@@ -144,7 +144,7 @@ export default function PortalFindingPage({ params }: { params: Promise<{ key: s
     return missing ? (
       <>
         <PageHeader
-          back={<BackLink href="/portal">Your report</BackLink>}
+          back={<BackLink href={href('/portal')}>Your report</BackLink>}
           title="Not on this report"
         />
         <Card>
@@ -185,7 +185,7 @@ export default function PortalFindingPage({ params }: { params: Promise<{ key: s
   return (
     <div className="space-y-6">
       <PageHeader
-        back={<BackLink href="/portal">Your report</BackLink>}
+        back={<BackLink href={href('/portal')}>Your report</BackLink>}
         title={page.title}
         description={page.summary}
         actions={<Badge tone={meta.tone}>{meta.label}</Badge>}
@@ -369,7 +369,7 @@ export default function PortalFindingPage({ params }: { params: Promise<{ key: s
               onToggle={toggle}
               onToggleAll={toggleAll}
               selectable={canAct}
-              assetHref={(assetId) => `/portal/assets/${assetId}`}
+              assetHref={(assetId) => href(`/portal/assets/${assetId}`)}
             />
             {(offset > 0 || more) && (
               <div className="flex items-center justify-between border-t border-[var(--color-hairline)] px-5 py-3">
