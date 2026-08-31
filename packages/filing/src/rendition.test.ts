@@ -256,9 +256,12 @@ describe('what blocks a signature', () => {
     expect(warning?.message).not.toContain('tx-fort-bend');
   });
 
-  it('falls back to the id for a district we cannot print a form for', () => {
-    const unknown = build([asset({})], { jurisdictionId: 'tx-hidalgo', schedule: null });
-    expect(blocker(unknown, 'no-schedule')?.message).toContain('tx-hidalgo');
+  it('falls back to the id outside Texas, where there is no district to name', () => {
+    // Every Texas county resolves now, so this branch is about somewhere else.
+    // A Florida site has an appraiser rather than an appraisal district, and
+    // the slug is the only handle we have on it.
+    const unknown = build([asset({})], { jurisdictionId: 'fl-broward', schedule: null });
+    expect(blocker(unknown, 'no-schedule')?.message).toContain('fl-broward');
   });
 });
 
