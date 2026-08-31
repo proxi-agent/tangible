@@ -22,6 +22,7 @@ import { CarryForwardCard } from '@/components/workspace/carry-forward-card';
 import { DownloadButton } from '@/components/workspace/download-button';
 import { EngagementPipeline } from '@/components/workspace/engagement-pipeline';
 import { EvidenceCard } from '@/components/workspace/evidence-card';
+import { FeeCard } from '@/components/workspace/fee-card';
 import { PrecapAdvisor } from '@/components/workspace/precap-advisor';
 import { ClassificationCard } from '@/components/workspace/classification-card';
 import { FindingsCard } from '@/components/workspace/findings-card';
@@ -348,6 +349,15 @@ function TabBody({
             }
           />
           <RecoveryCard engagementId={engagementId} />
+          {/*
+            Last on the tab, and on this tab rather than its own, because a fee
+            is the last thing the season produces and the only one of these
+            three the client never sees. It reads directly off the scoreboard
+            above it: a contingency statement refuses to issue while any site is
+            still being argued, which is the same sentence the top card is
+            already saying in the phase column.
+          */}
+          <FeeCard engagementId={engagementId} />
         </>
       );
     case 'priors':

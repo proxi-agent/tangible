@@ -2,6 +2,7 @@
 
 import { useQuery } from '@tanstack/react-query';
 import {
+  Activity,
   AlertTriangle,
   BadgeCheck,
   BarChart3,
@@ -145,6 +146,16 @@ const WORKSPACE_NAV = [
     label: 'Quality',
     icon: FlaskConical,
     hint: 'How often each finding type is right, and the citation behind every rule the engine applies.',
+  },
+  // Last, because it is the only entry that is about the software rather than
+  // about the work — and the one that has to be looked at anyway, since a
+  // crash in a client's upload otherwise reaches the firm only if they mention
+  // it.
+  {
+    href: '/operations',
+    label: 'Operations',
+    icon: Activity,
+    hint: 'What is broken, whether anything is still checking, and whether an alert would reach anybody.',
   },
 ];
 

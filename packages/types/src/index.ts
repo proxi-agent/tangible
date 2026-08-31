@@ -30,3 +30,7 @@ export * from './quality.js';
 export * from './recovery.js';
 export * from './evidence.js';
 export * from './advice.js';
+
+/** Not about a tax return: what the firm is owed, and whether its own software is up. */
+export * from './fees.js';
+export * from './operations.js';

@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 import { ZodError } from 'zod';
 import { AccountQuerySchema, type AccountQuery } from '@tangible/types';
 import { HttpError } from '@/lib/http';
+import { noteIncident, siteOf } from '@/lib/incidents';
 import { withClientScope } from '@/lib/db-scope';
 import { currentViewer } from '@/lib/viewer';
 
@@ -100,6 +101,12 @@ export async function handle<T>(fn: () => Promise<T>): Promise<Response> {
      * message is the whole point, so it still comes through.
      */
     console.error('[api]', error);
+    /**
+     * Detached on purpose. This is the worst response the app gives anybody,
+     * and waiting on a database write and a mail round-trip before sending it
+     * makes a bad request slow as well as failed.
+     */
+    noteIncident({ surface: 'api', label: siteOf(error) ?? 'api', error });
     return NextResponse.json(
       {
         statusCode: 500,

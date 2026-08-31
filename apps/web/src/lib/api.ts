@@ -1,5 +1,14 @@
 import type { CapitalizationAdvice, CapitalizationAdviceRequest } from '@tangible/types';
 import type {
+  FeeStatement,
+  FeeView,
+  IssueFeeStatementInput,
+  OperationsView,
+  ResolveIncidentInput,
+  SaveFeeTermsInput,
+  SettleFeeStatementInput,
+} from '@tangible/types';
+import type {
   AcceptanceBoard,
   AnalysisRun,
   GrantPortalAccessRequest,
@@ -239,10 +248,15 @@ function fail(response: Response, body: string): never {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(`${BASE_URL}/api${path}`, {
-    ...init,
-    headers: { 'Content-Type': 'application/json', ...init?.headers },
-  });
+  // `HeadersInit` is three different shapes — a `Headers`, an array of pairs,
+  // or a plain object — and only the last of them survives an object spread.
+  // The other two spread into `{ 0: ..., 1: ... }`, which drops every header the
+  // caller set and surfaces far from here as an unexplained 401 or 415. The
+  // `Headers` constructor accepts all three, so let it do the normalizing.
+  const headers = new Headers(init?.headers);
+  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+
+  const response = await fetch(`${BASE_URL}/api${path}`, { ...init, headers });
 
   if (!response.ok) {
     const body = await response.text();
@@ -1230,6 +1244,39 @@ export const api = {
   decideFinding: (findingId: string, body: UpdateFindingDispositionRequest) =>
     request<FindingDecisionResult>(`/findings/${findingId}`, {
       method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+
+  // ---- The operational floor ------------------------------------------------
+  // Not about a return: whether the software is up, and whether the firm is
+  // paid for the season. Both firm-only, and neither in the client wing's
+  // allowlist — an incident names our own failure, and a fee is our own bill.
+
+  operations: () => request<OperationsView>('/operations'),
+
+  resolveIncident: (incidentId: string, body: ResolveIncidentInput) =>
+    request<OperationsView>(`/operations/incidents/${incidentId}`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  fees: (engagementId: string) => request<FeeView>(`/engagements/${engagementId}/fees`),
+
+  saveFeeTerms: (engagementId: string, body: SaveFeeTermsInput) =>
+    request<FeeView>(`/engagements/${engagementId}/fees`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  issueFeeStatement: (engagementId: string, body: IssueFeeStatementInput) =>
+    request<FeeView>(`/engagements/${engagementId}/fees`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  settleFeeStatement: (statementId: string, body: SettleFeeStatementInput) =>
+    request<FeeStatement>(`/fee-statements/${statementId}`, {
+      method: 'POST',
       body: JSON.stringify(body),
     }),
 };

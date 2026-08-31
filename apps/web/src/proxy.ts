@@ -34,6 +34,19 @@ export async function proxy(request: NextRequest) {
    */
   if (request.nextUrl.pathname === '/api/runs/drain') return NextResponse.next();
 
+  /**
+   * An uptime monitor cannot sign in either, and one that could would only be
+   * proving that sign-in works. This is the endpoint it calls, and it answers
+   * anonymously with which dependencies replied and nothing more — the detail
+   * and the warehouse diagnostics need `CRON_SECRET`, checked in the handler.
+   * Exact path again, for the same reason: a prefix admits whatever is added
+   * under it later.
+   */
+  if (request.nextUrl.pathname === '/api/health') return NextResponse.next();
+
+  /** The probe beside it is the scheduled runner again, and checks the same secret. */
+  if (request.nextUrl.pathname === '/api/health/probe') return NextResponse.next();
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return NextResponse.next();

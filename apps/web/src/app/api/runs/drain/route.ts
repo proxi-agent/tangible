@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { recordIncident } from '@/lib/incidents';
 import { drainRuns } from '@/lib/runs';
 
 export const runtime = 'nodejs';
@@ -37,6 +38,12 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json(await drainRuns());
   } catch (error) {
     console.error('[runs] drain failed', error);
+    /**
+     * The reaper failing is worse than any single run failing: nothing is
+     * requeued after it, so every abandoned run stays abandoned and the only
+     * symptom is reports that never arrive.
+     */
+    await recordIncident({ surface: 'cron', label: 'runs · drain', error });
     return NextResponse.json({ statusCode: 500, message: 'The runner failed.' }, { status: 500 });
   }
 }

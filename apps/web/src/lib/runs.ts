@@ -5,6 +5,7 @@ import { fromSavingsReport } from '@tangible/findings';
 import { SAVINGS_RULES_VERSION } from '@tangible/savings';
 import type { AnalysisRun, RunProgress, RunStep, RunTrigger, SavingsReport } from '@tangible/types';
 import { analyzeLoaded, loadSavingsInputs } from '@/lib/analysis';
+import { recordIncident, siteOf } from '@/lib/incidents';
 import { notifyReportPublished } from '@/lib/notify';
 import { writeFindingSet } from '@/lib/findings';
 import { HttpError } from '@/lib/http';
@@ -326,6 +327,18 @@ export async function executeRun(runId: string): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[runs] failed', runId, error);
+    /**
+     * The one fault in this app a client actually feels: they sent a register,
+     * the analysis threw, and the report never appears. Awaited rather than
+     * detached — nothing is waiting on this response, and the invocation ends
+     * when the function returns.
+     */
+    await recordIncident({
+      surface: 'run',
+      label: `analysis · ${siteOf(error) ?? 'run'}`,
+      error,
+      engagementId: held.engagementId,
+    });
     /**
      * Failed, not requeued. A run that threw goes back to `queued` only through
      * the reaper, and only while attempts remain — so a register that breaks

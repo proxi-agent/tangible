@@ -818,7 +818,9 @@ rare and bandwidth to the bucket is fast. Worth knowing: on a LAN-speed link
 blocking wins, because the download is nearly free and the first query is then a
 local read. Over a real network the download dominates, and blocking means one
 unlucky visitor waits for all of it. Check `cache.durationMs` on `/api/health`
-in your own deployment before changing this — that is the number that decides it,
+in your own deployment before changing this — that endpoint answers anonymously
+with only which dependencies replied, so send `Authorization: Bearer $CRON_SECRET`
+to get the warehouse diagnostics. That is the number that decides it,
 and it cannot be measured from a laptop.
 
 `PARQUET_CACHE=off` disables the copy entirely; `PARQUET_CACHE_MAX_MB` changes
@@ -896,6 +898,42 @@ costs speed instead of correctness.
 To run ingest against a deployed dashboard, set `INGEST_API_URL` to a reachable
 NestJS instance. Left unset, the Data page reports that ingest is local-only
 rather than failing.
+
+### Knowing when it breaks
+
+Three things, and the third is the one people skip.
+
+**The scheduled jobs.** `vercel.json` runs two crons: `/api/runs/drain` every
+ten minutes, which requeues an analysis abandoned by a torn-down invocation, and
+`/api/health/probe` every fifteen, which asks each dependency whether it answers
+and writes the result down. Both authenticate with `CRON_SECRET`, and both
+refuse rather than running open when it is unset — so an unconfigured deployment
+loses abandoned runs _and_ records no health history, quietly.
+
+**Incidents.** Every fault at the three seams that matter — an API route, a run,
+the drain cron — is recorded, grouped, and mailed to `AUTH_ALLOWED_EMAILS` the
+first time it appears. Grouping is by shape, not by occurrence: identifiers,
+quoted strings and numbers are blanked out of the message before it is
+fingerprinted, so a hundred uploads failing the same way is one incident with a
+count of a hundred. No more than five distinct incidents are mailed in an hour;
+past that they are still recorded and still shown on `/operations`, which is the
+firm-only screen for all of this. Closing one requires a reason, and a closed
+fault that returns opens a new row rather than reopening the old one.
+
+**An external monitor.** Point something outside the deployment at
+`/api/health`, every minute or two, and alert on a non-200:
+
+```bash
+curl -sS -o /dev/null -w '%{http_code}\n' https://<your-app>/api/health
+```
+
+The probe cron above cannot do this job. It runs _inside_ the app, so a
+deployment that is not answering at all records nothing and the operations
+screen goes quiet rather than red — which is precisely what an outage looks like
+from the inside. The endpoint is past the auth gate for the same reason a
+monitor cannot sign in, answers 503 when a dependency has failed, and says
+anonymously only which dependencies exist and whether each replied. Send
+`Authorization: Bearer $CRON_SECRET` for the detail behind that.
 
 ## Validation
 

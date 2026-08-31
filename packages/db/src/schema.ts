@@ -2706,3 +2706,209 @@ export type EvidenceExportRow = typeof evidenceExports.$inferSelect;
 export type NewEvidenceExportRow = typeof evidenceExports.$inferInsert;
 export type EvidenceRecordRow = typeof evidenceRecords.$inferSelect;
 export type NewEvidenceRecordRow = typeof evidenceRecords.$inferInsert;
+
+/* --- The operational floor ------------------------------------------------
+ *
+ * Four tables that are not about a tax return.
+ *
+ * Everything above this line exists because a client has property to render.
+ * These exist because the firm is a going concern that has to know when its own
+ * software broke and has to get paid — the two facts that, with zero customers,
+ * cost nothing to ignore and, with three, are the ones that end it.
+ */
+
+/**
+ * A fault, grouped by what went wrong rather than by when.
+ *
+ * The unit is the *fingerprint*, not the occurrence: one deterministic bug hit
+ * by a client refreshing a page is one incident with a count, not four hundred
+ * rows that bury the second bug. `fingerprint` is a hash of the surface, the
+ * place, and the message with its ids and numbers stripped out, so the same
+ * fault from two different clients lands on one row and two different faults
+ * from one route stay apart.
+ *
+ * The unique index is *partial* — one open incident per fingerprint, and none
+ * of the resolved ones. So a fault that returns after somebody marked it fixed
+ * opens a new row rather than quietly incrementing the old one's counter, and
+ * the record then says the true thing: this was closed on the 3rd and came back
+ * on the 9th. It also re-alerts, which a reopened row would not.
+ *
+ * The client and engagement are recorded where the request had them, because
+ * "whose upload was it" is the first question and the logs cannot answer it.
+ * Both are `set null` rather than `cascade`: deleting a client should not
+ * delete the evidence that the software failed them.
+ */
+export const incidents = pgTable(
+  'incidents',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** Hash of surface + label + the message with its variables removed. */
+    fingerprint: text('fingerprint').notNull(),
+    /** 'api' | 'run' | 'cron' | 'probe' — which part of the system was working. */
+    surface: text('surface').notNull(),
+    /** Where, in the words a person would use: a route path, a job name. */
+    label: text('label').notNull(),
+    /** The message as it was thrown, untruncated variables and all. */
+    message: text('message').notNull(),
+    /** The stack, trimmed. Null when the throw carried none. */
+    detail: text('detail'),
+    clientId: uuid('client_id').references(() => clients.id, { onDelete: 'set null' }),
+    engagementId: uuid('engagement_id').references(() => engagements.id, { onDelete: 'set null' }),
+    occurrences: integer('occurrences').notNull().default(1),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    /** When the firm was told. Null means nobody has been mailed about this. */
+    alertedAt: timestamp('alerted_at', { withTimezone: true }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    resolvedBy: text('resolved_by'),
+    /** Why it was closed. The next person to see it return reads this first. */
+    resolution: text('resolution'),
+  },
+  (table) => [
+    /**
+     * One *open* incident per fingerprint. Postgres ignores rows failing the
+     * predicate, so resolved rows accumulate freely and the upsert below has
+     * exactly one row to find.
+     */
+    uniqueIndex('incidents_open_fingerprint_idx')
+      .on(table.fingerprint)
+      .where(sql`resolved_at is null`),
+    index('incidents_recent_idx').on(table.lastSeenAt),
+  ],
+).enableRLS();
+
+/**
+ * One "everything answered" check, written whether or not it did.
+ *
+ * A row here is worth more than it looks: it is the only thing that makes
+ * silence mean something. Without it, a system that has stopped running its
+ * jobs and a system with nothing to do produce identical screens.
+ *
+ * What this cannot do is notice that the app is down, because it runs inside
+ * the app. That is not a gap to be closed by writing more of this file — it is
+ * closed by pointing something outside at `/api/health`, which is why that
+ * endpoint answers with a status code an uptime service can read. What the
+ * probe covers is the larger class of failure where the app is up and one of
+ * the things underneath it is not: the warehouse missing, Postgres refusing
+ * connections, an environment variable that did not survive a deploy.
+ */
+export const healthProbes = pgTable(
+  'health_probes',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    checkedAt: timestamp('checked_at', { withTimezone: true }).notNull().defaultNow(),
+    /** True only when every check passed. */
+    ok: boolean('ok').notNull(),
+    /** Per-dependency results: `[{ name, ok, ms, detail }]`. Shape owned by Zod. */
+    checks: jsonb('checks').notNull(),
+    /** How long the whole sweep took, for noticing slow before noticing down. */
+    ms: integer('ms').notNull(),
+    /** 'cron' | 'manual' — a scheduled sweep, or somebody pressing the button. */
+    source: text('source').notNull(),
+  },
+  (table) => [index('health_probes_recent_idx').on(table.checkedAt)],
+).enableRLS();
+
+/**
+ * What the firm charges for a season, agreed once and then read, never guessed.
+ *
+ * One row per engagement rather than per client, because the terms are the
+ * terms of *this* year's work: a first season that reaches back three years
+ * under 25.25 is not priced like the fourth season for the same taxpayer.
+ *
+ * Three bases, because those are the three ways this work is actually sold:
+ *
+ *   - **fixed** — one amount for the engagement, whatever it turns up.
+ *   - **per-return** — an amount for each return filed. The count comes off
+ *     the filings, so a client with eleven sites is billed for eleven.
+ *   - **contingency** — a share of what the work saved. Only measurable after
+ *     the year resolves, which is exactly what the statement enforces.
+ *
+ * `minimumCents` exists because a contingency engagement that saves very little
+ * still consumed a season of somebody's attention, and a bill for $180 is a
+ * bill nobody should send.
+ */
+export const engagementFees = pgTable(
+  'engagement_fees',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** 'fixed' | 'per-return' | 'contingency'. */
+    basis: text('basis').notNull(),
+    /**
+     * Money is held in whole cents, unlike every valuation in this schema.
+     * Those are estimates of what a district will do and a floating point is
+     * honest about them; this is what somebody owes, and a bill that reads
+     * $4,999.999999 is a bill that was computed wrong.
+     */
+    fixedCents: integer('fixed_cents'),
+    perReturnCents: integer('per_return_cents'),
+    /** The share, as a fraction: 0.25 is a quarter of what was saved. */
+    contingencyRate: real('contingency_rate'),
+    /** A floor under a contingency fee, where the engagement letter set one. */
+    minimumCents: integer('minimum_cents'),
+    /** The day the client agreed. A term with no date is a term nobody agreed. */
+    agreedOn: date('agreed_on'),
+    notes: text('notes'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('engagement_fees_engagement_idx').on(table.engagementId)],
+).enableRLS();
+
+/**
+ * A bill, frozen.
+ *
+ * Same discipline as the filed rendition record: the amount and everything it
+ * was computed from are written down at the moment it is issued and never
+ * recomputed. A statement that re-derived itself would change after a
+ * disposition was edited, and the client is holding a piece of paper that says
+ * something else.
+ *
+ * `terms` is the fee agreement as it stood; `measure` is what the fee was
+ * applied to — the realized reduction, the returns counted, the sites they came
+ * from. Between them they answer "why is this the number" a year later, when
+ * the engagement has moved on and the scoreboard says something different.
+ *
+ * The only edits a row accepts are the two things that happen to a bill after
+ * it goes out: it gets paid, or it gets voided. Neither changes what it says.
+ */
+export const feeStatements = pgTable(
+  'fee_statements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    /** The reference the client quotes back. Unique across the firm. */
+    number: text('number').notNull(),
+    issuedAt: timestamp('issued_at', { withTimezone: true }).notNull().defaultNow(),
+    issuedBy: text('issued_by'),
+    /** The basis this was billed on, snapshotted from the terms. */
+    basis: text('basis').notNull(),
+    /** `[{ label, detail, amountCents }]` — what the client reads. */
+    lines: jsonb('lines').notNull(),
+    totalCents: integer('total_cents').notNull(),
+    /** The fee agreement as it stood when this was issued. */
+    terms: jsonb('terms').notNull(),
+    /** What the fee was applied to, in enough detail to re-derive the total. */
+    measure: jsonb('measure').notNull(),
+    /** 'issued' | 'paid' | 'void'. */
+    status: text('status').notNull().default('issued'),
+    paidOn: date('paid_on'),
+    voidedAt: timestamp('voided_at', { withTimezone: true }),
+    voidReason: text('void_reason'),
+  },
+  (table) => [
+    uniqueIndex('fee_statements_number_idx').on(table.number),
+    index('fee_statements_engagement_idx').on(table.engagementId, table.issuedAt),
+  ],
+).enableRLS();
+
+export type IncidentRow = typeof incidents.$inferSelect;
+export type NewIncidentRow = typeof incidents.$inferInsert;
+export type HealthProbeRow = typeof healthProbes.$inferSelect;
+export type EngagementFeeRow = typeof engagementFees.$inferSelect;
+export type FeeStatementRow = typeof feeStatements.$inferSelect;

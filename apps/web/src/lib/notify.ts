@@ -39,7 +39,7 @@ interface Message {
  * deployment; Vercel's own variable is the fallback so a preview deployment
  * links to itself rather than to production.
  */
-function appUrl(): string {
+export function appUrl(): string {
   const configured = process.env.NEXT_PUBLIC_APP_URL;
   if (configured) return configured.replace(/\/$/, '');
   const vercel = process.env.VERCEL_PROJECT_PRODUCTION_URL ?? process.env.VERCEL_URL;
@@ -47,41 +47,51 @@ function appUrl(): string {
 }
 
 /**
- * Send one message, and record that we tried.
+ * Put one message on the wire. Returns what went wrong, or null.
  *
  * The transport is Resend over plain fetch — no SDK, because the whole API is
  * one POST and a dependency that wraps it is a dependency to keep current. With
  * no key configured the message is logged instead of sent, which is the local
  * development mode: a laptop should show what would have gone out rather than
  * either failing or quietly mailing real people.
+ *
+ * Separate from {@link deliver} because the operational alerts have no client
+ * and no engagement to file a `notifications` row against — an incident mail is
+ * about the software, not about a season. They share the transport so there is
+ * one place where sending mail can be misconfigured, and one place to change
+ * when it is.
  */
-async function deliver(
-  to: string,
-  message: Message,
-  record: { engagementId: string; clientId: string; kind: Kind; runId?: string | null },
-): Promise<void> {
+export async function sendMail(to: string, message: Message): Promise<string | null> {
   const key = process.env.RESEND_API_KEY;
   const from = process.env.MAIL_FROM;
-  let error: string | null = null;
 
   if (!key || !from) {
     console.info('[notify] no mail transport configured; would have sent', {
       to,
       subject: message.subject,
     });
-    error = 'No mail transport is configured in this deployment.';
-  } else {
-    try {
-      const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ from, to, subject: message.subject, text: message.body }),
-      });
-      if (!response.ok) error = `${response.status} ${(await response.text()).slice(0, 500)}`;
-    } catch (cause) {
-      error = cause instanceof Error ? cause.message : String(cause);
-    }
+    return 'No mail transport is configured in this deployment.';
   }
+  try {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${key}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ from, to, subject: message.subject, text: message.body }),
+    });
+    if (!response.ok) return `${response.status} ${(await response.text()).slice(0, 500)}`;
+    return null;
+  } catch (cause) {
+    return cause instanceof Error ? cause.message : String(cause);
+  }
+}
+
+/** Send one message to a client, and record on the season that we tried. */
+async function deliver(
+  to: string,
+  message: Message,
+  record: { engagementId: string; clientId: string; kind: Kind; runId?: string | null },
+): Promise<void> {
+  const error = await sendMail(to, message);
 
   const db = requireDb();
   await db.insert(schema.notifications).values({
@@ -115,7 +125,7 @@ async function recipients(clientId: string, adminsOnly: boolean): Promise<string
  * no business receiving a client's answer, and keeping the two in sync by hand
  * is how a departed preparer keeps getting mail.
  */
-function firmRecipients(): string[] {
+export function firmRecipients(): string[] {
   return (process.env.AUTH_ALLOWED_EMAILS ?? '')
     .split(',')
     .map((entry) => entry.trim().toLowerCase())
@@ -222,10 +232,7 @@ export async function notifyQuestionsWaiting(engagementId: string): Promise<void
     .select({ id: schema.mappingAsks.id })
     .from(schema.mappingAsks)
     .where(
-      and(
-        eq(schema.mappingAsks.engagementId, engagementId),
-        eq(schema.mappingAsks.status, 'open'),
-      ),
+      and(eq(schema.mappingAsks.engagementId, engagementId), eq(schema.mappingAsks.status, 'open')),
     );
   if (open.length === 0) return;
 
@@ -309,4 +316,4 @@ export function fireAndLog(promise: Promise<void>, label: string): void {
   void promise.catch((error) => console.error('[notify]', label, error));
 }
 
-export type { Kind as NotificationKind };
+export type { Kind as NotificationKind, Message as MailMessage };

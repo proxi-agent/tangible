@@ -11,6 +11,13 @@ const fullCurrency = new Intl.NumberFormat('en-US', {
   maximumFractionDigits: 0,
 });
 
+const exactCurrency = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 const integer = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
 
 /**
@@ -28,6 +35,20 @@ export function money(value: number | null | undefined): string {
 export function moneyExact(value: number | null | undefined): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
   return fullCurrency.format(value);
+}
+
+/**
+ * $4,312.50 — an amount somebody owes, to the cent.
+ *
+ * The only formatter here that prints cents, deliberately. Everything else in
+ * this file is an appraised value or an estimate of tax, where two decimals
+ * would claim a precision the arithmetic does not have. A fee is the one
+ * number in the product that is not an estimate, and rounding it to the dollar
+ * would let a statement's total disagree with the lines under it.
+ */
+export function moneyCents(cents: number | null | undefined): string {
+  if (cents === null || cents === undefined || !Number.isFinite(cents)) return '\u2014';
+  return exactCurrency.format(cents / 100);
 }
 
 export function count(value: number | null | undefined): string {
