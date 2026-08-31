@@ -2,7 +2,6 @@ import 'server-only';
 import { eq } from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import { classificationLabel, isExclusion, isValuable } from '@tangible/classification';
-import { appraisalDistrictName } from '@tangible/filing';
 import type {
   ClassificationStatus,
   FindingRowFilters,
@@ -549,8 +548,8 @@ function reviewSheet(page: FindingRowPage, clientName: string, taxYear: number):
   rows.push([
     page.publishedAt
       ? `From the report published ${page.publishedAt.slice(0, 10)}. Tax at ${(page.blendedTaxRate * 100).toFixed(2)}%${
-          page.jurisdictionName ? `, the blended rate for ${page.jurisdictionName}` : ''
-        }.`
+          page.jurisdictionName ? ` for ${page.jurisdictionName}` : ''
+        } \u2014 ${page.rateSource.label}. ${page.rateSource.detail}`
       : 'From the current report.',
   ]);
   rows.push(GAP);

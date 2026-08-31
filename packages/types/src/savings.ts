@@ -505,9 +505,29 @@ export const SavingsReportSchema = z.object({
   exemption: z.object({
     label: z.string(),
     basis: z.string(),
+    /** The exemption one location gets in one taxing unit. */
     amount: z.number(),
-    /** What actually applied — capped by the value there is to exempt. */
+    /**
+     * What the exemption is worth here, expressed as taxable value: the
+     * difference between the corrected value and what the report ends up taxing.
+     * Capped by the value there is to exempt, and larger than `amount` wherever
+     * the exemption was granted more than once — by several units against their
+     * own slices of a split account, or at several locations inside one unit.
+     */
     applied: z.number(),
+    /**
+     * How the exemption was granted, where it was granted per unit rather than
+     * subtracted once. Null means the report had no unit list to grant against
+     * and fell back to a single subtraction, which understates it.
+     */
+    perUnit: z
+      .object({
+        /** Units that levy on the account, each granting the exemption once. */
+        units: z.number(),
+        /** The most separate locations claimed inside any one unit, per 11.145(c). */
+        locations: z.number(),
+      })
+      .nullable(),
     caveat: z.string(),
   }),
 
@@ -520,6 +540,34 @@ export const SavingsReportSchema = z.object({
    * the chain printable, and what a second state will need.
    */
   rateBasis: RateBasisSchema,
+  /**
+   * Where that rate came from, said out loud on the report.
+   *
+   * Until the taxing-unit combination is loaded for an account, the rate is a
+   * single county-wide constant — 2.5% for every Texas county — and every
+   * headline on this report is that constant times a value. Measured against
+   * the 2025 Harris roll the real value-weighted rate has a median of 2.13%
+   * and sits below 2.5% for 90.6% of business accounts, so the constant
+   * overstates the client's overpayment on nine accounts in ten. An
+   * approximation in that direction is the one thing this product cannot print
+   * silently, which is why the field is required rather than optional.
+   */
+  rateSource: z.object({
+    /**
+     * `prior-year` is its own kind rather than a species of `adopted` because
+     * the rates move. Harris County's own levy went from 0.385290 to 0.380960
+     * between 2025 and 2026, and every unit in the county sets its rate
+     * separately each autumn — months after the spring in which the rendition
+     * for that year is prepared. A report drafted for the coming season
+     * therefore prices at the last table that exists, which is a good
+     * approximation and is not what the governing bodies adopted.
+     */
+    kind: z.enum(['adopted', 'prior-year', 'estimated']),
+    /** A few words for a badge: "adopted rates", "county-wide estimate". */
+    label: z.string(),
+    /** What a reader should do about it. */
+    detail: z.string(),
+  }),
   /**
    * The constants behind every expected-recovery figure on the report, printed
    * rather than buried. None of them are measured yet, and a reader who thinks

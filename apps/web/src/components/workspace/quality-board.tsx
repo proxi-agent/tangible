@@ -482,7 +482,7 @@ function RulesCard({ rules }: { rules: RuleStatus[] }) {
     <Card>
       <CardHeader
         title="Rules"
-        description="Every depreciation table and every detector, with the authority it rests on, the window it applies in, and who signed it off."
+        description="Every depreciation table, every adopted rate table and every detector, with the authority it rests on, the window it applies in, and who signed it off."
         help="A rule in this product is code, and code that decides a client's tax position needs the same things a workpaper does: a citation, an effective date range, a jurisdiction scope, an author and an approver. The gate refuses a schedule missing any of them."
       />
       <ul className="divide-y divide-[var(--color-hairline)]">
@@ -493,7 +493,16 @@ function RulesCard({ rules }: { rules: RuleStatus[] }) {
                 {rule.provenance.title}
               </span>
               <Badge tone={rule.kind === 'valuation' ? 'accent' : 'neutral'}>{rule.kind}</Badge>
-              {rule.inEffect ? null : <Badge tone="critical">{rule.staleReason}</Badge>}
+              {rule.inEffect ? null : (
+                /**
+                 * A rate table waiting on adoption is the season, not a fault —
+                 * Texas units adopt in the autumn — so it warns where a
+                 * depreciation table out of its window is critical.
+                 */
+                <Badge tone={rule.kind === 'rate' ? 'warning' : 'critical'}>
+                  {rule.staleReason}
+                </Badge>
+              )}
               {rule.provenance.approvedBy ? (
                 <Badge tone="good">approved · {rule.provenance.approvedBy}</Badge>
               ) : (
@@ -507,9 +516,18 @@ function RulesCard({ rules }: { rules: RuleStatus[] }) {
               {rule.provenance.effectiveTo
                 ? ` to ${rule.provenance.effectiveTo}`
                 : ' onward'} ·{' '}
-              {rule.goldenCount > 0
-                ? `${count(rule.goldenCount)} ${plural(rule.goldenCount, 'golden')}`
-                : 'no golden'}
+              {/*
+               * Rate tables are pinned by cases in @tangible/valuation rather
+               * than by this harness — a rate golden would be the same
+               * arithmetic twice, with no published worked example to check it
+               * against — so the golden count is omitted rather than printed as
+               * a gap the board is asking somebody to close.
+               */}
+              {rule.kind === 'rate'
+                ? (rule.provenance.taxYears?.join(', ') ?? 'every year')
+                : rule.goldenCount > 0
+                  ? `${count(rule.goldenCount)} ${plural(rule.goldenCount, 'golden')}`
+                  : 'no golden'}
               {rule.kind === 'detector'
                 ? ` · ${count(rule.labelCount)} ${plural(rule.labelCount, 'label')}`
                 : ''}{' '}

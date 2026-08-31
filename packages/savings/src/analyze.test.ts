@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TX_HARRIS_2026 as S } from '@tangible/valuation';
+import { accountRate, TX_HARRIS_2026 as S, type AccountRate } from '@tangible/valuation';
 import { analyzeSavings, type SavingsAsset, type SavingsInput } from './analyze.js';
 import { exemptionFor, exemptionForSites, FL_EXEMPTION, TX_EXEMPTION_2026 } from './exemptions.js';
 
@@ -417,5 +417,162 @@ describe('confidence', () => {
     const basis = ghost.detection.find((d) => d.code === 'no-disposal-date')!;
     expect(basis.assetCount).toBe(1);
     expect(basis.originalCost).toBe(100_000);
+  });
+});
+
+/**
+ * A real 2025 Harris rate — Houston ISD, the city, the county and the five
+ * others that levy alongside them, each taxing the whole account. Built from
+ * the adopted table rather than invented so that what the report prices off is
+ * the same object the roll produces.
+ */
+const HOUSTON = (() => {
+  const result = accountRate({
+    jurisdictionId: 'tx-harris',
+    taxYear: 2025,
+    placements: ['001', '040', '041', '042', '043', '044', '048', '061'].map((unitCode) => ({
+      unitCode,
+      share: 1,
+    })),
+  });
+  if (!result.ok) throw new Error(result.reason);
+  return result.rate;
+})();
+/** The same units, as though 2026 rates had been adopted at the 2025 figures. */
+const HOUSTON_2026: AccountRate = { ...HOUSTON, taxYear: 2026 };
+
+describe('which rate the report says it used', () => {
+  const assessed = {
+    accountId: '0044891',
+    taxYear: 2026,
+    appraisedValue: 500_000,
+    assessedValue: 500_000,
+    renditionFiled: true,
+    ownerName: 'Acme',
+  };
+
+  it('calls the county-wide constant an estimate when no rate is supplied', () => {
+    const report = run([asset()]);
+    expect(report.rateSource.kind).toBe('estimated');
+    expect(report.blendedTaxRate).toBeCloseTo(0.025, 9);
+  });
+
+  it('calls a rate for the reported year adopted', () => {
+    const report = run([asset()], { accountRate: HOUSTON_2026 });
+    expect(report.rateSource.kind).toBe('adopted');
+    expect(report.rateSource.label).toBe('adopted rates');
+  });
+
+  it('names the borrowed year when the reported year has no adopted table', () => {
+    const report = run([asset()], { accountRate: HOUSTON });
+    expect(report.rateSource.kind).toBe('prior-year');
+    expect(report.rateSource.label).toBe('2025 adopted rates');
+    expect(report.rateSource.detail).toContain('2026 rates are not adopted yet');
+  });
+
+  /**
+   * The bug this exists to stop: the headline priced off `blendedTaxRate` while
+   * every row priced off the account's own rate, so a caller that supplied a
+   * real rate and left the constant alone got a "tax a year" that the findings
+   * under it did not add up to.
+   */
+  it('prices the headline off the same basis the rows do', () => {
+    const report = run([asset()], {
+      assessed,
+      blendedTaxRate: 0.025,
+      accountRate: HOUSTON_2026,
+    });
+    expect(report.blendedTaxRate).toBeCloseTo(0.0212522, 9);
+    const reduction = assessed.appraisedValue - report.proposedTaxableValue;
+    expect(report.estimatedAnnualSaving).toBeCloseTo(reduction * 0.0212522, 6);
+    expect(report.proposedTax).toBeCloseTo(report.proposedTaxableValue * 0.0212522, 6);
+  });
+});
+
+describe('how the exemption is granted', () => {
+  /** Enough property that the exemption bites without wiping the position out. */
+  const big = [asset({ originalCost: 900_000, acquisitionYear: 2025 })];
+
+  it('subtracts once, and says so, where it has no units to grant against', () => {
+    const report = run(big);
+    expect(report.exemption.perUnit).toBeNull();
+    expect(report.exemption.applied).toBeCloseTo(TX_EXEMPTION_2026, 6);
+    expect(report.exemption.caveat).toContain('applied once here against a blended rate');
+  });
+
+  /**
+   * The surprise worth pinning: for one site whose units all tax the whole
+   * account, granting the exemption eight separate times against eight separate
+   * levies comes to exactly the same number as subtracting it once. Everything
+   * else here is a departure from this case, not from the old arithmetic.
+   */
+  it('lands on the single subtraction for one site whose units all overlap', () => {
+    const report = run(big, { accountRate: HOUSTON_2026 });
+    expect(report.exemption.applied).toBeCloseTo(TX_EXEMPTION_2026, 6);
+    expect(report.proposedTaxableValue).toBeCloseTo(report.farImpliedValue - TX_EXEMPTION_2026, 6);
+    expect(report.exemption.perUnit).toEqual({ units: 8, locations: 1 });
+    expect(report.exemption.caveat).toContain('each of the 8 units');
+  });
+
+  it('keeps the page’s own arithmetic true after granting it per unit', () => {
+    const report = run(big, {
+      accountRate: HOUSTON_2026,
+      exemptionGrants: { '001': 3, '061': 3 },
+    });
+    // The three identities a reader checks by hand.
+    expect(report.proposedTax).toBeCloseTo(report.proposedTaxableValue * report.blendedTaxRate, 6);
+    expect(report.proposedTaxableValue).toBeCloseTo(
+      report.farImpliedValue - report.exemption.applied,
+      6,
+    );
+    expect(report.exemption.amount).toBe(TX_EXEMPTION_2026);
+  });
+
+  it('claims it at every location inside a unit, per 11.145(c)', () => {
+    const one = run(big, { accountRate: HOUSTON_2026 });
+    const three = run(big, {
+      accountRate: HOUSTON_2026,
+      exemptionGrants: { '001': 3, '061': 3 },
+    });
+    expect(three.exemption.applied).toBeGreaterThan(one.exemption.applied);
+    expect(three.proposedTax).toBeLessThan(one.proposedTax);
+    expect(three.exemption.perUnit).toEqual({ units: 8, locations: 3 });
+    expect(three.exemption.caveat).toContain('at up to 3 locations each');
+    // Houston ISD and the city are 1.3975 of the 2.12522 total, and three
+    // grants against each takes 250,000 more off both of those two levies. The
+    // rest of the exemption is unchanged, so the value it is worth rises by
+    // 250,000 × 1.3975 / 2.12522.
+    expect(three.exemption.applied - one.exemption.applied).toBeCloseTo(
+      (250_000 * (0.8783 + 0.51919)) / 2.12522,
+      2,
+    );
+  });
+
+  it('grants each side of a split account its own exemption', () => {
+    const split = accountRate({
+      jurisdictionId: 'tx-harris',
+      taxYear: 2025,
+      placements: [
+        { unitCode: '040', share: 1 },
+        { unitCode: '054', share: 0.5 }, // CITY OF DEER PARK
+        { unitCode: '074', share: 0.5 }, // CITY OF PASADENA
+      ],
+    });
+    if (!split.ok) throw new Error(split.reason);
+    const report = run(big, { accountRate: { ...split.rate, taxYear: 2026 } });
+    // Both cities exempt 125,000 of their own half, so the exemption is worth
+    // more than 125,000 of value even though no unit granted more than one.
+    expect(report.exemption.applied).toBeGreaterThan(TX_EXEMPTION_2026);
+    expect(report.exemption.perUnit).toEqual({ units: 3, locations: 1 });
+  });
+
+  it('never exempts more than there is, however many units grant it', () => {
+    const small = run([asset({ originalCost: 40_000, acquisitionYear: 2025 })], {
+      accountRate: HOUSTON_2026,
+      exemptionGrants: { '001': 4 },
+    });
+    expect(small.proposedTaxableValue).toBe(0);
+    expect(small.proposedTax).toBe(0);
+    expect(small.exemption.applied).toBeCloseTo(small.farImpliedValue, 6);
   });
 });

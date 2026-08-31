@@ -18,6 +18,8 @@ import {
   appraise,
   CATEGORY_BY_KEY,
   lookupSicProfile,
+  taxForAccount,
+  type AccountRate,
   type Appraisal,
   type DepreciationSchedule,
   type LifeClass,
@@ -143,16 +145,39 @@ export interface SavingsInput {
   businessSic: string | null;
   blendedTaxRate: number;
   /**
-   * How the blended rate splits into the two things it is made of.
+   * The taxing units that actually levy on this engagement's accounts, with the
+   * share of value each one taxes and the rate it adopted.
    *
-   * Optional, and the default is the one that is right in Texas: an assessment
-   * ratio of 1, so the whole rate is millage. It is a parameter rather than a
-   * constant because the moment a Louisiana or Mississippi register lands, the
-   * ratio is 0.15 and a report that folded it into one number is out by nearly
-   * seven times — in the direction that overstates the saving.
+   * Optional. Without it the report runs on `blendedTaxRate` — the
+   * jurisdiction's single county-wide constant — and says so on its face. With
+   * it the report prices off the account's own units, which is both a truer
+   * rate and the only way to grant the exemption the way the statute does:
+   * separately, by each unit, against its own levy.
+   *
+   * It also carries the assessment ratio, which is 1 in Texas and 0.15 the
+   * moment a Louisiana register lands; a report that folded the two into one
+   * number would be out by nearly seven times, in the direction that overstates
+   * the saving.
+   *
+   * Where its `taxYear` differs from the year being reported, the caller priced
+   * against the most recent adopted table because the reported year's had not
+   * been adopted yet, and the report says so rather than presenting a borrowed
+   * year as this year's.
    */
-  rateBasis?: RateBasis;
+  accountRate?: AccountRate;
   exemptionAmount: number;
+  /**
+   * How many times the exemption is granted in each taxing unit, by unit code.
+   * One where a unit is not named, which is the ordinary single-site case.
+   *
+   * 11.145(c) grants the exemption to each separate location in a unit, so a
+   * client with four Houston sites claims it four times against Houston ISD.
+   * Only counted for locations the caller could actually place in a unit;
+   * omitting a location it could not place leaves the exemption smaller than
+   * the client is entitled to, which is the direction that understates the
+   * client's position rather than overstating it.
+   */
+  exemptionGrants?: Readonly<Record<string, number>>;
   /**
    * The sites the client says they operate, folded. A register location that
    * matches none of them is the closest this product gets to knowing an asset
@@ -697,7 +722,36 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
   // the millage rather than folded into one number. Multiplied back together it
   // is the same blended rate the headline uses, so a controller who adds up the
   // rows they accepted still lands on the figure the report leads with.
-  const basis = input.rateBasis ?? basisFromBlendedRate(input.blendedTaxRate);
+  const basis = input.accountRate?.basis ?? basisFromBlendedRate(input.blendedTaxRate);
+  /**
+   * Passing `accountRate` means the caller assembled the rate from the units
+   * that actually tax this account. Not passing it means the report is running
+   * on the jurisdiction's single county-wide constant, and that has to reach
+   * the page rather than stopping here.
+   */
+  const borrowedYear =
+    input.accountRate && input.accountRate.taxYear !== input.taxYear
+      ? input.accountRate.taxYear
+      : null;
+  const rateSource = !input.accountRate
+    ? {
+        kind: 'estimated' as const,
+        label: 'county-wide estimate',
+        detail:
+          'A single blended rate for the whole county, not this account’s own units. Two accounts in the same county pay different rates — across the 2025 Harris roll the real rate runs from 0.63% to 3.62% — and this estimate is above the true rate for most accounts, which overstates rather than understates the position. Treat every figure here as an order of magnitude until the account’s units are loaded.',
+      }
+    : borrowedYear
+      ? {
+          kind: 'prior-year' as const,
+          label: `${borrowedYear} adopted rates`,
+          detail: `Assembled from the taxing units that levy on this account, weighted by the value each unit taxes — but at the rates adopted for ${borrowedYear}, because ${input.taxYear} rates are not adopted yet. Each unit sets its own rate every autumn, after this return is prepared, so treat the tax figures as close rather than final.`,
+        }
+      : {
+          kind: 'adopted' as const,
+          label: 'adopted rates',
+          detail:
+            'Assembled from the taxing units that levy on this account, at the rates their governing bodies adopted for the year, weighted by the value each unit taxes.',
+        };
   const lienDate = `${input.taxYear}-01-01`;
 
   // The per-jurisdiction leakage rollup, accumulated in the same walk as the
@@ -1477,14 +1531,70 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
       ),
   };
 
-  const applied = Math.min(input.exemptionAmount, farImpliedValue);
-  const proposedTaxableValue = Math.max(0, farImpliedValue - applied);
-  const proposedTax = proposedTaxableValue * input.blendedTaxRate;
+  /**
+   * The headline prices off the same basis every row does, rather than off
+   * `input.blendedTaxRate` separately. Where no basis was supplied the two are
+   * the same number by construction, so nothing moves; where one was, a
+   * headline still running on the county-wide constant would disagree with the
+   * rows summed underneath it, which is exactly the arithmetic a controller
+   * checks first.
+   */
+  const effectiveRate = basis.assessmentRatio * basis.millage;
+  /**
+   * The exemption, granted the way the statute grants it.
+   *
+   * 11.145 is not a subtraction from one taxable value. Each taxing unit grants
+   * it against its own levy, and 11.145(c) grants it again for each separate
+   * location inside that unit. A single subtraction gets the common case exactly
+   * right — where every unit taxes the whole of one site, per-unit and blended
+   * are the same number, which is worth knowing before reading the rest of this
+   * as a correction — and understates two cases it does not: a client with
+   * several sites in one unit, and an account whose value straddles a unit
+   * boundary, where each side's slice carries its own exemption.
+   *
+   * The result is still reported as a taxable value, because that is what goes
+   * on a rendition and what the rest of the page adds up. So the per-unit tax is
+   * computed first and the taxable value read back off it at the report's own
+   * rate: `proposedTax = proposedTaxableValue × blendedTaxRate` still holds
+   * exactly, and `applied` is the exemption's worth expressed as value, which is
+   * $125,000 on the nose for the ordinary single-site account.
+   */
+  const perUnitExemption =
+    input.accountRate && input.accountRate.units.length > 0 && effectiveRate > 0
+      ? taxForAccount({
+          rate: input.accountRate,
+          marketValue: farImpliedValue,
+          exemptionPerUnit: input.exemptionAmount,
+          grants: input.exemptionGrants,
+        })
+      : null;
+  const proposedTax = perUnitExemption
+    ? perUnitExemption.tax
+    : Math.max(0, farImpliedValue - Math.min(input.exemptionAmount, farImpliedValue)) *
+      effectiveRate;
+  const proposedTaxableValue = perUnitExemption
+    ? perUnitExemption.tax / effectiveRate
+    : Math.max(0, farImpliedValue - Math.min(input.exemptionAmount, farImpliedValue));
+  const applied = farImpliedValue - proposedTaxableValue;
+  /**
+   * How many grants stand behind that figure. `locations` is the largest number
+   * of separate locations the caller placed in any one unit, which is what
+   * 11.145(c) multiplies by — not the client's site count, because a site the
+   * caller could not place in a unit is not counted anywhere.
+   */
+  const exemptionGrain = {
+    units: input.accountRate?.units.length ?? 0,
+    locations: Math.max(
+      1,
+      ...(input.accountRate?.units ?? []).map((unit) =>
+        Math.max(1, Math.floor(input.exemptionGrants?.[unit.code] ?? 1)),
+      ),
+    ),
+  };
 
   const assessedValue = input.assessed?.appraisedValue ?? input.assessed?.assessedValue ?? null;
   const valueReduction = assessedValue === null ? null : assessedValue - proposedTaxableValue;
-  const estimatedAnnualSaving =
-    valueReduction === null ? null : valueReduction * input.blendedTaxRate;
+  const estimatedAnnualSaving = valueReduction === null ? null : valueReduction * effectiveRate;
 
   return {
     engagementId: input.engagementId,
@@ -1510,13 +1620,15 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
     totalValueRemoved,
     leakage,
     exemption: {
-      ...exemptionCopy(input.jurisdictionId),
+      ...exemptionCopy(input.jurisdictionId, perUnitExemption ? exemptionGrain : null),
       amount: input.exemptionAmount,
       applied,
+      perUnit: perUnitExemption ? exemptionGrain : null,
     },
     proposedTaxableValue,
-    blendedTaxRate: input.blendedTaxRate,
+    blendedTaxRate: effectiveRate,
     rateBasis: basis,
+    rateSource,
     recoveryModel: recoveryModel(
       input.acceptanceOverrides,
       input.jurisdictionId,
@@ -1546,7 +1658,10 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
  * multi-site client understates it by a whole multiple, and the fix is to run
  * one report per site rather than to scale a number here.
  */
-function exemptionCopy(jurisdictionId: string | null): {
+function exemptionCopy(
+  jurisdictionId: string | null,
+  perUnit: { units: number; locations: number } | null,
+): {
   label: string;
   basis: string;
   caveat: string;
@@ -1564,8 +1679,11 @@ function exemptionCopy(jurisdictionId: string | null): {
     return {
       label: 'Business personal property exemption',
       basis: 'Texas Tax Code 11.145, as raised by HB 9 (2025) and Proposition 9, effective 2026.',
-      caveat:
-        'Granted per taxing unit against that unit’s own levy; applied once here against a blended rate, which understates it slightly. Verify the current amount before this reaches a client.',
+      caveat: !perUnit
+        ? 'Granted per taxing unit against that unit’s own levy; applied once here against a blended rate, which understates it slightly. Verify the current amount before this reaches a client.'
+        : perUnit.locations > 1
+          ? `Granted per taxing unit against that unit’s own levy, and again for each separate location inside the unit under 11.145(c). Applied that way here: across ${perUnit.units} unit${perUnit.units === 1 ? '' : 's'}, at up to ${perUnit.locations} locations each. Only locations that could be placed in a unit are counted, so a client with sites this engagement has no account for is entitled to more than this. Verify the current amount before this reaches a client.`
+          : `Granted per taxing unit against that unit’s own levy, and applied that way here — separately in each of the ${perUnit.units} unit${perUnit.units === 1 ? '' : 's'} that levy on this account. One location; 11.145(c) would grant it again for each further location inside a unit. Verify the current amount before this reaches a client.`,
     };
   }
   return {

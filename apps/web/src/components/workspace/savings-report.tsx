@@ -164,8 +164,24 @@ function Headline({ report, asks }: { report: SavingsReport; asks: AskRecord[] }
               >
                 {money(estimatedAnnualSaving)}
               </p>
+              {/* The rate is half of this number and, today, usually a
+                  county-wide approximation rather than this account's own
+                  units. It says so here, at the figure, rather than only in
+                  the method strip below — a reader who takes one number off
+                  this page takes this one. */}
               <p className="text-xs text-[var(--color-ink-muted)]">
-                {money(valueReduction)} of value at {percent(report.blendedTaxRate, 2)}
+                {money(valueReduction)} of value at{' '}
+                <Tooltip title={rateSourceTitle(report)} content={report.rateSource.detail}>
+                  {percent(report.blendedTaxRate, 2)}
+                </Tooltip>
+                {report.rateSource.kind === 'estimated' ? (
+                  <span className="text-[var(--color-warning)]"> · estimated</span>
+                ) : report.rateSource.kind === 'prior-year' ? (
+                  <span className="text-[var(--color-ink-muted)]">
+                    {' '}
+                    · {report.rateSource.label}
+                  </span>
+                ) : null}
               </p>
             </div>
           </div>
@@ -208,14 +224,40 @@ function Headline({ report, asks }: { report: SavingsReport; asks: AskRecord[] }
         <Tile
           label="Exemption applied"
           value={money(report.exemption.applied)}
-          note={report.exemption.basis}
-          noteHelp={report.exemption.caveat}
+          {...exemptionNote(report.exemption)}
         />
       </div>
 
       <Method report={report} />
     </Card>
   );
+}
+
+/**
+ * Why the exemption line can read larger than the exemption.
+ *
+ * The statute grants $125,000, and this tile can show more than that: each
+ * taxing unit grants it against its own levy, and 11.145(c) grants it again at
+ * each separate location inside a unit. Where that happened the face of the
+ * tile says so and the citation moves into the help — a reader who knows the
+ * number should not have to hover to find out why it is not the number.
+ */
+function exemptionNote(exemption: SavingsReport['exemption']): {
+  note: string;
+  noteHelp: string;
+} {
+  const { perUnit } = exemption;
+  // A dollar of tolerance: a split account grants it once per unit and still
+  // lands a few dollars above, which is not worth a sentence.
+  if (!perUnit || exemption.applied <= exemption.amount + 1) {
+    return { note: exemption.basis, noteHelp: exemption.caveat };
+  }
+  const units = `${perUnit.units} taxing unit${perUnit.units === 1 ? '' : 's'}`;
+  const at = perUnit.locations > 1 ? `, at ${perUnit.locations} locations each` : '';
+  return {
+    note: `${money(exemption.amount)} granted separately by ${units}${at}`,
+    noteHelp: `${exemption.basis} ${exemption.caveat}`,
+  };
 }
 
 /**
@@ -266,7 +308,7 @@ function LeakageBand({ report, asks }: { report: SavingsReport; asks: AskRecord[
         />
         <LeakageFigure
           label="Leads worth pursuing"
-          value={`${count(l.leadCount)}`}
+          value={count(l.leadCount)}
           note={`on ${money(l.leadCost)} of cost — ${leadNote}`}
           tone="warning"
           help={KIND_META.screening.help}
@@ -379,6 +421,22 @@ function Method({ report }: { report: SavingsReport }) {
         )}
       </MethodFact>
 
+      <MethodFact label="Taxed at">
+        {percent(report.blendedTaxRate, 2)}{' '}
+        <span
+          className={cn(
+            report.rateSource.kind === 'estimated'
+              ? 'text-[var(--color-warning)]'
+              : 'text-[var(--color-ink-muted)]',
+          )}
+        >
+          ·{' '}
+          <Tooltip title={rateSourceTitle(report)} content={report.rateSource.detail}>
+            {report.rateSource.label}
+          </Tooltip>
+        </span>
+      </MethodFact>
+
       <MethodFact label="Machinery life">
         {report.sic ? (
           <>
@@ -395,6 +453,26 @@ function Method({ report }: { report: SavingsReport }) {
       </MethodFact>
     </dl>
   );
+}
+
+/**
+ * The bolded first line of the rate explainer. Three sources, three names, and
+ * only one of them is the thing the report would like to be able to say. The
+ * county-wide stand-in runs above the true rate for most accounts — which
+ * overstates the position rather than understating it, and so has to be said
+ * out loud. Last year's adopted rates are the account's own units at rates the
+ * governing bodies have since had a chance to move, which is a smaller caveat
+ * but still one the reader is entitled to before quoting the number.
+ */
+function rateSourceTitle(report: SavingsReport): string {
+  switch (report.rateSource.kind) {
+    case 'adopted':
+      return 'This account\u2019s adopted rates';
+    case 'prior-year':
+      return 'This account\u2019s units, at last adopted rates';
+    default:
+      return 'A county-wide estimate';
+  }
 }
 
 function MethodFact({ label, children }: { label: string; children: ReactNode }) {

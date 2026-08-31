@@ -73,7 +73,16 @@ export type RuleProvenance = z.infer<typeof RuleProvenanceSchema>;
  */
 export const RuleStatusSchema = z.object({
   provenance: RuleProvenanceSchema,
-  kind: z.enum(['valuation', 'detector']),
+  /**
+   * `rate` joined `valuation` and `detector` when the adopted tax rates became
+   * committed data. It is a third kind rather than a second `valuation`
+   * because the gate treats it differently in one place: a depreciation table
+   * out of its effective window is a block — valuing 2027 property on the 2026
+   * guide is the silent-wrong-number failure this harness exists for — where a
+   * rate table out of its window is the ordinary case, since prior years are
+   * exactly what a 25.25 correction or a late protest prices.
+   */
+  kind: z.enum(['valuation', 'rate', 'detector']),
   /** Goldens covering this rule. Zero is the state the gate complains about. */
   goldenCount: z.number().int().nonnegative(),
   /** Labeled decisions carrying this rule's key. Only detectors accumulate these. */

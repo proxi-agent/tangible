@@ -63,17 +63,14 @@ function scopeMatches(scope: string, jurisdictionId: string): boolean {
 }
 
 /** Valuation rules must name their jurisdiction and year; statutes need not. */
-export const RULE_SCOPE_REQUIRED = ['valuation'] as const;
+export const RULE_SCOPE_REQUIRED = ['valuation', 'rate'] as const;
 
 /** Every committed schedule's provenance, for the rules dashboard and the gate. */
 export function scheduleProvenance(): RuleProvenance[] {
   return SCHEDULES.map((schedule) => schedule.provenance);
 }
 
-export function provenanceFor(
-  jurisdictionId: string,
-  taxYear: number,
-): RuleProvenance | undefined {
+export function provenanceFor(jurisdictionId: string, taxYear: number): RuleProvenance | undefined {
   return SCHEDULES.find((s) => s.jurisdictionId === jurisdictionId && s.taxYear === taxYear)
     ?.provenance;
 }

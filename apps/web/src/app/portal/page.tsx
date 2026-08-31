@@ -185,7 +185,7 @@ function Report({
             <Stat
               label="Tax as it stands"
               value={money(taxAsStands)}
-              help="A year of business personal property tax on the position you are in today, at the blended rate for your jurisdiction."
+              help={`A year of business personal property tax on the position you are in today, at ${percent(rate, 2)} \u2014 ${report.rateSource.label}. ${report.rateSource.detail}`}
               note={
                 report.assessed
                   ? `The district has you at ${money(report.assessed.assessedValue)}`
@@ -199,7 +199,7 @@ function Report({
               value={money(saving)}
               tone="good"
               size="lg"
-              help="A year of tax on the value that comes off. Only findings we can put a number on are counted — the questions below are not."
+              help={`A year of tax on the value that comes off, at ${percent(rate, 2)} \u2014 ${report.rateSource.label}. Only findings we can put a number on are counted \u2014 the questions below are not.`}
               note={
                 report.estimatedAnnualSaving === null
                   ? 'On the corrected position; no account linked yet'

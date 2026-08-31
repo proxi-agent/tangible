@@ -56,3 +56,31 @@ export {
   staleReason,
   RULE_SCOPE_REQUIRED,
 } from './provenance.js';
+export {
+  accountRate,
+  accountRateAsOf,
+  blendAccountRates,
+  taxForAccount,
+  rateSourceFor,
+  type AccountRate,
+  type AccountRateResult,
+  type AccountTax,
+  type UnitPlacement,
+  type UnitShare,
+  type UnitTax,
+} from './rates/account.js';
+export {
+  RATE_TABLES,
+  latestAdoptedYear,
+  rateProvenance,
+  rateTableFor,
+  ratedJurisdictions,
+} from './rates/registry.js';
+export {
+  perDollar,
+  type RateTable,
+  type RateTableStatus,
+  type TaxUnitRate,
+} from './rates/types.js';
+export { TX_HARRIS_RATES_2025 } from './rates/tx-harris-2025.js';
+export { TX_HARRIS_RATES_2026 } from './rates/tx-harris-2026.js';

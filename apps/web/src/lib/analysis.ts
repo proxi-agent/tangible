@@ -1,5 +1,5 @@
 import { and, eq, sql } from 'drizzle-orm';
-import { getAccount } from '@tangible/analytics';
+import { accountPlacements, getAccount } from '@tangible/analytics';
 import type { ClientRow, EngagementRow, PriorDocumentRow } from '@tangible/db';
 import {
   appraisalDistrictName,
@@ -29,11 +29,17 @@ import type {
   FindingSource,
   SavingsReport,
 } from '@tangible/types';
-import { scheduleFor, type DepreciationSchedule } from '@tangible/valuation';
+import {
+  accountRateAsOf,
+  blendAccountRates,
+  scheduleFor,
+  type AccountRate,
+  type DepreciationSchedule,
+} from '@tangible/valuation';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { fetchMappedDocument } from '@/lib/prior-mapping';
 import { engagementAccounts } from '@/lib/sites';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { getWarehouse } from '@/lib/warehouse';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
@@ -90,6 +96,19 @@ export interface SavingsInputs {
   schedule: DepreciationSchedule | null;
   assessed: AssessedPosition | null;
   blendedTaxRate: number;
+  /**
+   * The rate split into its two parts, where it was assembled from the units
+   * that actually tax this client's accounts.
+   *
+   * Absent means the roll could not place every account, and the report runs on
+   * the jurisdiction's county-wide constant and says so on its face. Present
+   * means `blendedTaxRate` above is this basis multiplied out, not the
+   * constant — the two are never allowed to disagree.
+   */
+  /** The units that levy on this engagement's accounts. See `lookupRoll`. */
+  accountRate?: AccountRate;
+  /** Locations per unit, for the exemption. See `lookupAccountRate`. */
+  exemptionGrants?: Readonly<Record<string, number>>;
   /** Folded labels of the sites the client says they operate. */
   knownLocations: string[];
   /** Last year's return as filed, where one has been read and mapped. */
@@ -219,9 +238,11 @@ export async function loadSavingsInputs(engagementId: string): Promise<SavingsIn
     ? (scheduleFor(engagement.jurisdictionId, engagement.taxYear) ?? null)
     : null;
 
+  const accountIds = await engagementAccounts(engagementId);
+
   const [
-    assessed,
-    blendedTaxRate,
+    roll,
+    countyWideRate,
     fingerprint,
     priorFiling,
     invoiceSplits,
@@ -229,11 +250,7 @@ export async function loadSavingsInputs(engagementId: string): Promise<SavingsIn
     model,
     evidence,
   ] = await Promise.all([
-    lookupAssessed(
-      engagement.jurisdictionId,
-      await engagementAccounts(engagementId),
-      engagement.taxYear,
-    ),
+    lookupRoll(engagement.jurisdictionId, accountIds, engagement.taxYear),
     lookupRate(engagement.jurisdictionId),
     analysisFingerprint({ engagementId, source: 'savings' }),
     loadPriorFiling(engagementId),
@@ -243,13 +260,20 @@ export async function loadSavingsInputs(engagementId: string): Promise<SavingsIn
     evidenceFor(engagementId, assets),
   ]);
 
+  const rate = roll?.rate ?? null;
+
   return {
     engagement,
     client,
     assets,
     schedule,
-    assessed,
-    blendedTaxRate,
+    assessed: roll?.assessed ?? null,
+    // The account's own rate where the roll could place it, the county-wide
+    // constant where it could not. Multiplied out from the basis rather than
+    // carried alongside it, so the single number and the split can never drift.
+    blendedTaxRate: rate ? rate.basis.assessmentRatio * rate.basis.millage : countyWideRate,
+    accountRate: rate ?? undefined,
+    exemptionGrants: roll?.grants,
     fingerprint,
     knownLocations,
     priorFiling,
@@ -279,6 +303,8 @@ export function analyzeLoaded(engagementId: string, inputs: SavingsInputs): Savi
     schedule: inputs.schedule,
     assessed: inputs.assessed,
     blendedTaxRate: inputs.blendedTaxRate,
+    accountRate: inputs.accountRate,
+    exemptionGrants: inputs.exemptionGrants,
     businessSic: engagement.sicCode,
     exemptionAmount: exemptionFor(engagement.jurisdictionId, engagement.taxYear),
     knownLocations: inputs.knownLocations,
@@ -584,13 +610,12 @@ async function mappingFingerprint(documentId: string): Promise<Array<string | nu
 }
 
 /**
- * The client's current position on the public roll.
+ * The county-wide blended rate, as a fallback.
  *
- * Best-effort on purpose. The warehouse is a local DuckDB file that may hold no
- * years for this county, may be mid-ingest and locked, or may not exist at all
- * in a given deployment — and none of that should take down a report whose
- * other half is fully computable. A missing roll means the report says it has
- * no "before" rather than failing.
+ * The rate a report actually prints is assembled per account from the units
+ * that tax it — see `lookupAccountRate`. This is what it prices at when the
+ * roll cannot place one of the accounts, and every figure standing on it is
+ * labelled an estimate on the page.
  */
 export async function lookupRate(jurisdictionId: string | null): Promise<number> {
   if (!jurisdictionId) return FALLBACK_BLENDED_RATE;
@@ -609,19 +634,53 @@ export async function lookupRate(jurisdictionId: string | null): Promise<number>
   }
 }
 
-async function lookupAssessed(
+interface RollPosition {
+  assessed: AssessedPosition | null;
+  /**
+   * The engagement's rate, assembled from the units that tax its accounts, or
+   * null where any account could not be priced that way.
+   *
+   * All-or-nothing on purpose. A blend of one site's adopted units with another
+   * site's county-wide guess is neither, and the report labels its rate once
+   * for the whole document — so a partial assembly would put the word "adopted"
+   * over a figure half of which is not.
+   */
+  rate: AccountRate | null;
+  /**
+   * How many of the engagement's accounts sit inside each taxing unit, by unit
+   * code — the number of times 11.145(c) grants the exemption there. Empty
+   * where the rate is null and there is nothing to grant it against.
+   */
+  grants: Readonly<Record<string, number>>;
+}
+
+/**
+ * The client's current position on the public roll, and the rate that applies
+ * to it.
+ *
+ * The two are read together because they have to agree about *which year* they
+ * are describing. The engagement is usually for a season the roll has not
+ * published yet, so both fall back to the most recent year the warehouse holds,
+ * and a rate assembled from 2026 placements against a 2025 assessment would be
+ * describing two different sets of accounts.
+ *
+ * Best-effort on purpose. The warehouse is a local DuckDB file that may hold no
+ * years for this county, may be mid-ingest and locked, or may not exist at all
+ * in a given deployment — and none of that should take down a report whose
+ * other half is fully computable. A missing roll means the report says it has
+ * no "before" and prices at the county-wide constant, rather than failing.
+ */
+async function lookupRoll(
   jurisdictionId: string | null,
   accountIds: readonly string[],
   taxYear: number,
-): Promise<AssessedPosition | null> {
+): Promise<RollPosition | null> {
   if (!jurisdictionId || accountIds.length === 0) return null;
   try {
     const warehouse = await getWarehouse();
-    // The engagement is usually for a season the roll has not published yet —
-    // a 2027 filing prepared in 2026 against a roll that ends at 2026. Asking
-    // for a year the warehouse does not hold returns nothing, so fall back to
-    // the most recent year it does and let the report label which year it
-    // compared against.
+    // Asking for a year the warehouse does not hold returns nothing, so fall
+    // back to the most recent year it does and let the report label which year
+    // it compared against.
     const years = await listAvailableYears(warehouse, jurisdictionId);
     if (years.length === 0) return null;
     const lookupYear = years.includes(taxYear) ? taxYear : Math.max(...years);
@@ -647,11 +706,95 @@ async function lookupAssessed(
         ownerName: account.ownerName,
       } satisfies AssessedPosition;
     });
-    return positions.length === 1 ? positions[0]! : combine(positions);
+
+    const priced = await lookupAccountRate(
+      warehouse,
+      jurisdictionId,
+      taxYear,
+      lookupYear,
+      positions,
+    );
+    return {
+      assessed: positions.length === 1 ? positions[0]! : combine(positions),
+      rate: priced?.rate ?? null,
+      grants: priced?.grants ?? {},
+    };
   } catch (cause) {
     console.warn('[savings] roll lookup unavailable', cause);
     return null;
   }
+}
+
+/**
+ * One rate for an engagement whose accounts may each have their own, and the
+ * count of accounts standing behind each unit in it.
+ *
+ * Every account in Harris County pays the county, the flood control district,
+ * the port, the hospital district and the education department; which school
+ * district, city and college it also pays depends on where it sits. Two sites
+ * of the same client can be 60 basis points apart, so the engagement's rate is
+ * the value-weighted mean of its accounts' — weighted by what the district has
+ * each account at, because that is the proportion in which the client actually
+ * pays them. See `blendAccountRates` for what that blend does and does not
+ * claim.
+ *
+ * The grant counts come out of the same pass because they are the same fact
+ * read the other way: an account placed in Houston ISD both contributes to the
+ * ISD's share of the blended rate and is a separate location claiming the
+ * exemption there under 11.145(c). Counted from accounts rather than from the
+ * client's site list, so a site this engagement has no account for is left out
+ * — which leaves the exemption smaller than the client is entitled to rather
+ * than larger.
+ *
+ * Placements come from the roll year, the rates from `accountRateAsOf` — which
+ * reaches back to the last adopted table when the engagement's own year has
+ * none, because a rendition is prepared months before that autumn's rates are
+ * set. The year that comes back is on the result, and the report says when it
+ * is not the year being filed for.
+ */
+async function lookupAccountRate(
+  warehouse: Awaited<ReturnType<typeof getWarehouse>>,
+  jurisdictionId: string,
+  taxYear: number,
+  lookupYear: number,
+  positions: readonly AssessedPosition[],
+): Promise<{ rate: AccountRate; grants: Record<string, number> } | null> {
+  const placements = await accountPlacements(
+    warehouse,
+    jurisdictionId,
+    lookupYear,
+    positions.map((position) => position.accountId),
+  );
+
+  const priced: { rate: AccountRate; weight: number }[] = [];
+  const grants: Record<string, number> = {};
+  for (const position of positions) {
+    const units = placements.get(position.accountId);
+    // No units for this account is the ordinary state of a preliminary roll
+    // year, not an error. It is still a reason to price the whole engagement
+    // at the constant, per `RollPosition.rate`.
+    if (!units || units.length === 0) return null;
+    const result = accountRateAsOf({
+      jurisdictionId,
+      taxYear,
+      placements: units.map((unit) => ({ unitCode: unit.unitCode, share: unit.share })),
+    });
+    if (!result.ok) {
+      console.warn(`[savings] no per-account rate for ${position.accountId}: ${result.reason}`);
+      return null;
+    }
+    priced.push({
+      rate: result.rate,
+      weight: Math.max(0, position.appraisedValue ?? position.assessedValue ?? 0),
+    });
+    for (const unit of result.rate.units) {
+      // A unit taxing none of an account is not a location in that unit.
+      if (unit.share > 0) grants[unit.code] = (grants[unit.code] ?? 0) + 1;
+    }
+  }
+
+  const rate = blendAccountRates(priced);
+  return rate ? { rate, grants } : null;
 }
 
 /**

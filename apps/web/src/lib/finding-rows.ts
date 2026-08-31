@@ -12,7 +12,7 @@ import type {
   SavingsFinding,
   SavingsReport,
 } from '@tangible/types';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { publishedReport } from '@/lib/runs';
 import { currentViewer } from '@/lib/viewer';
 import { requireDb, schema } from '@/lib/workspace-db';
@@ -161,6 +161,7 @@ export async function loadFindingRows(
     runId: published.runId,
     publishedAt: published.publishedAt,
     blendedTaxRate: report.blendedTaxRate,
+    rateSource: report.rateSource,
     jurisdictionName: report.jurisdictionName,
     detection: finding.detection,
     confidenceMix: finding.confidenceMix,

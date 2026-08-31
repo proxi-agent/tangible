@@ -3,17 +3,11 @@ import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
 import type { AnalysisRunRow } from '@tangible/db';
 import { fromSavingsReport } from '@tangible/findings';
 import { SAVINGS_RULES_VERSION } from '@tangible/savings';
-import type {
-  AnalysisRun,
-  RunProgress,
-  RunStep,
-  RunTrigger,
-  SavingsReport,
-} from '@tangible/types';
+import type { AnalysisRun, RunProgress, RunStep, RunTrigger, SavingsReport } from '@tangible/types';
 import { analyzeLoaded, loadSavingsInputs } from '@/lib/analysis';
 import { notifyReportPublished } from '@/lib/notify';
 import { writeFindingSet } from '@/lib/findings';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**
@@ -192,10 +186,33 @@ export async function publishedReport(engagementId: string): Promise<{
      * document — but there is no report to show, and inventing the live one
      * here would hand the client an undated number under a run id.
      */
-    report: (published?.report as SavingsReport | null) ?? null,
+    report: withRateSource((published?.report as SavingsReport | null) ?? null),
     runId: published?.run.id ?? null,
     publishedAt: published?.run.publishedAt?.toISOString() ?? null,
     inFlight: open ? progressDto(open) : null,
+  };
+}
+
+/**
+ * A published report predates the rate disclosure, so say what it was.
+ *
+ * `report` is JSON on the run row, written by whatever version of the engine
+ * was running that day, and read back with a cast rather than a parse. Every
+ * report published before the rate work used the jurisdiction's single blended
+ * constant, so the honest backfill is not a neutral placeholder — it is the
+ * estimate label, which is what those figures actually rest on. Filling it here
+ * rather than at each screen means one place knows the old shape.
+ */
+function withRateSource(report: SavingsReport | null): SavingsReport | null {
+  if (!report || report.rateSource) return report;
+  return {
+    ...report,
+    rateSource: {
+      kind: 'estimated',
+      label: 'county-wide estimate',
+      detail:
+        'A single blended rate for the whole county, not this account\u2019s own units. This report was published before the account\u2019s own taxing units were available, and that estimate runs above the true rate for most accounts — so the figures overstate rather than understate the position.',
+    },
   };
 }
 

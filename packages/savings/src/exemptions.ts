@@ -15,10 +15,15 @@ import { POLICY_BY_STATE, type StatePolicy } from '@tangible/types';
  * Raised from $2,500 to $125,000 by HB 9 (89th Legislature, 2025), contingent
  * on the constitutional amendment approved as Proposition 9 in November 2025.
  *
- * Two caveats a reader has to carry. It is granted **per taxing unit** against
- * that unit's own levy, so modelling it as a single subtraction against a
- * blended rate is an approximation that slightly understates the benefit. And
- * it is a threshold worth watching in its own right: a client whose whole
+ * The figure is what **one location gets in one taxing unit**, not what a
+ * client gets. Each unit grants it against its own levy and 11.145(c) grants it
+ * again at each separate location inside that unit, so the multiplying is done
+ * downstream by `taxForAccount` from the account's real unit placements. A
+ * report with no unit list falls back to subtracting this once, which is exactly
+ * right for the ordinary single-site account whose units all tax the whole of
+ * it, and understates every other case.
+ *
+ * It is also a threshold worth watching in its own right: a client whose whole
  * corrected position lands under it owes nothing at all, which changes the
  * conversation from a refund to a filing-only engagement.
  */
@@ -71,11 +76,19 @@ export function exemptionFor(jurisdictionId: string | null, taxYear: number): nu
 /**
  * The exemption a client actually gets across their sites in one jurisdiction.
  *
- * Texas grants it against the account; Florida grants it against each return,
- * and a return is one location in one county. So the multiplier is the site
- * count in Florida and one everywhere else, and a report that quoted $25,000 to
+ * Florida grants it against each return, and a return is one location in one
+ * county, so the multiplier is the site count — a report that quoted $25,000 to
  * a six-site Florida client would be understating their position by $125,000 of
  * value.
+ *
+ * Texas multiplies too, and returns one here anyway. Its multiplier is per
+ * taxing unit and then per location within the unit, which the client's site
+ * count cannot answer: two sites either side of a school district line claim two
+ * exemptions there, two sites inside it claim two, and two sites in different
+ * counties claim none of each other's. That is a question for the roll's own
+ * placements, so it is answered where they are — `taxForAccount`, from the
+ * `exemptionGrants` the caller assembles — and this stays the per-unit amount
+ * that gets multiplied there.
  */
 export function exemptionForSites(
   jurisdictionId: string | null,

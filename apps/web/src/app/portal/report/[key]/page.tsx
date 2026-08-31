@@ -109,7 +109,7 @@ export default function PortalFindingPage({ params }: { params: Promise<{ key: s
       // the cache rather than triggering a refetch that would blank the table
       // under the person who just acted.
       queryClient.setQueryData(['finding-rows', engagementId, findingKey, effective, offset], page);
-      queryClient.invalidateQueries({ queryKey: ['finding-rows', engagementId, findingKey] });
+      void queryClient.invalidateQueries({ queryKey: ['finding-rows', engagementId, findingKey] });
       setSelected(new Set());
     },
   });
@@ -210,7 +210,18 @@ export default function PortalFindingPage({ params }: { params: Promise<{ key: s
             <Stat
               label="Tax a year"
               value={money(page.filtered.taxAtRisk)}
-              help={`At ${percent(page.blendedTaxRate, 2)}, the blended rate for ${page.jurisdictionName ?? 'your jurisdiction'}.`}
+              /* The qualifier belongs under the number, not only inside the
+                 explainer: a rate that is a county-wide stand-in makes this
+                 figure an order of magnitude, and nobody hovers a figure they
+                 already believe. */
+              note={
+                page.rateSource.kind === 'estimated'
+                  ? 'rate is an estimate'
+                  : page.rateSource.kind === 'prior-year'
+                    ? `at ${page.rateSource.label}`
+                    : undefined
+              }
+              help={`At ${percent(page.blendedTaxRate, 2)} \u2014 ${page.rateSource.label} for ${page.jurisdictionName ?? 'your jurisdiction'}. ${page.rateSource.detail}`}
             />
           </StatCell>
           <StatCell>

@@ -377,6 +377,14 @@ export interface FindingRowPage {
   runId: string | null;
   publishedAt: string | null;
   blendedTaxRate: number;
+  /**
+   * Where that rate came from, carried through so the client's own screen can
+   * say it. The rate is half of every tax figure on the page and is, for now,
+   * usually a county-wide stand-in rather than this account's units — an
+   * approximation that runs *above* the true rate for most accounts, and so
+   * cannot be printed without a label.
+   */
+  rateSource: import('./savings.js').SavingsReport['rateSource'];
   jurisdictionName: string | null;
   detection: import('./savings.js').DetectionBasis[];
   confidenceMix: { high: number; medium: number; low: number };

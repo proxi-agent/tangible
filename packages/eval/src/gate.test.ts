@@ -87,16 +87,25 @@ describe('the rules repository', () => {
     }
   });
 
-  it('scopes every depreciation schedule to a jurisdiction', () => {
+  it('scopes every depreciation schedule and rate table to a jurisdiction', () => {
     for (const status of ruleStatuses(TODAY)) {
-      if (status.kind !== 'valuation') continue;
+      if (status.kind === 'detector') continue;
       expect(status.provenance.jurisdictions, status.provenance.ruleId).not.toBeNull();
     }
   });
 
-  it('holds every rule to be in effect today', () => {
-    for (const status of ruleStatuses(TODAY)) {
-      expect(status.staleReason, status.provenance.ruleId).toBeNull();
-    }
+  it('holds every rule to be in effect today, bar a year nobody has adopted rates for', () => {
+    /**
+     * The exception is not a weakening. A rate table for the current year is
+     * registered before its rates exist, because Texas units adopt in the late
+     * summer and autumn (Tex. Tax Code 26.05) and the archive publishes last
+     * year's rate in the column beside the empty one. Registering the year and
+     * declaring it not in effect is how the product refuses to price against
+     * it; an unregistered year would simply be missing, which is what silently
+     * reaching for the prior year looks like.
+     */
+    const notInEffect = ruleStatuses(TODAY).filter((status) => status.staleReason !== null);
+    expect(notInEffect.map((status) => status.provenance.ruleId)).toEqual(['rates:tx-harris:2026']);
+    expect(notInEffect[0]?.kind).toBe('rate');
   });
 });

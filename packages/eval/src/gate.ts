@@ -1,6 +1,6 @@
 import type { GateResult, GoldenOutcome, RuleStatus } from '@tangible/types';
 import { DETECTOR_RULES, DETECTOR_RULE_KEYS, ruleFor } from '@tangible/savings';
-import { SCHEDULES, covers, staleReason } from '@tangible/valuation';
+import { RATE_TABLES, SCHEDULES, covers, staleReason } from '@tangible/valuation';
 import {
   runValuationGoldens,
   valuationCoverage,
@@ -141,6 +141,27 @@ export function runGate(input: GateInput): GateResult {
     );
   }
 
+  for (const table of RATE_TABLES) {
+    if (table.status === 'awaiting-adoption') {
+      /**
+       * Not a failure and not a gap in the suite. Texas units adopt their rates
+       * through the late summer and autumn (Tex. Tax Code 26.05), so for most
+       * of a tax year the year's rates do not exist yet. The entry is here so
+       * that the product refuses to price the year rather than reaching for the
+       * prior year's column sitting beside it in the same file.
+       */
+      warnings.push(
+        `${table.jurisdictionId} ${table.taxYear} rates are not adopted yet, so nothing prices against that year. ${table.awaiting?.expected ?? ''}`.trim(),
+      );
+      continue;
+    }
+    if (Object.keys(table.units).length === 0) {
+      failures.push(
+        `${table.jurisdictionId} ${table.taxYear} is marked adopted and holds no units. Every account in it would price at a rate of zero, which reads as a client who owes nothing.`,
+      );
+    }
+  }
+
   return {
     ok: failures.length === 0,
     ranAt: input.today,
@@ -190,7 +211,7 @@ function rulesRepositoryProblems(today: string, unapprovedAllowed: Set<string>):
       });
     }
 
-    if (status.kind === 'valuation' && !rule.jurisdictions) {
+    if (status.kind !== 'detector' && !rule.jurisdictions) {
       problems.push({
         blocking: true,
         message: `${rule.ruleId} is a depreciation schedule with no jurisdiction scope. A district's table is correct in exactly one district.`,
@@ -207,7 +228,13 @@ function rulesRepositoryProblems(today: string, unapprovedAllowed: Set<string>):
       }
     }
 
-    if (status.staleReason) {
+    /**
+     * Rate tables are excluded here because `runGate` already reports the only
+     * rate staleness that means anything — a year nobody has adopted — and in
+     * the words a reader can act on. Repeating it as `ruleId — reason` would be
+     * the same warning twice.
+     */
+    if (status.staleReason && status.kind !== 'rate') {
       /**
        * A schedule out of its window blocks; a statute out of reach does not.
        * Valuing 2027 property on the 2026 table produces a wrong number
@@ -263,6 +290,33 @@ export function ruleStatuses(today: string, goldens?: readonly ValuationGolden[]
       labelCount: 0,
       inEffect: staleReason(rule, today) === null,
       staleReason: staleReason(rule, today),
+    });
+  }
+
+  /**
+   * Rate tables carry no golden count. The cases that pin them live in
+   * `@tangible/valuation` as unit tests over real Harris accounts rather than
+   * in this harness, because a rate golden would be the same arithmetic twice:
+   * there is no published worked example to check against, the way an
+   * assessment notice checks a depreciation table. What the gate does check
+   * here is everything else it checks of a rule — a citation, a jurisdiction
+   * scope, a year, and an approver.
+   */
+  for (const table of RATE_TABLES) {
+    statuses.push({
+      provenance: table.provenance,
+      kind: 'rate',
+      goldenCount: 0,
+      labelCount: 0,
+      inEffect: table.status === 'adopted',
+      /**
+       * The status, not the calendar. A 2025 rate table is out of its effective
+       * window today and that is not a defect — prior years are what a 25.25
+       * correction and a late protest are about. What would be a defect is a
+       * year whose rates nobody has adopted being priced anyway.
+       */
+      staleReason:
+        table.status === 'adopted' ? null : `Rates for ${table.taxYear} are not adopted yet.`,
     });
   }
 
