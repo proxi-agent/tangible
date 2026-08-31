@@ -36,6 +36,7 @@
     "@swc/core": "^1.16.1",
     "@types/express": "^5.0.6",
     "@types/node": "catalog:",
+    "chokidar": "^5.0.0",
     "concurrently": "^10.0.5",
     "tsx": "catalog:",
     "typescript": "catalog:"
