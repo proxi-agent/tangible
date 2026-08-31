@@ -4,10 +4,11 @@
   "private": true,
   "packageManager": "pnpm@11.4.0",
   "engines": {
-    "node": ">=22"
+    "node": "24.x"
   },
   "scripts": {
-    "build": "turbo run build",
+    "build": "node scripts/check-node.mjs && turbo run build",
+    "check:node": "node scripts/check-node.mjs",
     "dev": "turbo run dev",
     "typecheck": "turbo run typecheck",
     "lint": "turbo run lint",
