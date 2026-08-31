@@ -94,7 +94,7 @@ function LoginForm() {
         </Callout>
       ) : null}
 
-      <form onSubmit={submit} className="flex flex-col gap-4">
+      <form onSubmit={(event) => void submit(event)} className="flex flex-col gap-4">
         <Field label="Email">
           <TextInput
             type="email"

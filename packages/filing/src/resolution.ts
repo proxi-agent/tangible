@@ -64,8 +64,7 @@ export function resolutionStanding(
   // The value that stands after this. For a withdrawal or a dismissal that is
   // the noticed value, unchanged, which is exactly the fact being recorded.
   const standingValue = finalValue ?? noticedValue;
-  const reduction =
-    noticedValue !== null && finalValue !== null ? noticedValue - finalValue : null;
+  const reduction = noticedValue !== null && finalValue !== null ? noticedValue - finalValue : null;
   const reductionPct =
     reduction !== null && noticedValue !== null && noticedValue > 0
       ? reduction / noticedValue
@@ -262,7 +261,7 @@ export function checkResolution(
         severity: 'note',
         message:
           'The 22.28 rendition penalty was waived. Under 22.30(a) that is the chief appraiser ' +
-          "acting on a showing of substantial compliance or good cause, and it is a separate " +
+          'acting on a showing of substantial compliance or good cause, and it is a separate ' +
           'determination from the value — keep the waiver in the file alongside the order.',
       });
     } else {

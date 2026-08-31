@@ -123,7 +123,7 @@ export default function PortalQueuePage() {
       // The finding's own page shows the same decision from the other side, so
       // its cache is stale the moment this lands. The queue is *not* refetched:
       // see the note on `decided` above.
-      queryClient.invalidateQueries({
+      void queryClient.invalidateQueries({
         queryKey: ['finding-rows', engagementId, input.item.row.findingKey],
       });
       // Move to the next row that still needs a decision. Working a queue is a
@@ -143,7 +143,7 @@ export default function PortalQueuePage() {
   const nextPage = () => {
     setDecided({});
     setSelectedKey(null);
-    queryClient.invalidateQueries({ queryKey: ['finding-queue', engagementId] });
+    void queryClient.invalidateQueries({ queryKey: ['finding-queue', engagementId] });
   };
 
   if (engagementId === null) {

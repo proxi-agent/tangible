@@ -202,9 +202,9 @@ describe('Steps 5 and 6', () => {
   });
 
   it('writes an expiry where one was agreed', () => {
-    expect(cell(plan({ terms: terms({ endsOn: '2028-12-31' }) }), 'Date Agents Authority Ends')).toBe(
-      '2028-12-31',
-    );
+    expect(
+      cell(plan({ terms: terms({ endsOn: '2028-12-31' }) }), 'Date Agents Authority Ends'),
+    ).toBe('2028-12-31');
   });
 
   it('leaves the signature and its date to the hand that signs', () => {
@@ -218,7 +218,9 @@ describe('Steps 5 and 6', () => {
 
   it('checks the capacity box the signer actually signed under', () => {
     const p = plan({ terms: terms({ signerCapacity: 'property-manager' }) });
-    expect(checked(p, 'a property manager authorized to designate agents for the owner')).toBe(true);
+    expect(checked(p, 'a property manager authorized to designate agents for the owner')).toBe(
+      true,
+    );
     expect(checked(p, 'the property owner')).toBe(false);
   });
 });
@@ -240,9 +242,9 @@ describe('rendering onto the pinned PDF', () => {
     expect(form.getCheckBox('all property listed for me at the above address').isChecked()).toBe(
       false,
     );
-    expect(
-      form.getCheckBox('all communications from the appraisal review board').isChecked(),
-    ).toBe(true);
+    expect(form.getCheckBox('all communications from the appraisal review board').isChecked()).toBe(
+      true,
+    );
     expect(form.getCheckBox('the property owner').isChecked()).toBe(true);
     expect(form.getSignature('Signature1').getText?.()).toBeUndefined();
   });

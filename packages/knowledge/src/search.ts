@@ -107,8 +107,8 @@ const STOPWORDS = new Set([
 function tokenize(text: string): string[] {
   return text
     .toLowerCase()
-    .split(/[^a-z0-9.\-]+/)
-    .map((token) => token.replace(/^[.\-]+|[.\-]+$/g, ''))
+    .split(/[^a-z0-9.-]+/)
+    .map((token) => token.replace(/^[.-]+|[.-]+$/g, ''))
     .filter((token) => token.length > 1 && !STOPWORDS.has(token));
 }
 

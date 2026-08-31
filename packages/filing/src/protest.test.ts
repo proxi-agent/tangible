@@ -164,13 +164,17 @@ describe('protestStanding', () => {
 
   it('leaves the waiver clock unset where no penalty was applied', () => {
     expect(protestStanding(facts(), '2026-04-20').waiverDeadline).toBeNull();
-    expect(protestStanding(facts({ renditionPenaltyApplied: false }), '2026-04-20').waiverDeadline).toBeNull();
+    expect(
+      protestStanding(facts({ renditionPenaltyApplied: false }), '2026-04-20').waiverDeadline,
+    ).toBeNull();
   });
 });
 
 describe('checkNotice', () => {
-  const check = (notice: AssessmentNoticeFacts & { appraisedValue: number | null }, ret: FiledReturnFacts | null) =>
-    checkNotice(notice, ret, protestStanding(notice, '2026-05-01'));
+  const check = (
+    notice: AssessmentNoticeFacts & { appraisedValue: number | null },
+    ret: FiledReturnFacts | null,
+  ) => checkNotice(notice, ret, protestStanding(notice, '2026-05-01'));
   const keys = (checks: ReturnType<typeof check>) => checks.map((entry) => entry.key);
 
   it('flags a penalty applied to a return that was postmarked in time', () => {
@@ -191,7 +195,9 @@ describe('checkNotice', () => {
       filed({ filedOn: '2026-04-20' }),
     );
     expect(keys(checks)).toContain('penalty-and-late');
-    expect(checks.find((entry) => entry.key === 'penalty-and-late')?.message).toContain('good cause');
+    expect(checks.find((entry) => entry.key === 'penalty-and-late')?.message).toContain(
+      'good cause',
+    );
   });
 
   it('asks for the return where a penalty landed and none is recorded', () => {

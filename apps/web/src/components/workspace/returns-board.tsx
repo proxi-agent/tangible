@@ -2,7 +2,6 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { CalendarClock, FileText, Gavel, MapPinOff } from 'lucide-react';
-import Link from 'next/link';
 import { useState } from 'react';
 import { appraisalDistrictName } from '@tangible/filing/districts';
 import type {

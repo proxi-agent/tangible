@@ -192,9 +192,9 @@ describe('checkResolution', () => {
   });
 
   it('rejects a board outcome with no protest on file', () => {
-    expect(
-      keys(resolution({ stage: 'arb' }), notice({ protestFiledOn: null })),
-    ).toContain('resolution-without-protest');
+    expect(keys(resolution({ stage: 'arb' }), notice({ protestFiledOn: null }))).toContain(
+      'resolution-without-protest',
+    );
   });
 
   it('wants the order number an appeal would be filed against', () => {

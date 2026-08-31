@@ -17,13 +17,13 @@ import type { ClassificationStatus, RenditionScheduleKey } from '@tangible/types
  */
 
 export interface MappableLine {
-  schedule: RenditionScheduleKey | string;
+  schedule: RenditionScheduleKey | (string & {});
   type: string;
   yearAcquired: number | null;
   historicalCost: number | null;
   goodFaithEstimate: number | null;
   categoryKey: string | null;
-  mappingStatus: ClassificationStatus | string | null;
+  mappingStatus: ClassificationStatus | (string & {}) | null;
 }
 
 /** Cost when the filer used cost, estimate when they used the estimate. Never both. */

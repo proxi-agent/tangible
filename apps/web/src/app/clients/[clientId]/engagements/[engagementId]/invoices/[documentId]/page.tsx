@@ -11,7 +11,6 @@ import type {
   InvoiceLineRecord,
 } from '@tangible/types';
 import { api } from '@/lib/api';
-import { cn } from '@/lib/cn';
 import { count, moneyExact, percent, plural } from '@/lib/format';
 import { InvoiceStatusBadge } from '@/components/workspace/badges';
 import { Button, Segmented, TextInput } from '@/components/ui/controls';
@@ -605,9 +604,7 @@ function Links({
                   </span>
                   <Button
                     size="sm"
-                    disabled={
-                      link.isPending || detail.links.some((l) => l.assetId === asset.id)
-                    }
+                    disabled={link.isPending || detail.links.some((l) => l.assetId === asset.id)}
                     onClick={() => link.mutate({ assetId: asset.id })}
                   >
                     {detail.links.some((l) => l.assetId === asset.id) ? 'Linked' : 'Link'}

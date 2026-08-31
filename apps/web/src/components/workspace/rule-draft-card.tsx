@@ -204,10 +204,11 @@ function SourceBlock({ label, source }: { label: string; source: string }) {
           size="sm"
           variant="ghost"
           onClick={() => {
-            void navigator.clipboard.writeText(source).then(() => {
+            void (async () => {
+              await navigator.clipboard.writeText(source);
               setCopied(true);
               setTimeout(() => setCopied(false), 1500);
-            });
+            })();
           }}
         >
           <Copy size={13} />

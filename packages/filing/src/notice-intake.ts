@@ -40,7 +40,10 @@ export interface NoticeProposalContext {
 
 /** Account numbers as the roll sees them: digits and letters only, case and leading zeros ignored. */
 function normalizeAccount(id: string): string {
-  return id.replace(/[^0-9a-z]/gi, '').replace(/^0+/, '').toUpperCase();
+  return id
+    .replace(/[^0-9a-z]/gi, '')
+    .replace(/^0+/, '')
+    .toUpperCase();
 }
 
 /** Names as a comparison sees them: case, punctuation and entity suffixes ignored. */
@@ -54,8 +57,18 @@ function normalizeName(name: string): string {
 }
 
 const MONTHS = [
-  'JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE',
-  'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER',
+  'JANUARY',
+  'FEBRUARY',
+  'MARCH',
+  'APRIL',
+  'MAY',
+  'JUNE',
+  'JULY',
+  'AUGUST',
+  'SEPTEMBER',
+  'OCTOBER',
+  'NOVEMBER',
+  'DECEMBER',
 ];
 
 /**
@@ -90,7 +103,9 @@ function isoOrNull(year: number, month: number, day: number): string | null {
   const iso = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
   // Round-trip through UTC catches the residue: February 30 parses above and dies here.
   const date = new Date(`${iso}T00:00:00Z`);
-  return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === day
+  return date.getUTCFullYear() === year &&
+    date.getUTCMonth() + 1 === month &&
+    date.getUTCDate() === day
     ? iso
     : null;
 }
@@ -121,7 +136,12 @@ export function proposeNoticeRecord(
     );
     if (hits.length === 1) {
       const hit = hits[0]!;
-      match = { locationId: hit.locationId, label: hit.label, accountId: hit.accountId, basis: 'account' };
+      match = {
+        locationId: hit.locationId,
+        label: hit.label,
+        accountId: hit.accountId,
+        basis: 'account',
+      };
       checks.push({
         check: 'account',
         ok: true,
@@ -154,7 +174,12 @@ export function proposeNoticeRecord(
 
   if (match === null && context.sites.length === 1) {
     const only = context.sites[0]!;
-    match = { locationId: only.locationId, label: only.label, accountId: only.accountId, basis: 'only-site' };
+    match = {
+      locationId: only.locationId,
+      label: only.label,
+      accountId: only.accountId,
+      basis: 'only-site',
+    };
     checks.push({
       check: 'site',
       ok: true,
@@ -164,7 +189,11 @@ export function proposeNoticeRecord(
 
   // --- the year -----------------------------------------------------------
   if (extracted.taxYear === null) {
-    checks.push({ check: 'tax-year', ok: false, detail: 'The notice does not state a tax year the extraction could read.' });
+    checks.push({
+      check: 'tax-year',
+      ok: false,
+      detail: 'The notice does not state a tax year the extraction could read.',
+    });
   } else if (extracted.taxYear !== context.taxYear) {
     checks.push({
       check: 'tax-year',
@@ -174,7 +203,11 @@ export function proposeNoticeRecord(
         'Record it on the engagement for its own year.',
     });
   } else {
-    checks.push({ check: 'tax-year', ok: true, detail: `Tax year ${extracted.taxYear}, same as the engagement.` });
+    checks.push({
+      check: 'tax-year',
+      ok: true,
+      detail: `Tax year ${extracted.taxYear}, same as the engagement.`,
+    });
   }
 
   // --- the owner ----------------------------------------------------------
@@ -192,21 +225,23 @@ export function proposeNoticeRecord(
   }
 
   // --- the dates ----------------------------------------------------------
-  const noticedOn = extracted.noticeDate !== null && extracted.noticeDate !== undefined
-    ? parsePrintedDate(extracted.noticeDate)
-    : null;
+  const noticedOn =
+    extracted.noticeDate !== null && extracted.noticeDate !== undefined
+      ? parsePrintedDate(extracted.noticeDate)
+      : null;
   if (noticedOn === null) {
     checks.push({
       check: 'notice-date',
       ok: false,
-      detail:
-        extracted.noticeDate
-          ? `The notice date reads "${extracted.noticeDate}" and would not parse — type it from the document.`
-          : 'No notice date could be read. The date is what starts the 41.44 clock; type it from the document.',
+      detail: extracted.noticeDate
+        ? `The notice date reads "${extracted.noticeDate}" and would not parse — type it from the document.`
+        : 'No notice date could be read. The date is what starts the 41.44 clock; type it from the document.',
     });
   }
 
-  const printedDeadline = extracted.protestDeadline ? parsePrintedDate(extracted.protestDeadline) : null;
+  const printedDeadline = extracted.protestDeadline
+    ? parsePrintedDate(extracted.protestDeadline)
+    : null;
   if (extracted.protestDeadline && printedDeadline === null) {
     checks.push({
       check: 'printed-deadline',

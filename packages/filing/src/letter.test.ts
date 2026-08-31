@@ -48,13 +48,18 @@ describe('letterBlocker', () => {
   });
 
   it('drafts once any site has started', () => {
-    expect(letterBlocker(result([site({ phase: 'unfiled' }), site({ phase: 'awaiting-notice' })]))).toBeNull();
+    expect(
+      letterBlocker(result([site({ phase: 'unfiled' }), site({ phase: 'awaiting-notice' })])),
+    ).toBeNull();
   });
 });
 
 describe('assembleLetterFacts', () => {
   it('carries every site, started or not, with its prose', () => {
-    const facts = assembleLetterFacts('Acme', result([site(), site({ label: 'Plant', phase: 'unfiled' })]));
+    const facts = assembleLetterFacts(
+      'Acme',
+      result([site(), site({ label: 'Plant', phase: 'unfiled' })]),
+    );
     expect(facts.sites.map((s) => s.label)).toEqual(['Houston Office', 'Plant']);
     expect(facts.sites[0]!.standing).toBe('Settled by agreement at $640,000.');
   });

@@ -49,9 +49,7 @@ describe('the sequence of phases', () => {
   });
 
   it('stands nothing while a protest is live', () => {
-    const out = siteOutcome(
-      input({ notice: { ...NOTICE, protestFiledOn: '2027-05-20' } }),
-    );
+    const out = siteOutcome(input({ notice: { ...NOTICE, protestFiledOn: '2027-05-20' } }));
     expect(out.phase).toBe('protest-live');
     expect(out.standingValue).toBeNull();
     expect(out.reduction).toBeNull();

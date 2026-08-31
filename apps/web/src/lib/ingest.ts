@@ -28,10 +28,7 @@ export interface IngestUpload {
  * workbook the parser chokes on is still preserved and visible as `failed`
  * with the reason, instead of vanishing.
  */
-export async function ingestRegister(
-  engagementId: string,
-  upload: IngestUpload,
-): Promise<FarFile> {
+export async function ingestRegister(engagementId: string, upload: IngestUpload): Promise<FarFile> {
   const id = randomUUID();
   const safeName = upload.filename.replace(/[^\w.-]+/g, '_');
   const storagePath = `${engagementId}/${id}/${safeName}`;

@@ -68,7 +68,7 @@ export function motionStanding(
   motion: CorrectionMotionFacts,
   today: string,
 ): CorrectionMotionStanding {
-  const { subjectTaxYear: year, route, filedOn, outcome, outcomeOn } = motion;
+  const { subjectTaxYear: year, filedOn, outcome, outcomeOn } = motion;
 
   // 25.26(b) counts to the delinquency date for the year under motion, which is
   // the same date 25.25(d) runs to and is computed in one place for that reason.

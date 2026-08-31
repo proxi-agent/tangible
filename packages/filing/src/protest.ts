@@ -89,7 +89,12 @@ export function protestStanding(
       ? `delivery on ${stamp(delivered)}`
       : `the ${stamp(delivered)} mailing date 1.07 presumes delivery on`;
 
-  const base = { deadline, statutoryDeadline, printedDeadline: notice.printedDeadline, waiverDeadline };
+  const base = {
+    deadline,
+    statutoryDeadline,
+    printedDeadline: notice.printedDeadline,
+    waiverDeadline,
+  };
 
   if (notice.status === 'void') {
     return { ...base, open: false, standing: 'Recorded in error. It starts no clock.' };
@@ -139,7 +144,8 @@ export function protestStanding(
     // than 41.44 actually gives — but arguing that at the counter is a fight,
     // and the fight is avoidable by filing on the printed date.
     const extra = Math.round(
-      (Date.parse(`${statutoryDeadline}T00:00:00Z`) - Date.parse(`${notice.printedDeadline}T00:00:00Z`)) /
+      (Date.parse(`${statutoryDeadline}T00:00:00Z`) -
+        Date.parse(`${notice.printedDeadline}T00:00:00Z`)) /
         86_400_000,
     );
     return {
@@ -169,8 +175,7 @@ export function protestStanding(
   return {
     ...base,
     open,
-    standing:
-      `The notice prints ${stamp(deadline)}, which is what 41.44 gives from ${from}.${closed}`,
+    standing: `The notice prints ${stamp(deadline)}, which is what 41.44 gives from ${from}.${closed}`,
   };
 }
 

@@ -79,8 +79,8 @@ describe('editing a location after the fact', () => {
   });
 });
 
-describe('placing a register\'s rows at a site', () => {
-  it('carries the register\'s own words as the target', () => {
+describe("placing a register's rows at a site", () => {
+  it("carries the register's own words as the target", () => {
     expect(PlaceSiteRequestSchema.parse({ text: 'Houston Plant', locationId: 'loc_1' })).toEqual({
       text: 'Houston Plant',
       locationId: 'loc_1',

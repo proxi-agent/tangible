@@ -70,7 +70,7 @@ export interface OutcomeInput {
 }
 
 export function siteOutcome(input: OutcomeInput): SiteOutcome {
-  const { notice, resolution, motion } = input;
+  const { notice, motion } = input;
 
   const base = {
     locationId: input.locationId,
@@ -92,8 +92,7 @@ export function siteOutcome(input: OutcomeInput): SiteOutcome {
   const value = corrected ? motion.correctedValue : standingValue;
   const via: SettledVia | null = corrected ? 'motion' : settledVia;
 
-  const reduction =
-    base.noticedValue !== null && value !== null ? base.noticedValue - value : null;
+  const reduction = base.noticedValue !== null && value !== null ? base.noticedValue - value : null;
 
   // Dollarized at the blended rate, sign kept — a value that went up costs
   // estimated dollars the same way one that came down saves them. The prose

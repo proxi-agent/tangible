@@ -178,7 +178,9 @@ export async function trimTrailingGarbage(path: string, logger: IngestLogger): P
       await handle.truncate(eocdOffset + EOCD_SIZE);
 
       const removed = size - (eocdOffset + EOCD_SIZE);
-      logger.info(`  trimmed ${removed.toLocaleString()} trailing byte(s) appended after the archive`);
+      logger.info(
+        `  trimmed ${removed.toLocaleString()} trailing byte(s) appended after the archive`,
+      );
       return removed;
     }
   } finally {
@@ -234,6 +236,10 @@ export async function extractArchive(
           reject(error ?? new Error(`Could not read ${entry.fileName}`));
           return;
         }
+        // Mixing a promise into a callback is the whole job here: yauzl hands
+        // entries back through callbacks and stream `pipeline` is promise-based,
+        // so the bridge has to live somewhere.
+        // oxlint-disable-next-line promise/no-promise-in-callback
         pipeline(readStream, createWriteStream(join(destDir, safeName)))
           .then(() => zipFile.readEntry())
           .catch(reject);
@@ -292,9 +298,7 @@ function openZip(path: string): Promise<ZipFile> {
 
 export async function listFiles(dir: string): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true, recursive: true });
-  return entries
-    .filter((e) => e.isFile())
-    .map((e) => resolve(join(e.parentPath ?? dir, e.name)));
+  return entries.filter((e) => e.isFile()).map((e) => resolve(join(e.parentPath ?? dir, e.name)));
 }
 
 /**

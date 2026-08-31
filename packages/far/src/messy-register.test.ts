@@ -52,7 +52,10 @@ describe('a register with the mess a real one has', () => {
     // Every asset knows which band it sat under, and the first band's rows are
     // not carrying the last band's name.
     const categories = new Set(out.assets.map((a) => a.category));
-    expect([...categories].sort()).toEqual([...MESSY_REGISTER_FACTS.bands].sort());
+    const alphabetical = (a: string, b: string) => a.localeCompare(b);
+    expect([...categories].sort(alphabetical)).toEqual(
+      [...MESSY_REGISTER_FACTS.bands].sort(alphabetical),
+    );
     expect(out.assets[0]?.category).toBe(MESSY_REGISTER_FACTS.bands[0]);
     expect(out.assets.at(-1)?.category).toBe(MESSY_REGISTER_FACTS.bands.at(-1));
   });

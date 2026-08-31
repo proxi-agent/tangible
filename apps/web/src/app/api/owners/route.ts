@@ -29,7 +29,7 @@ export function GET(request: Request): Promise<Response> {
       taxYear: Number(raw.taxYear),
       segments,
       minAccounts: raw.minAccounts ? Number(raw.minAccounts) : 2,
-      search: raw.search ? String(raw.search) : undefined,
+      search: raw.search || undefined,
       // An unrecognized sort falls back to the default rather than 400ing: a
       // stale bookmark should still render the list, just not in the order it
       // asked for.

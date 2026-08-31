@@ -18,27 +18,32 @@ describe('the published schedule', () => {
     expect(S.indexFactors[2021]).toBe(1.252);
     expect(S.indexFactors[1983]).toBe(3.129);
 
-    expect(S.percentGood[8][2025]).toBe(90);
-    expect(S.percentGood[8][2020]).toBe(33);
-    expect(S.percentGood[10][2023]).toBe(76);
-    expect(S.percentGood[3][2022]).toBe(13);
+    expect(S.percentGood[8]![2025]).toBe(90);
+    expect(S.percentGood[8]![2020]).toBe(33);
+    expect(S.percentGood[10]![2023]).toBe(76);
+    expect(S.percentGood[3]![2022]).toBe(13);
+    // Harris publishes no eighteen-year column. Dallas does, which is why the
+    // life classes are a union and this table is partial.
+    expect(S.percentGood[18]).toBeUndefined();
 
     expect(S.specialPercentGood.pc[2025]).toBe(78);
     expect(S.specialPercentGood.pc[2021]).toBe(10);
     expect(S.specialPercentGood.mf[2022]).toBe(40);
   });
 
-  // The property every one of these tables must have: an asset never becomes a
-  // larger share of its cost by getting older.
+  // The property every one of *these* tables must have: an asset never becomes
+  // a larger share of its cost by getting older. True of percent good, and
+  // deliberately not asserted of Dallas, whose columns are percent good times a
+  // cost index and rise for a few years before they fall.
   it('never lets percent good rise as an asset ages', () => {
     for (const life of LIFE_CLASSES) {
-      const years = Object.keys(S.percentGood[life])
+      const table = S.percentGood[life];
+      if (!table) continue;
+      const years = Object.keys(table)
         .map(Number)
         .sort((a, b) => b - a);
       for (let i = 1; i < years.length; i++) {
-        expect(S.percentGood[life][years[i]!]!).toBeLessThanOrEqual(
-          S.percentGood[life][years[i - 1]!]!,
-        );
+        expect(table[years[i]!]!).toBeLessThanOrEqual(table[years[i - 1]!]!);
       }
     }
     for (const key of SPECIAL_SCHEDULES) {
@@ -57,10 +62,10 @@ describe('the published schedule', () => {
   // misclassification costs money.
   it('holds value longer on longer lives', () => {
     for (const year of [2024, 2022, 2020]) {
-      const published = LIFE_CLASSES.filter((l) => S.percentGood[l][year] !== undefined);
+      const published = LIFE_CLASSES.filter((l) => S.percentGood[l]?.[year] !== undefined);
       for (let i = 1; i < published.length; i++) {
-        expect(S.percentGood[published[i]!][year]!).toBeGreaterThanOrEqual(
-          S.percentGood[published[i - 1]!][year]!,
+        expect(S.percentGood[published[i]!]![year]!).toBeGreaterThanOrEqual(
+          S.percentGood[published[i - 1]!]![year]!,
         );
       }
     }

@@ -107,16 +107,16 @@ describe('correctionOutlook', () => {
     const stranger = subject({ historyKnown: false });
 
     it('still opens the routes, because no bar is known to apply', () => {
-      expect(openCites(stranger, '2026-09-01')).toEqual([
-        '25.25(c)',
-        '25.25(c-1)',
-        '25.25(d)',
-      ]);
+      expect(openCites(stranger, '2026-09-01')).toEqual(['25.25(c)', '25.25(c-1)', '25.25(d)']);
     });
 
     it('will not let (c-1) or (d) read as confirmed', () => {
-      expect(route('25.25(c-1)', stranger, '2026-09-01').grounds).toContain('Confirm with the district');
-      expect(route('25.25(d)', stranger, '2026-09-01').grounds).toContain('Confirm with the district');
+      expect(route('25.25(c-1)', stranger, '2026-09-01').grounds).toContain(
+        'Confirm with the district',
+      );
+      expect(route('25.25(d)', stranger, '2026-09-01').grounds).toContain(
+        'Confirm with the district',
+      );
       expect(correctionOutlook(stranger, '2026-09-01').standing).toContain('Ask the district');
     });
 
@@ -184,7 +184,10 @@ describe('a motion already brought for this year', () => {
   });
 
   it('carries the reason up into the year’s own answer', () => {
-    const standing = correctionOutlook(subject({ priorMotion: 'forfeited' }), '2026-09-01').standing;
+    const standing = correctionOutlook(
+      subject({ priorMotion: 'forfeited' }),
+      '2026-09-01',
+    ).standing;
     expect(standing).toContain('forfeited for want of the 25.26 payment');
     expect(standing).toContain('did not touch (c) or (d)');
   });

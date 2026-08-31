@@ -49,8 +49,10 @@ export default function AccountsPage() {
 function Accounts() {
   const scope = useScope();
   const { jurisdictionId, taxYear } = scope;
-  const { query, update, toggleSegment, reset, cleared, activeFilterCount, pageSize } =
-    useAccountQuery(jurisdictionId, taxYear);
+  const { query, update, toggleSegment, reset, cleared, activeFilterCount } = useAccountQuery(
+    jurisdictionId,
+    taxYear,
+  );
   const enabled = Boolean(jurisdictionId);
   const scopeQuery = scope.linkQuery;
 

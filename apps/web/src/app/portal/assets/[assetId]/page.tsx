@@ -349,7 +349,7 @@ function Valuation({ state }: { state: AssetAppraisalState }) {
             note={
               typeof state.schedule === 'number'
                 ? `${state.schedule}-year schedule`
-                : String(state.schedule)
+                : state.schedule
             }
           />
           <Step label="Market value" value={moneyExact(state.marketValue)} emphasis />

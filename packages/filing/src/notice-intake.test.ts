@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { ExtractedNotice } from '@tangible/types';
-import { parsePrintedDate, proposeNoticeRecord, type NoticeProposalContext } from './notice-intake.js';
+import {
+  parsePrintedDate,
+  proposeNoticeRecord,
+  type NoticeProposalContext,
+} from './notice-intake.js';
 
 const notice = (over: Partial<ExtractedNotice> = {}): ExtractedNotice => ({
   ownerName: 'Acme Machining LLC',
@@ -88,12 +92,20 @@ describe('proposeNoticeRecord', () => {
   });
 
   it('flags an owner who is not the client', () => {
-    const p = proposeNoticeRecord('doc-1', notice({ ownerName: 'Gulf Coast Fabrication LP' }), context());
+    const p = proposeNoticeRecord(
+      'doc-1',
+      notice({ ownerName: 'Gulf Coast Fabrication LP' }),
+      context(),
+    );
     expect(p.checks.find((c) => c.check === 'owner')?.ok).toBe(false);
   });
 
   it('accepts entity-suffix and case differences in the owner name', () => {
-    const p = proposeNoticeRecord('doc-1', notice({ ownerName: 'ACME MACHINING, LLC.' }), context());
+    const p = proposeNoticeRecord(
+      'doc-1',
+      notice({ ownerName: 'ACME MACHINING, LLC.' }),
+      context(),
+    );
     expect(p.checks.find((c) => c.check === 'owner')?.ok).toBe(true);
   });
 

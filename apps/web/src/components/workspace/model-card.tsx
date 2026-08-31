@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Brain } from 'lucide-react';
 import { useState } from 'react';
 import { ruleFor } from '@tangible/savings';
-import type { DetectionModel, FindingModel } from '@tangible/types';
+import type { FindingModel } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, percent, plural } from '@/lib/format';
 import {

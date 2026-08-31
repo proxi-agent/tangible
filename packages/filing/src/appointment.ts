@@ -165,5 +165,7 @@ export function nearestAppointment<T extends AppointmentFacts>(
       (row) => row.jurisdictionId === query.jurisdictionId && coversLocation(row, query.locationId),
     )
     .sort((a, b) => b.signedOn.localeCompare(a.signedOn));
-  return matching.find((row) => appointmentStanding(row, query.on).effective) ?? matching[0] ?? null;
+  return (
+    matching.find((row) => appointmentStanding(row, query.on).effective) ?? matching[0] ?? null
+  );
 }

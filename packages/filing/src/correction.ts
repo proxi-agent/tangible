@@ -107,7 +107,14 @@ export function correctionOutlook(subject: CorrectionSubject, today: string): Co
   // difference between pulling one back and losing one.
   const spent = subject.priorMotion !== null && subject.priorMotion !== 'withdrawn';
 
-  const bars = { agreed, determined, penalised, spent, priorMotion: subject.priorMotion, historyKnown };
+  const bars = {
+    agreed,
+    determined,
+    penalised,
+    spent,
+    priorMotion: subject.priorMotion,
+    historyKnown,
+  };
   const routes = [
     routeC(year, today),
     routeC1(year, today, bars),
@@ -215,7 +222,12 @@ function routeC1(year: number, today: string, bars: Bars): CorrectionRoute {
   };
 }
 
-function routeD(year: number, today: string, rolledValue: number | null, bars: Bars): CorrectionRoute {
+function routeD(
+  year: number,
+  today: string,
+  rolledValue: number | null,
+  bars: Bars,
+): CorrectionRoute {
   // 31.04 can postpone the delinquency date where the bill went out late, which
   // moves this with it — the prose says so rather than guessing at it here.
   const deadline = routeDeadline('d', year);

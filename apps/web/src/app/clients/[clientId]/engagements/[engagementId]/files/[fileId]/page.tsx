@@ -13,7 +13,6 @@ import type {
   MappingVerification,
   NormalizationResult,
   SheetMapping,
-  SheetSummary,
   AskRecord,
   UpdateAskRequest,
 } from '@tangible/types';

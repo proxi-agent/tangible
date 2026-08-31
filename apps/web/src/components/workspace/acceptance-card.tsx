@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Scale } from 'lucide-react';
 import { useState } from 'react';
 import { ruleFor } from '@tangible/savings';
-import type { AcceptanceBoard, AcceptanceEvidenceView } from '@tangible/types';
+import type { AcceptanceEvidenceView } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, percent, plural } from '@/lib/format';
 import { Segmented } from '@/components/ui/controls';

@@ -8,13 +8,7 @@ import {
   type DecisionRecord,
 } from '@tangible/eval';
 import { SAVINGS_RULES_VERSION } from '@tangible/savings';
-import type {
-  DetectionSignal,
-  EvalLabel,
-  QualityReport,
-  QualityView,
-  RuleStatus,
-} from '@tangible/types';
+import type { DetectionSignal, EvalLabel, QualityView, RuleStatus } from '@tangible/types';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**

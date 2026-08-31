@@ -64,8 +64,7 @@ const plan = (assets: RenditionAsset[], over: Partial<RenditionInput> = {}, who 
   });
 
 const cell = (p: FormFillPlan, field: string) => p.text.find((t) => t.field === field)?.value;
-const chosen = (p: FormFillPlan, field: string) =>
-  p.choices.find((c) => c.field === field)?.option;
+const chosen = (p: FormFillPlan, field: string) => p.choices.find((c) => c.field === field)?.option;
 const omission = (p: FormFillPlan, prefix: string) =>
   p.omissions.find((o) => o.field.startsWith(prefix));
 
@@ -224,9 +223,11 @@ describe('against the real form', () => {
 
   it('spells every capacity the way the form’s own radio does', async () => {
     const form = (
-      await PDFDocument.load(await import('node:fs/promises').then((fs) =>
-        fs.readFile(new URL('../assets/50-144.pdf', import.meta.url)),
-      ))
+      await PDFDocument.load(
+        await import('node:fs/promises').then((fs) =>
+          fs.readFile(new URL('../assets/50-144.pdf', import.meta.url)),
+        ),
+      )
     ).getForm();
     const options = form.getRadioGroup('Representation').getOptions();
     for (const capacity of ['owner', 'employee', 'agent', 'fiduciary', 'secured-party'] as const) {

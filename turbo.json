@@ -48,10 +48,6 @@
       "dependsOn": ["^build"],
       "outputs": []
     },
-    "lint": {
-      "dependsOn": ["^build"],
-      "outputs": []
-    },
     "test": {
       "dependsOn": ["^build"],
       "outputs": []

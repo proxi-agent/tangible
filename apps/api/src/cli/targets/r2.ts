@@ -42,6 +42,7 @@ export function r2Target(env: Env): PublishTarget {
         throw new Error(
           `Cannot reach R2 bucket '${bucket}': ${(error as Error).message}\n` +
             `Create it at dash.cloudflare.com → R2, then enable public access on it.`,
+          { cause: error },
         );
       }
     },

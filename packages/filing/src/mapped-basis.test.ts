@@ -41,9 +41,23 @@ describe('rollupMapped', () => {
   it('reconciles: placed plus unplaced is always the whole reported total', () => {
     const basis = rollupMapped([
       line({ historicalCost: 100000 }),
-      line({ type: 'Furniture, Fixtures & Equipment', categoryKey: 'mixed', historicalCost: 60000 }),
-      line({ type: 'Widgets', categoryKey: null, mappingStatus: 'needs-review', historicalCost: 9000 }),
-      line({ schedule: 'F', type: 'Leased copier', categoryKey: 'excluded-leased-in', historicalCost: 5000 }),
+      line({
+        type: 'Furniture, Fixtures & Equipment',
+        categoryKey: 'mixed',
+        historicalCost: 60000,
+      }),
+      line({
+        type: 'Widgets',
+        categoryKey: null,
+        mappingStatus: 'needs-review',
+        historicalCost: 9000,
+      }),
+      line({
+        schedule: 'F',
+        type: 'Leased copier',
+        categoryKey: 'excluded-leased-in',
+        historicalCost: 5000,
+      }),
     ]);
 
     expect(basis.placedTotal).toBe(100000);
@@ -55,8 +69,18 @@ describe('rollupMapped', () => {
   it('separates blended cost from unread cost from someone else’s property', () => {
     const basis = rollupMapped([
       line({ type: 'FF&E', categoryKey: 'mixed', historicalCost: 60000 }),
-      line({ type: 'Misc', categoryKey: null, mappingStatus: 'needs-review', historicalCost: 9000 }),
-      line({ schedule: 'F', type: 'Leased forklift', categoryKey: 'excluded-leased-in', historicalCost: 5000 }),
+      line({
+        type: 'Misc',
+        categoryKey: null,
+        mappingStatus: 'needs-review',
+        historicalCost: 9000,
+      }),
+      line({
+        schedule: 'F',
+        type: 'Leased forklift',
+        categoryKey: 'excluded-leased-in',
+        historicalCost: 5000,
+      }),
     ]);
 
     const reasons = Object.fromEntries(basis.unplaced.map((b) => [b.reason, b.reported]));
@@ -108,7 +132,14 @@ describe('rollupMapped', () => {
   /** Schedules B, C and D carry no year; the bucket says so rather than inventing one. */
   it('keeps yearless schedules in their own bucket', () => {
     const basis = rollupMapped([
-      line({ schedule: 'B', type: 'Inventory', yearAcquired: null, categoryKey: 'inventory', historicalCost: 220000, mappingStatus: 'auto-accepted' }),
+      line({
+        schedule: 'B',
+        type: 'Inventory',
+        yearAcquired: null,
+        categoryKey: 'inventory',
+        historicalCost: 220000,
+        mappingStatus: 'auto-accepted',
+      }),
     ]);
     expect(basis.placed[0]).toMatchObject({
       categoryKey: 'inventory',

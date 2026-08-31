@@ -161,7 +161,7 @@ type Step = {
   /** The verb on the link, absent where the fix lives in the header. */
   action: string | null;
   /** Which tab the step lives on, 'filing' for the draft, null for the header. */
-  goes: string | 'filing' | null;
+  goes: string | null;
 };
 
 /**

@@ -36,7 +36,9 @@ describe('a standard request', () => {
   });
 
   it('still counts when sent on the deadline itself', () => {
-    expect(extensionStanding(standard({ requestedOn: '2027-04-15' }), STATUTORY).inForce).toBe(true);
+    expect(extensionStanding(standard({ requestedOn: '2027-04-15' }), STATUTORY).inForce).toBe(
+      true,
+    );
   });
 
   it('buys nothing when it is late, because 22.23(b) obliges nobody', () => {

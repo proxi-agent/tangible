@@ -7,12 +7,7 @@ import {
   type FindingKind,
 } from '@tangible/types';
 import { appraise, type DepreciationSchedule, type LifeClass } from '@tangible/valuation';
-import {
-  rollupMapped,
-  type MappableLine,
-  type MappedBasis,
-  type UnplacedBucket,
-} from './mapped-basis.js';
+import { rollupMapped, type MappableLine, type UnplacedBucket } from './mapped-basis.js';
 
 /**
  * What they filed, against what they own.

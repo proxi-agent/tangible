@@ -50,6 +50,12 @@ export default function Error({
         >
           Try again
         </button>
+        {/*
+          A real navigation, not a <Link>. The tree that would have to render the
+          client-side transition is the one that just threw; `reset` above is the
+          soft path, and this is the escape when it does not take.
+        */}
+        {/* oxlint-disable-next-line next/no-html-link-for-pages */}
         <a
           href="/season"
           className="cursor-pointer rounded-md border border-[var(--color-hairline)] px-3 py-1.5 text-xs font-medium text-[var(--color-ink-secondary)]"

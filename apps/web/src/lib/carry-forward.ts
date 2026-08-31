@@ -47,7 +47,10 @@ export async function engagementCarryForward(engagementId: string): Promise<Carr
         totalHistoricalCost: schema.renditionFilings.totalHistoricalCost,
       })
       .from(schema.renditionFilings)
-      .innerJoin(schema.engagements, eq(schema.engagements.id, schema.renditionFilings.engagementId))
+      .innerJoin(
+        schema.engagements,
+        eq(schema.engagements.id, schema.renditionFilings.engagementId),
+      )
       .where(eq(schema.engagements.clientId, engagement.clientId))
       .orderBy(desc(schema.renditionFilings.taxYear)),
     priorRenditions(engagement.clientId),

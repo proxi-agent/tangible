@@ -81,7 +81,9 @@ describe('what Step 2 reaches', () => {
 describe('finding the appointment a filing is made under', () => {
   it('stops at the district line', () => {
     const rows = [appointment({ jurisdictionId: 'tx-fort-bend' })];
-    expect(appointmentFor(rows, { jurisdictionId: 'tx-harris', locationId: 'plant', on: FILING_DAY })).toBeNull();
+    expect(
+      appointmentFor(rows, { jurisdictionId: 'tx-harris', locationId: 'plant', on: FILING_DAY }),
+    ).toBeNull();
   });
 
   it('takes the most recently signed where two are live, per 1.111(d)', () => {
@@ -105,12 +107,18 @@ describe('finding the appointment a filing is made under', () => {
 
   it('does not fall back to an appointment for a different site', () => {
     const rows = [appointment({ locationIds: ['office'] })];
-    expect(appointmentFor(rows, { jurisdictionId: 'tx-harris', locationId: 'plant', on: FILING_DAY })).toBeNull();
+    expect(
+      appointmentFor(rows, { jurisdictionId: 'tx-harris', locationId: 'plant', on: FILING_DAY }),
+    ).toBeNull();
   });
 
   it('still answers yes about a filing day the appointment has since outlived', () => {
     const rows = [appointment({ endsOn: '2027-06-30' })];
-    expect(appointmentFor(rows, { jurisdictionId: 'tx-harris', locationId: 'plant', on: FILING_DAY })).not.toBeNull();
-    expect(appointmentFor(rows, { jurisdictionId: 'tx-harris', locationId: 'plant', on: '2027-07-01' })).toBeNull();
+    expect(
+      appointmentFor(rows, { jurisdictionId: 'tx-harris', locationId: 'plant', on: FILING_DAY }),
+    ).not.toBeNull();
+    expect(
+      appointmentFor(rows, { jurisdictionId: 'tx-harris', locationId: 'plant', on: '2027-07-01' }),
+    ).toBeNull();
   });
 });
