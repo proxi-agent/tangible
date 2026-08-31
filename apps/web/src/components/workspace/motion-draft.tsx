@@ -2,11 +2,13 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState, type ReactNode } from 'react';
+import type { MotionGround } from '@tangible/filing';
 import type { CorrectionRouteKey, MotionDraftRecord, OpenYear } from '@tangible/types';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/cn';
 import { dayShort, moneyExact } from '@/lib/format';
 import { Button, Field, Select, TextArea, TextInput } from '@/components/ui/controls';
+import { DownloadButton } from '@/components/workspace/download-button';
 
 /**
  * The step between "this route is open" and "we filed on this date".
@@ -49,9 +51,12 @@ export function MotionDraftSection({
         <DraftBody
           record={record}
           action={
-            <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
-              Redraft the motion
-            </Button>
+            <div className="space-y-2.5">
+              <Button size="sm" variant="secondary" onClick={() => setOpen(true)}>
+                Redraft the motion
+              </Button>
+              <MotionForm record={record} engagementId={engagementId} />
+            </div>
           }
         />
       ) : null}
@@ -178,6 +183,94 @@ function DraftForm({
     </div>
   );
 }
+
+/**
+ * The drafted motion on the district's own paper.
+ *
+ * The route already chose the form — 50-771 for (c) and (c-1), 50-230 for (d) —
+ * so this asks only for what neither the record nor the draft holds. The
+ * certification date is the awkward one: it is the ARB's own calendar rather
+ * than a document we receive, both forms recite it, and both refuse to print
+ * without it, so it is asked for here rather than guessed at from the season.
+ */
+function MotionForm({ record, engagementId }: { record: MotionDraftRecord; engagementId: string }) {
+  const route = record.facts.route.key;
+  const [certified, setCertified] = useState('');
+  const [units, setUnits] = useState('');
+  const [ground, setGround] = useState<MotionGround>('omitted-tpp');
+
+  const query = new URLSearchParams({ key: record.yearKey });
+  if (certified.trim()) query.set('certified', certified.trim());
+  if (units.trim()) query.set('units', units.trim());
+  if (route !== 'd') query.set('ground', ground);
+
+  return (
+    <div className="space-y-2 rounded border border-[var(--color-hairline)] p-2">
+      <p className="text-[var(--color-ink-muted)]">
+        {route === 'd'
+          ? 'Form 50-230 — the (d) motion, which asserts the one-third over-appraisal on its face.'
+          : `Form 50-771 — the ${record.facts.route.cite} motion, which selects one of five grounds.`}{' '}
+        Filled from the draft above and left fillable, with the signature line empty.
+      </p>
+      <div className="flex flex-wrap items-end gap-2.5">
+        <Field
+          label="Roll certified"
+          help="The day this appraisal review board certified the roll being corrected. Both forms recite it — a 25.25 motion asks to change a certified roll, and without the date it does not say which one. Nothing here records it, so it comes off the board's own notice."
+        >
+          <TextInput
+            type="date"
+            className="w-40"
+            value={certified}
+            onChange={(event) => setCertified(event.target.value)}
+          />
+        </Field>
+        {route === 'd' ? null : (
+          <Field
+            label="Ground"
+            help="25.25(c) and (c-1) are a closed list, and the form ticks exactly one. A mis-scheduled register is usually the last: an error of tangible personal property in a rendition."
+          >
+            <Select
+              value={ground}
+              onChange={(event) => setGround(event.target.value as MotionGround)}
+            >
+              {GROUND_LABEL.map(([key, label]) => (
+                <option key={key} value={key}>
+                  {label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+      </div>
+      <Field
+        label="Taxing units"
+        help="The board notifies the presiding officer of each unit that taxes the property, so an empty line is a hearing they are not told about. Comma separated."
+      >
+        <TextInput
+          className="w-full"
+          value={units}
+          onChange={(event) => setUnits(event.target.value)}
+          placeholder="Harris County, Houston ISD, City of Houston"
+        />
+      </Field>
+      <DownloadButton
+        href={`/api/engagements/${engagementId}/motion-draft/pdf?${query.toString()}`}
+        busyLabel="Filling…"
+      >
+        {route === 'd' ? 'Form 50-230' : 'Form 50-771'}
+      </DownloadButton>
+    </div>
+  );
+}
+
+/** The five grounds as the form prints them, shortened to fit a picker. */
+const GROUND_LABEL: readonly (readonly [MotionGround, string])[] = [
+  ['omitted-tpp', '(c-1) — error or omission of personal property in a rendition'],
+  ['clerical', '(c)(1) — clerical error affecting liability'],
+  ['multiple-appraisals', '(c)(2) — multiple appraisals of one property'],
+  ['non-existent', '(c)(3) — property that does not exist in that form or place'],
+  ['ownership', '(c)(4) — an error of ownership'],
+];
 
 function DraftBody({ record, action }: { record: MotionDraftRecord; action?: ReactNode }) {
   const { draft, facts } = record;

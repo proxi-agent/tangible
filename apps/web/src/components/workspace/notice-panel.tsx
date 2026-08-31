@@ -15,6 +15,7 @@ import { day, dayShort, moneyExact } from '@/lib/format';
 import { Button, Field, Select, TextArea, TextInput } from '@/components/ui/controls';
 import { Badge } from '@/components/ui/primitives';
 import { CorrectionRoutes } from '@/components/workspace/correction-routes';
+import { DownloadButton } from '@/components/workspace/download-button';
 import { today } from '@/lib/today';
 
 /**
@@ -160,6 +161,8 @@ function Recorded({ notice, engagementId }: { notice: AssessmentNotice; engageme
         <BriefSection notice={notice} />
       ) : null}
 
+      {notice.status === 'active' && protest.open ? <ProtestForm notice={notice} /> : null}
+
       {notice.resolution ? (
         <Resolved resolution={notice.resolution} engagementId={engagementId} />
       ) : null}
@@ -301,6 +304,76 @@ function BriefBody({ record }: { record: ProtestBriefRecord }) {
           </ul>
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * The notice of protest itself, on Form 50-132.
+ *
+ * The brief above is the argument; this is the filing. 41.44 wants a written
+ * notice identifying the owner, the property and what is being protested,
+ * delivered before the deadline this panel is counting down — and a firm that
+ * drafted the argument and never sent the form has spent the window on prose.
+ *
+ * Only two things are asked for here. Everything else the form wants is
+ * already on the record, and the two that are not have defaults the ARB
+ * applies to a blank box, so leaving them alone is a real answer rather than a
+ * missing one. The value is the exception worth offering: absent an override
+ * the form asks for what the drafted brief asks for, or failing that the
+ * schedule value of the return this notice answered.
+ */
+function ProtestForm({ notice }: { notice: AssessmentNotice }) {
+  const [value, setValue] = useState('');
+  const [appearance, setAppearance] = useState('');
+
+  const query = new URLSearchParams();
+  const claimed = amount(value);
+  if (claimed !== null) query.set('value', String(claimed));
+  if (appearance) query.set('appearance', appearance);
+  const suffix = query.toString() ? `?${query.toString()}` : '';
+
+  return (
+    <div className="space-y-2 rounded-md border border-[var(--color-hairline)] p-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-medium text-[var(--color-ink)]">
+          Notice of protest — Form 50-132
+        </span>
+      </div>
+      <p className="text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+        The value ground, ticked, with the account and the owner off the record and the signature
+        line left empty. Deliver it by {day(notice.protest.deadline)} — the brief argues the
+        protest, this is the protest.
+      </p>
+      <div className="flex flex-wrap items-end gap-2.5">
+        <Field
+          label="Ask the board for"
+          help="Section 4's opinion of value, which the form marks optional. Left blank it takes the value the drafted brief asks for, and failing that the schedule value of the return this notice answered — both numbers the firm has already stood behind."
+        >
+          <TextInput
+            inputMode="decimal"
+            className="w-32"
+            value={value}
+            onChange={(event) => setValue(event.target.value)}
+            placeholder="from the brief"
+          />
+        </Field>
+        <Field
+          label="Appear"
+          help="How the hearing will be attended. The three that are not in person commit to delivering a written affidavit with the evidence before the hearing begins, which is work on a date the board sets. Left unanswered the form says nothing and the choice stays open."
+        >
+          <Select value={appearance} onChange={(event) => setAppearance(event.target.value)}>
+            <option value="">Unanswered</option>
+            <option value="in-person">In person</option>
+            <option value="telephone">By telephone, with an affidavit</option>
+            <option value="videoconference">By videoconference, with an affidavit</option>
+            <option value="affidavit">On affidavit alone</option>
+          </Select>
+        </Field>
+      </div>
+      <DownloadButton href={`/api/notices/${notice.id}/protest${suffix}`} busyLabel="Filling…">
+        Form 50-132
+      </DownloadButton>
     </div>
   );
 }

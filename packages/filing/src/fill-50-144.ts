@@ -1,8 +1,6 @@
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import type { Rendition, RenditionLine, RenditionSchedule } from '@tangible/types';
-import { PDFBool, PDFDocument, PDFName } from 'pdf-lib';
 import type { FormOmission, FormParty, FormSigner } from './form-50-144.js';
+import { fillPinnedForm } from './fill-pdf.js';
 
 /**
  * Fill the Comptroller's actual Form 50-144.
@@ -40,8 +38,7 @@ export const FORM_50144_REVISION = '50-144 · 10/25';
  * SHA-256 of `assets/50-144.pdf` as downloaded from comptroller.texas.gov.
  * Recorded so a swapped asset is a visible change rather than a surprise.
  */
-export const FORM_50144_SHA256 =
-  'ab3203f315fcecf6a78f34e448b6f13b2126507b346f969afc860ef2dbe0e701';
+export const FORM_50144_SHA256 = 'ab3203f315fcecf6a78f34e448b6f13b2126507b346f969afc860ef2dbe0e701';
 
 /**
  * The newest year printed on this revision's Schedule E ladders.
@@ -286,7 +283,12 @@ export function planFormFill(input: FormFillInput): FormFillPlan {
   } else {
     // The same number is printed on all three pages so loose sheets can be
     // reunited; the form gives each page its own field for it.
-    for (const field of ['Appraisal District Account Number', 'Account Number', 'Account Number 2', 'ADN']) {
+    for (const field of [
+      'Appraisal District Account Number',
+      'Account Number',
+      'Account Number 2',
+      'ADN',
+    ]) {
       put(field, account);
     }
   }
@@ -317,7 +319,10 @@ export function planFormFill(input: FormFillInput): FormFillPlan {
     }
   }
 
-  omit('Email / Phone', 'No contact details on the client record. The district uses these to ask questions before it estimates.');
+  omit(
+    'Email / Phone',
+    'No contact details on the client record. The district uses these to ask questions before it estimates.',
+  );
 
   // ---- Page 1: representation ------------------------------------------
 
@@ -391,12 +396,12 @@ export function planFormFill(input: FormFillInput): FormFillPlan {
       'Market value $125,000 or less',
       usingEstimate
         ? 'Left blank on purpose. This rendition is filed on the estimate basis but the total ' +
-          'estimate is withheld, because some property here cannot be valued — so there is no ' +
-          'figure to hold against $125,000. Classify the unvaluable property and the box answers ' +
-          'itself.'
+            'estimate is withheld, because some property here cannot be valued — so there is no ' +
+            'figure to hold against $125,000. Classify the unvaluable property and the box answers ' +
+            'itself.'
         : 'Left blank on purpose. This rendition is filed on historical cost and year acquired, ' +
-          'which states no market value — and checking a market-value box is an assertion, not a ' +
-          'formality. Filing on the estimate basis answers it.',
+            'which states no market value — and checking a market-value box is an assertion, not a ' +
+            'formality. Filing on the estimate basis answers it.',
     );
   }
 
@@ -418,9 +423,30 @@ export function planFormFill(input: FormFillInput): FormFillPlan {
 
   // ---- Page 2: Schedules A through D -----------------------------------
 
-  fillListSchedule(rendition, 'A', 'ScA:General Property Description by TypeCategory', usingEstimate, put, overflow);
-  fillListSchedule(rendition, 'B', 'ScB:Property Description by TypeCategory', usingEstimate, put, overflow);
-  fillListSchedule(rendition, 'C', 'ScC:Property Description by TypeCategory', usingEstimate, put, overflow);
+  fillListSchedule(
+    rendition,
+    'A',
+    'ScA:General Property Description by TypeCategory',
+    usingEstimate,
+    put,
+    overflow,
+  );
+  fillListSchedule(
+    rendition,
+    'B',
+    'ScB:Property Description by TypeCategory',
+    usingEstimate,
+    put,
+    overflow,
+  );
+  fillListSchedule(
+    rendition,
+    'C',
+    'ScC:Property Description by TypeCategory',
+    usingEstimate,
+    put,
+    overflow,
+  );
 
   const vehicles = scheduleOf(rendition, 'D');
   if (vehicles && vehicles.lines.length > 0) {
@@ -516,12 +542,17 @@ function fillListSchedule(
     put(`${descriptionField}Row${row}`, line.type);
     put(`${prefix}Estimate of Quantity of Each TypeRow${row}`, String(line.assetCount));
     put(`${prefix}Historical Cost When NewRow${row}`, money(line.historicalCost));
-    if (line.yearAcquired !== null) put(`${prefix}Year AcquiredRow${row}`, String(line.yearAcquired));
+    if (line.yearAcquired !== null)
+      put(`${prefix}Year AcquiredRow${row}`, String(line.yearAcquired));
     if (usingEstimate && line.goodFaithEstimate !== null) {
       put(`${prefix}Good Faith Estimate of Market ValueRow${row}`, money(line.goodFaithEstimate));
     }
   });
-  countOverflow(schedule, `Schedule ${key} — ${schedule.title.replace(/^Schedule \w+ — /, '')}`, overflow);
+  countOverflow(
+    schedule,
+    `Schedule ${key} — ${schedule.title.replace(/^Schedule \w+ — /, '')}`,
+    overflow,
+  );
 }
 
 const subTableFor = (line: RenditionLine): SubTable => {
@@ -619,7 +650,7 @@ function fillLadder(
   }
 }
 
-const templatePath = (): string => fileURLToPath(new URL('../assets/50-144.pdf', import.meta.url));
+const templateUrl = (): URL => new URL('../assets/50-144.pdf', import.meta.url);
 
 /**
  * Write a plan onto the pinned PDF.
@@ -641,45 +672,12 @@ export async function renderForm50144(plan: FormFillPlan): Promise<Uint8Array> {
         'it was acquired, and nothing on the printed page would say so.',
     );
   }
-  const pdf = await PDFDocument.load(await readFile(templatePath()));
-  const form = pdf.getForm();
-  const missing: string[] = [];
-
-  for (const { field, value } of plan.text) {
-    const target = form.getFieldMaybe(field);
-    if (target === undefined || !('setText' in target)) {
-      missing.push(field);
-      continue;
-    }
-    (target as { setText: (t: string) => void }).setText(value);
-  }
-
-  for (const { field, option } of plan.choices) {
-    const target = form.getFieldMaybe(field);
-    if (target === undefined) {
-      missing.push(field);
-      continue;
-    }
-    if (option === null && 'check' in target) {
-      (target as { check: () => void }).check();
-    } else if (option !== null && 'select' in target) {
-      (target as { select: (o: string) => void }).select(option);
-    } else {
-      missing.push(field);
-    }
-  }
-
-  if (missing.length > 0) {
-    throw new Error(
-      `Form 50-144 (${FORM_50144_REVISION}) has no field named ${missing
-        .map((f) => JSON.stringify(f))
-        .join(', ')}. The pinned PDF and the field map have drifted apart — re-read the form ` +
-        'before filing anything from it.',
-    );
-  }
-
-  // Some viewers cache a field's stored appearance and show a filled form as
-  // blank. This asks them to redraw from the values instead.
-  form.acroForm.dict.set(PDFName.of('NeedAppearances'), PDFBool.True);
-  return pdf.save();
+  return fillPinnedForm({
+    template: templateUrl(),
+    formLabel: 'Form 50-144',
+    revision: FORM_50144_REVISION,
+    text: plan.text,
+    choices: plan.choices,
+    driftHint: 're-read the form before filing anything from it.',
+  });
 }

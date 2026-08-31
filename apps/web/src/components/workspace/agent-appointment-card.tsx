@@ -543,7 +543,7 @@ function RecordForm({ clientId, locations }: { clientId: string; locations: Clie
             <option value="">Choose a district</option>
             {APPRAISAL_DISTRICTS.map((district) => (
               <option key={district.id} value={district.id}>
-                {district.name}
+                {district.label}
               </option>
             ))}
           </Select>

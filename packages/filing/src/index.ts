@@ -1,6 +1,14 @@
 export { buildRendition, type RenditionAsset, type RenditionInput } from './rendition.js';
 export { deadlinesFor, observedDate } from './deadlines.js';
-export { APPRAISAL_DISTRICTS, appraisalDistrictName } from './districts.js';
+export {
+  APPRAISAL_DISTRICTS,
+  appraisalDistrict,
+  appraisalDistrictCounty,
+  appraisalDistrictName,
+  type AppraisalDistrictCounty,
+  type AppraisalDistrictOption,
+  type AppraisalDistrictRecord,
+} from './districts.js';
 export {
   appointmentFor,
   nearestAppointment,
@@ -60,6 +68,48 @@ export {
   type AppointmentProperty,
   type AppointmentTerms,
 } from './fill-50-162.js';
+export {
+  FORM_50132_REVISION,
+  FORM_50132_SHA256,
+  PROTEST_REASONS,
+  planProtestFill,
+  renderForm50132,
+  type ProtestAppearance,
+  type ProtestClassification,
+  type ProtestFillInput,
+  type ProtestFillPlan,
+  type ProtestGrounds,
+  type ProtestHearing,
+  type ProtestParty,
+  type ProtestProperty,
+  type ProtestReason,
+  type ProtestSigner,
+} from './fill-50-132.js';
+export {
+  certificationDate,
+  taxesPaidCaution,
+  type CertificationDate,
+  type MotionMovant,
+  type MotionSubject,
+} from './fill-motion.js';
+export {
+  FORM_50771_REVISION,
+  FORM_50771_SHA256,
+  MOTION_GROUNDS,
+  planMotionFill,
+  renderForm50771,
+  type MotionFillInput,
+  type MotionFillPlan,
+  type MotionGround,
+} from './fill-50-771.js';
+export {
+  FORM_50230_REVISION,
+  FORM_50230_SHA256,
+  planOverAppraisalFill,
+  renderForm50230,
+  type OverAppraisalFillInput,
+  type OverAppraisalFillPlan,
+} from './fill-50-230.js';
 export { checkNotice, protestStanding, type FiledReturnFacts } from './protest.js';
 export {
   parsePrintedDate,

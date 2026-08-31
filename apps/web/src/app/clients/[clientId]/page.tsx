@@ -507,7 +507,7 @@ function LocationRow({ clientId, location }: { clientId: string; location: Clien
               <option value="">Take the engagement’s</option>
               {APPRAISAL_DISTRICTS.map((district) => (
                 <option key={district.id} value={district.id}>
-                  {district.name}
+                  {district.label}
                 </option>
               ))}
             </Select>

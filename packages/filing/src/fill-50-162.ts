@@ -1,14 +1,12 @@
-import { readFile } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
 import type {
   AppointmentDelivery,
   AppointmentMatters,
   AppointmentScope,
   AppointmentSignerCapacity,
 } from '@tangible/types';
-import { PDFBool, PDFDocument, PDFName } from 'pdf-lib';
 import type { FormOmission } from './form-50-144.js';
 import type { FormFillChoice, FormFillText } from './fill-50-144.js';
+import { fillPinnedForm } from './fill-pdf.js';
 
 /**
  * Fill the Comptroller's Form 50-162, Appointment of Agent for Property Tax
@@ -52,8 +50,7 @@ export const FORM_50162_REVISION = '50-162 · 12-16/13';
  * SHA-256 of `assets/50-162.pdf` as downloaded from comptroller.texas.gov.
  * Recorded so a swapped asset is a visible change rather than a surprise.
  */
-export const FORM_50162_SHA256 =
-  '0bb89b18abbc967bcf49db5d92ae0f79a7a6198ca53128e588b1c159618dfdd3';
+export const FORM_50162_SHA256 = '0bb89b18abbc967bcf49db5d92ae0f79a7a6198ca53128e588b1c159618dfdd3';
 
 /** Rows in Step 2's printed grid. Counted off the form, not guessed. */
 const PROPERTY_ROWS = 4;
@@ -136,7 +133,8 @@ export interface AppointmentFillPlan {
 const DELIVERY_FIELD: Readonly<Record<AppointmentDelivery, string>> = {
   'chief-appraiser': 'all communications from the chief appraiser',
   arb: 'all communications from the appraisal review board',
-  'taxing-units': 'all communications from all taxing units participating in the appraisal district',
+  'taxing-units':
+    'all communications from all taxing units participating in the appraisal district',
 };
 
 /** Step 6's three capacity boxes. Verbatim, including the long third one. */
@@ -367,7 +365,7 @@ export function planAppointmentFill(input: AppointmentFillInput): AppointmentFil
   return { revision: FORM_50162_REVISION, blocked, text, choices, overflow, omissions };
 }
 
-const templatePath = (): string => fileURLToPath(new URL('../assets/50-162.pdf', import.meta.url));
+const templateUrl = (): URL => new URL('../assets/50-162.pdf', import.meta.url);
 
 /**
  * Write a plan onto the pinned PDF.
@@ -388,45 +386,12 @@ export async function renderForm50162(plan: AppointmentFillPlan): Promise<Uint8A
         'page would say so.',
     );
   }
-  const pdf = await PDFDocument.load(await readFile(templatePath()));
-  const form = pdf.getForm();
-  const missing: string[] = [];
-
-  for (const { field, value } of plan.text) {
-    const target = form.getFieldMaybe(field);
-    if (target === undefined || !('setText' in target)) {
-      missing.push(field);
-      continue;
-    }
-    (target as { setText: (t: string) => void }).setText(value);
-  }
-
-  for (const { field, option } of plan.choices) {
-    const target = form.getFieldMaybe(field);
-    if (target === undefined) {
-      missing.push(field);
-      continue;
-    }
-    if (option === null && 'check' in target) {
-      (target as { check: () => void }).check();
-    } else if (option !== null && 'select' in target) {
-      (target as { select: (o: string) => void }).select(option);
-    } else {
-      missing.push(field);
-    }
-  }
-
-  if (missing.length > 0) {
-    throw new Error(
-      `Form 50-162 (${FORM_50162_REVISION}) has no field named ${missing
-        .map((f) => JSON.stringify(f))
-        .join(', ')}. The pinned PDF and the field map have drifted apart — re-read the form ` +
-        'before sending anything from it out for signature.',
-    );
-  }
-
-  // Some viewers cache a field's stored appearance and show a filled form as
-  // blank. This asks them to redraw from the values instead.
-  form.acroForm.dict.set(PDFName.of('NeedAppearances'), PDFBool.True);
-  return pdf.save();
+  return fillPinnedForm({
+    template: templateUrl(),
+    formLabel: 'Form 50-162',
+    revision: FORM_50162_REVISION,
+    text: plan.text,
+    choices: plan.choices,
+    driftHint: 're-read the form before sending anything from it out for signature.',
+  });
 }

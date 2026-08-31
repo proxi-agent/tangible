@@ -28,7 +28,7 @@ import { currentActor } from '@/lib/actor';
 import { appointmentAt } from '@/lib/appointments';
 import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { renditionPositions } from '@/lib/findings';
-import { HttpError } from '@/lib/route';
+import { HttpError } from '@/lib/http';
 import { engagementReturns } from '@/lib/sites';
 import { today } from '@/lib/today';
 import { fetchEngagement } from '@/lib/workspace';
@@ -180,10 +180,7 @@ async function renditionParts(
   // each site's return, measured against that site — which is what accepting it
   // meant.
   const { target, owed } = await resolveReturn(engagementId, options.locationId);
-  const [positions, profile] = await Promise.all([
-    renditionPositions(engagementId),
-    filingProfile(client.id),
-  ]);
+  const positions = await renditionPositions(engagementId);
   const rows = await db
     .select({ asset: schema.assetVersions, classification: schema.assetClassifications })
     .from(schema.assetVersions)
