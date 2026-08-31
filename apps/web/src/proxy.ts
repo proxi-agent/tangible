@@ -204,6 +204,10 @@ const CLIENT_ROUTES: RegExp[] = [
   // different path from the firm's `/recovery`, which also records settlements
   // — this layer matches paths and cannot tell a GET from a POST.
   new RegExp(`^/api/engagements/${UUID}/recovery/statement$`),
+  // Where their returns stand: the deadline, what was filed, what the district
+  // answered. Again a sub-path rather than the firm's `/season`, which carries
+  // our own blocker list and is not theirs to read.
+  new RegExp(`^/api/engagements/${UUID}/returns/statement$`),
   // How much confidence they want to see by default. Theirs to set.
   new RegExp(`^/api/clients/${UUID}/portal-settings$`),
 ];

@@ -116,3 +116,153 @@ export const UpdatePortalSettingsSchema = z.object({
 });
 
 export type UpdatePortalSettingsRequest = z.infer<typeof UpdatePortalSettingsSchema>;
+
+/**
+ * Where one of a business's returns stands, told to the business.
+ *
+ * The client wing's twin of {@link SeasonReturn}, and deliberately not that type
+ * narrowed. The firm's board answers "can this go out today", which is a
+ * question about our own record: it carries blockers, warning counts, drift
+ * against the draft, and a readiness verdict. None of that is a fact about the
+ * taxpayer's position — it is our working state, and a business reading
+ * "blocked: no Form 50-162 on file with this district" learns only that
+ * something they have never heard of is wrong somewhere.
+ *
+ * So this type is built from a different set of facts: dates the statute fixes,
+ * documents that actually went somewhere, and answers that actually came back.
+ * Every field here is something the taxpayer could confirm from their own post
+ * or by ringing the district, which is the test for whether it belongs.
+ */
+export const ClientReturnSchema = z.object({
+  locationId: z.string(),
+  label: z.string(),
+  /** The district's own number for this account, which is how they file it. */
+  accountId: z.string().nullable(),
+  districtName: z.string().nullable(),
+
+  /**
+   * The date this return is working to, and how long is left.
+   *
+   * Per return, because an extension under 22.23(b) is per account: one site's
+   * request buys that site until May 15 and says nothing about the one next
+   * door. `statutoryDueOn` travels beside it so a May date is legible as a
+   * moved April one rather than as the deadline this always had.
+   */
+  dueOn: z.string(),
+  statutoryDueOn: z.string(),
+  daysToDue: z.number().int(),
+  /**
+   * The extension moving that date, where one is in force.
+   *
+   * Only the three facts a taxpayer's own position turns on — that it was
+   * asked for, what it bought, and whether it stands. The request's `reason`
+   * and the district's `answerNote` stay on the firm's side: the first is our
+   * words, and the second is correspondence we should hand over deliberately
+   * rather than publish on a status page.
+   */
+  extension: z
+    .object({ requestedOn: z.string(), extendedTo: z.string(), answeredOn: z.string().nullable() })
+    .nullable(),
+
+  /**
+   * The return that went out, where one has. Null reads exactly as it says: not
+   * filed yet. It is never a claim that anything is wrong, and never a promise
+   * that nothing is.
+   */
+  filed: z
+    .object({
+      filedOn: z.string(),
+      method: z.string(),
+      /** Certified article number or e-file receipt — what proves it went. */
+      confirmation: z.string().nullable(),
+      /** What was sworn to: the cost reported and the property it covered. */
+      totalHistoricalCost: z.number(),
+      assetCount: z.number().int().nonnegative(),
+      /** Whether we signed it as their agent under Form 50-162. */
+      filedByAgent: z.boolean(),
+    })
+    .nullable(),
+
+  /**
+   * What the district came back with, where it has.
+   *
+   * The 22.28 penalty is here because it is money on the taxpayer's own bill,
+   * and `waiverDeadline` with it: 22.30(b) gives thirty days from the notice to
+   * ask for it back, with no May 15 floor under it, so it is routinely the
+   * first clock in the season to close and the one nobody is watching.
+   */
+  notice: z
+    .object({
+      noticedOn: z.string(),
+      appraisedValue: z.number().nullable(),
+      priorYearValue: z.number().nullable(),
+      renditionPenaltyApplied: z.boolean().nullable(),
+      protestDeadline: z.string(),
+      waiverDeadline: z.string().nullable(),
+      /** Whether there is still time to protest. False once one is filed. */
+      protestOpen: z.boolean(),
+      protestFiledOn: z.string().nullable(),
+    })
+    .nullable(),
+
+  /**
+   * How it ended, where it has ended.
+   *
+   * `noticedValue` is carried rather than read back off the notice so the two
+   * figures on screen are the pair that was frozen together. What is withheld
+   * is the resolution's `checks` — our own second-look list about an ending we
+   * agreed to, which is a firm judgment and not a fact about the account.
+   */
+  resolution: z
+    .object({
+      stage: z.string(),
+      resolvedOn: z.string(),
+      noticedValue: z.number().nullable(),
+      finalValue: z.number().nullable(),
+      penaltyOutcome: z.string().nullable(),
+    })
+    .nullable(),
+});
+
+export type ClientReturn = z.infer<typeof ClientReturnSchema>;
+
+/**
+ * Every return a business owes for one year, and where each one stands.
+ *
+ * The third of the four questions the client wing exists to answer — did you
+ * get my files, what do you still need from me, is my return going out on time,
+ * what did it save me — and the last of them to get a page. Until it existed a
+ * business could read what we thought their property was worth and could not
+ * find out whether anything had been filed for them.
+ *
+ * Nothing on it is computed from a draft. The firm's board builds a rendition
+ * per site to decide readiness; this one reports frozen filings, recorded
+ * notices and statutory dates, so the figures a business reads here are the
+ * figures on documents that exist. A return not yet filed carries no value at
+ * all rather than a preview of one — what a draft would say today is a working
+ * number, and printing it beside a real filed one would put two different kinds
+ * of claim in the same column.
+ */
+export const ClientFilingStatementSchema = z.object({
+  engagementId: z.string(),
+  taxYear: z.number().int(),
+  /** The statutory calendar for the year, before anybody asks for anything. */
+  statutoryDueOn: z.string(),
+  extendedDueOn: z.string(),
+
+  returns: z.array(ClientReturnSchema),
+
+  /**
+   * Property on the register that is not yet on any return, because its
+   * location is unresolved.
+   *
+   * Reported rather than left off. A page listing returns that total less than
+   * the register, with nothing to say about the difference, understates by
+   * omission — and where this is non-zero the missing fact is one only the
+   * business has, so it will already be a question on their Questions page.
+   */
+  unplacedCount: z.number().int().nonnegative(),
+  unplacedCost: z.number(),
+});
+
+export type ClientFilingStatement = z.infer<typeof ClientFilingStatementSchema>;

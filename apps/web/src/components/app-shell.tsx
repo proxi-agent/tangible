@@ -10,6 +10,7 @@ import {
   Building2,
   CalendarRange,
   Database,
+  FileCheck2,
   FlaskConical,
   FolderUp,
   ListOrdered,
@@ -70,12 +71,13 @@ const ASSISTANT_NAV = {
  * Same portal, other side of the engagement. A business's whole relationship
  * with us is four questions — did you get my files, what do you still need from
  * me, is my return going out on time, and what did it save me — and the wing is
- * those four questions in that order. The last of them went unanswered for a
- * long time: the report says what a position is worth, which is not the same
- * claim as what it recovered, and until the results page existed a client could
- * only be told the first. Nothing here takes an id from the URL:
- * the identity is held by the portal layout, so there is no address a client
- * can edit into somebody else's account.
+ * those four questions in that order. Both of the last two went unanswered for a
+ * long time, and for the same reason: the report says what a position is worth,
+ * which is neither a statement that anything was filed nor a statement of what
+ * came back, and a client who could read only the first was being shown our
+ * analysis in place of their own position. Nothing here takes an id from the
+ * URL: the identity is held by the portal layout, so there is no address a
+ * client can edit into somebody else's account.
  *
  * It is a wing rather than a nav group because the two audiences must not share
  * a rail. A client scrolling past "Market — Accounts, Owners" is looking at a
@@ -110,6 +112,16 @@ const PORTAL_NAV = [
     label: 'Questions',
     icon: MessageCircleQuestion,
     hint: 'Things only you can answer about your own property.',
+  },
+  {
+    // The third question. It sits after Questions rather than before because
+    // what a business is asked for is usually what is holding the return up,
+    // and a reader who lands on the dates first has no idea what to do about
+    // them.
+    href: '/portal/returns',
+    label: 'Your return',
+    icon: FileCheck2,
+    hint: 'What has to be filed for you, by when, and what the district said back.',
   },
   {
     // The fourth question, and the last one to have an answer. Everything above

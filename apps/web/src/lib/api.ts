@@ -61,6 +61,7 @@ import type {
   CommitFindingsRequest,
   CorrectionMotion,
   Engagement,
+  ClientFilingStatement,
   ClientRecoveryStatement,
   EngagementRecovery,
   EngagementResult,
