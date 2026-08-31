@@ -2,7 +2,7 @@
   "name": "tangible",
   "version": "0.1.0",
   "private": true,
-  "packageManager": "pnpm@11.4.0",
+  "packageManager": "pnpm@11.24.0",
   "engines": {
     "node": "24.x"
   },
@@ -23,11 +23,11 @@
     "db:push": "pnpm --filter @tangible/db db:push"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.4.0",
     "prettier": "^3.9.6",
     "prettier-plugin-tailwindcss": "^0.8.1",
-    "tsx": "^4.23.12",
-    "turbo": "^2.10.9",
-    "typescript": "^7.0.2"
+    "tsx": "^4.23.13",
+    "turbo": "^2.10.12",
+    "typescript": "^6.0.3"
   }
 }

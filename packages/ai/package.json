@@ -18,11 +18,11 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.117.1",
+    "@anthropic-ai/sdk": "^0.122.0",
     "@tangible/classification": "workspace:*",
     "@tangible/types": "workspace:*",
     "@tangible/valuation": "workspace:*",
-    "openai": "^7.5.0",
+    "openai": "^7.8.0",
     "zod": "catalog:",
     "@tangible/far": "workspace:*"
   },

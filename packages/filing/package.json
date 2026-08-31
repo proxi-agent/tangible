@@ -26,7 +26,7 @@
     "@tangible/classification": "workspace:*",
     "@tangible/types": "workspace:*",
     "@tangible/valuation": "workspace:*",
-    "pdf-lib": "^1.17.1",
+    "pdf-lib": "npm:@cantoo/pdf-lib@^2.9.1",
     "zod": "catalog:"
   },
   "devDependencies": {

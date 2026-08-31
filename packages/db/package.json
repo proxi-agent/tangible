@@ -25,7 +25,7 @@
     "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.112.3",
+    "@supabase/supabase-js": "^2.112.4",
     "@tangible/types": "workspace:*",
     "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.9",
