@@ -1,0 +1,78 @@
+# Everything that has to be true before a change lands.
+#
+# The jobs are split so a failure names itself: a red "lint" is not the same
+# problem as a red "test", and a single job that ran all five would only tell you
+# that something broke. They are otherwise independent and run at once.
+#
+# No secrets are needed. The web build was checked with the .env file removed
+# entirely and still completes — every environment variable it reads is either
+# optional or only read at request time — so CI never has to hold a credential
+# to prove the app compiles.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same branch makes the first run's answer irrelevant.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      # `--type-aware` is the point of running this at all: the rules that
+      # caught the real bugs here (a floating promise, a header spread that
+      # silently dropped headers) need the type checker, not just the syntax
+      # tree. The warning ceiling is a ratchet — the thirteen open warnings are
+      # judgment calls left standing on purpose, and this stops a fourteenth
+      # from arriving unnoticed.
+      - run: pnpm lint --max-warnings 14
+
+  typecheck:
+    name: Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      - run: pnpm typecheck
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      # The valuation gate rides along here: `packages/eval` runs its golden
+      # suites as ordinary vitest files, so a schedule that stopped reproducing
+      # the district's published numbers fails this job like any other test.
+      - run: pnpm test
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      # `pnpm build` runs scripts/check-node.mjs first, so this also proves the
+      # runner is on the Node line .nvmrc pins — the same check a developer's
+      # machine gets, rather than a second copy of the rule that could drift.
+      - run: pnpm build
+
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: ./.github/actions/setup
+      # Advisories arrive without anyone touching the repo, so this can go red on
+      # a commit that changed nothing. That is the intended behaviour: the tree
+      # is clean today and the first day it is not should be a build failure, not
+      # something discovered later.
+      - run: pnpm audit --audit-level moderate

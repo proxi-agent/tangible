@@ -1,0 +1,24 @@
+# The five jobs need the same three steps, and the ordering between them is not
+# obvious: pnpm has to exist before setup-node can cache a pnpm store, and the
+# Node version has to come from .nvmrc rather than a literal so there is one
+# number to change when the LTS line moves.
+name: Setup
+description: Node, pnpm, and an installed workspace
+
+runs:
+  using: composite
+  steps:
+    # No version pinned here on purpose — the action reads "packageManager" from
+    # package.json, which is also what corepack reads, so the pnpm running in CI
+    # is the pnpm the lockfile was written by.
+    - uses: pnpm/action-setup@v4
+
+    - uses: actions/setup-node@v6
+      with:
+        node-version-file: .nvmrc
+        cache: pnpm
+
+    # --frozen-lockfile so an install that would have to change the lockfile
+    # fails instead of quietly resolving something newer than what was reviewed.
+    - run: pnpm install --frozen-lockfile
+      shell: bash
