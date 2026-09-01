@@ -28,7 +28,7 @@ import * as t from './schema.js';
  * ownership test, so "an invoice line is visible when its invoice is" stays one
  * fact in one place.
  *
- * Fifteen tables appear nowhere in this file. That is deliberate and it is the
+ * Sixteen tables appear nowhere in this file. That is deliberate and it is the
  * strongest setting available: RLS is on for them, no policy exists, and a
  * client connection therefore reads nothing. They are the firm's own records —
  * lead lists, saved views, classification memory, the assistant's transcripts —
@@ -39,6 +39,13 @@ import * as t from './schema.js';
  * those that will eventually want a policy, and it does not have one yet
  * because nothing shows it a bill — an unused policy is a hole open for a
  * screen that does not exist.
+ *
+ * The one worth explaining is `run_checkpoints`, because its
+ * parent `analysis_runs` *does* have a policy: a client follows their own
+ * report being prepared. A checkpoint is not that. It is one attempt's
+ * intermediate working — the roll it read, the evidence it matched — and what
+ * the client wing shows of a run is three words and a spinner. A policy here
+ * would publish the pipeline's internals to answer a question nothing asks.
  *
  * `packages/db/scripts/verify-tenancy.mjs` proves the whole arrangement against
  * the live database. Run it after every push.

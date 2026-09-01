@@ -1,10 +1,17 @@
 import 'server-only';
-import { and, desc, eq, inArray, lt, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, lt, or, sql } from 'drizzle-orm';
 import type { AnalysisRunRow } from '@tangible/db';
 import { fromSavingsReport } from '@tangible/findings';
 import { SAVINGS_RULES_VERSION } from '@tangible/savings';
 import type { AnalysisRun, RunProgress, RunStep, RunTrigger, SavingsReport } from '@tangible/types';
-import { analyzeLoaded, loadSavingsInputs } from '@/lib/analysis';
+import { analysisFingerprint, analyzeLoaded, loadSavingsInputs } from '@/lib/analysis';
+import {
+  checkpointsFor,
+  completedStages,
+  discardCheckpoints,
+  readCheckpoint,
+  writeCheckpoint,
+} from '@/lib/run-checkpoints';
 import { recordIncident, siteOf } from '@/lib/incidents';
 import { notifyReportPublished } from '@/lib/notify';
 import { writeFindingSet } from '@/lib/findings';
@@ -43,6 +50,12 @@ const STALL_MS = 10 * 60_000;
  * A job that crashes deterministically — a malformed register, a schedule that
  * throws — would otherwise be requeued forever, and the queue would never drain
  * past it. Three is enough to survive a deploy landing mid-run.
+ *
+ * This bounds *blind* retries only. An attempt that was reaped after finishing
+ * at least one stage is not spending from this budget: it got further than the
+ * one before it, and the next one starts where it stopped. See `drainRuns`. The
+ * distinction is the whole point of the resume log — a register that needs four
+ * invocations' worth of work is not a register that crashes three times.
  */
 const MAX_ATTEMPTS = 3;
 
@@ -274,24 +287,113 @@ export async function executeRun(runId: string): Promise<void> {
 
   const db = requireDb();
   try {
-    const inputs = await loadSavingsInputs(held.engagementId);
+    /**
+     * Taken before anything else, because everything else is what it protects.
+     *
+     * The fingerprint is over the run's inputs — the register, the
+     * classifications, the engagement, the mapping — and it is the key the
+     * resume log is valid under. A client who re-uploads their register between
+     * two attempts moves it, and the work the last attempt banked describes
+     * data that no longer exists. Discarding is the only safe answer: a report
+     * assembled half from each would be internally consistent and describe a
+     * register nobody ever sent.
+     */
+    const fingerprint = await analysisFingerprint({
+      engagementId: held.engagementId,
+      source: 'savings',
+    });
+    if (held.inputFingerprint !== fingerprint) {
+      if (held.inputFingerprint !== null) {
+        console.warn('[runs] inputs moved under a resumed run, starting over', runId);
+        await discardCheckpoints(runId);
+      }
+      /**
+       * Recorded now rather than at publish. It used to be written only on the
+       * way out, which was fine when a run was one invocation; a run that
+       * spans several needs to know, on the way in, what the last one was
+       * looking at.
+       */
+      await db
+        .update(schema.analysisRuns)
+        .set({ inputFingerprint: fingerprint, updatedAt: new Date() })
+        .where(eq(schema.analysisRuns.id, runId));
+    }
 
-    await advance(runId, 'valuing');
-    const report = analyzeLoaded(held.engagementId, inputs);
+    const banked = await completedStages(runId, fingerprint);
+    if (banked.size > 0) {
+      console.log(`[runs] resuming ${runId}, already done: ${[...banked].join(', ')}`);
+    }
+
+    /**
+     * The finished analysis, if a previous attempt got that far.
+     *
+     * This is the most valuable row in the log by a distance: with it, the
+     * whole of `reading` and `valuing` is skipped and the attempt goes straight
+     * to publishing. `scheduleVersion` rides along because it is derived from
+     * the inputs, and skipping the inputs must not cost the run its record of
+     * which depreciation guide it actually applied.
+     */
+    const valued = await readCheckpoint<{ report: SavingsReport; scheduleVersion: string | null }>(
+      runId,
+      'report',
+      fingerprint,
+    );
+
+    let report: SavingsReport;
+    let scheduleVersion: string | null;
+    if (valued) {
+      ({ report, scheduleVersion } = valued.value);
+    } else {
+      const inputs = await loadSavingsInputs(held.engagementId, {
+        stages: checkpointsFor(runId, fingerprint),
+        fingerprint,
+      });
+
+      await advance(runId, 'valuing');
+      /**
+       * One synchronous pass, and so the one part of a run that cannot be
+       * resumed part-way: there is no await inside it to be torn down at, and
+       * no intermediate state worth recording if there were. Either it fits in
+       * an invocation or it does not — which is exactly why everything either
+       * side of it is banked, so it gets a whole invocation to itself on the
+       * attempt after the one that ran out of room reading.
+       */
+      report = analyzeLoaded(held.engagementId, inputs);
+      /**
+       * The guide actually applied, not the engagement's year. A district that
+       * has not published the current schedule falls back to its most recent
+       * one, and a run is only reproducible if it says which.
+       */
+      scheduleVersion = inputs.schedule
+        ? `${inputs.schedule.jurisdictionId}:${inputs.schedule.taxYear}`
+        : null;
+      await writeCheckpoint(runId, 'report', fingerprint, { report, scheduleVersion });
+    }
 
     await advance(runId, 'publishing');
-    const setId = await writeFindingSet({
-      engagementId: held.engagementId,
-      normalized: fromSavingsReport(report),
-      report,
-      fingerprint: inputs.fingerprint,
-      priorDocumentId: null,
-      taxYear: report.taxYear,
-      label: null,
-      // Nobody committed this: a run publishes, a person commits. Stamping the
-      // requester here would put a name on a decision they did not make.
-      actor: null,
-    });
+    /**
+     * A set this run already wrote, from an attempt that died before it could
+     * mark the run published. Reusing it is what stops a retry from publishing
+     * a second copy of the same report — and the checkpoint is written inside
+     * the set's own transaction, so "the set exists but nothing knows" is not a
+     * state this can be in.
+     */
+    const written = await readCheckpoint<string>(runId, 'set', fingerprint);
+    const setId =
+      written?.value ??
+      (await writeFindingSet({
+        engagementId: held.engagementId,
+        normalized: fromSavingsReport(report),
+        report,
+        fingerprint,
+        priorDocumentId: null,
+        taxYear: report.taxYear,
+        label: null,
+        // Nobody committed this: a run publishes, a person commits. Stamping the
+        // requester here would put a name on a decision they did not make.
+        actor: null,
+        checkpoint: { runId, stage: 'set', fingerprint },
+      }));
 
     await db
       .update(schema.analysisRuns)
@@ -299,16 +401,9 @@ export async function executeRun(runId: string): Promise<void> {
         status: 'published',
         step: null,
         setId,
-        inputFingerprint: inputs.fingerprint,
+        inputFingerprint: fingerprint,
         rulesVersion: SAVINGS_RULES_VERSION,
-        /**
-         * The guide actually applied, not the engagement's year. A district
-         * that has not published the current schedule falls back to its most
-         * recent one, and a run is only reproducible if it says which.
-         */
-        scheduleVersion: inputs.schedule
-          ? `${inputs.schedule.jurisdictionId}:${inputs.schedule.taxYear}`
-          : null,
+        scheduleVersion,
         publishedAt: new Date(),
         failedAt: null,
         error: null,
@@ -369,6 +464,27 @@ export async function executeRun(runId: string): Promise<void> {
 export async function drainRuns(limit = 5): Promise<{ started: string[]; requeued: number }> {
   const db = requireDb();
 
+  /**
+   * Whether the attempt that is currently stalled finished anything at all.
+   *
+   * This is the second half of resumability, and without it the first half is
+   * nearly useless: a register that needs four invocations still dies on the
+   * third, having banked three invocations of work nobody will ever read.
+   * An attempt that wrote a checkpoint got further than its predecessor and
+   * has earned another; the retry budget is for attempts that achieve nothing.
+   *
+   * It is also self-terminating, which is what makes it safe to hand out
+   * unlimited retries. A run wedged on one stage banks nothing on its second
+   * pass — everything before that stage is already skipped — so the condition
+   * goes false on its own and the run fails. Nothing loops forever on the
+   * strength of progress it made once.
+   */
+  const advanced = sql`exists (
+    select 1 from run_checkpoints c
+    where c.run_id = ${schema.analysisRuns.id}
+      and c.created_at > ${schema.analysisRuns.startedAt}
+  )`;
+
   const stalled = await db
     .update(schema.analysisRuns)
     .set({ status: 'queued', step: null, updatedAt: new Date() })
@@ -376,15 +492,17 @@ export async function drainRuns(limit = 5): Promise<{ started: string[]; requeue
       and(
         eq(schema.analysisRuns.status, 'running'),
         lt(schema.analysisRuns.updatedAt, new Date(Date.now() - STALL_MS)),
-        lt(schema.analysisRuns.attempts, MAX_ATTEMPTS),
+        or(lt(schema.analysisRuns.attempts, MAX_ATTEMPTS), advanced),
       ),
     )
     .returning({ id: schema.analysisRuns.id });
 
   /**
-   * A run that stalled with its attempts spent is not left in `running`
-   * forever: nothing would ever pick it up, and the portal would show a
-   * progress line that never moves. It is called what it is.
+   * A run that stalled with its attempts spent *and* nothing to show for the
+   * last one is not left in `running` forever: nothing would ever pick it up,
+   * and the portal would show a progress line that never moves. It is called
+   * what it is. The requeue above has already taken everything that still has
+   * a reason to run, so whatever is left here is genuinely stuck.
    */
   await db
     .update(schema.analysisRuns)

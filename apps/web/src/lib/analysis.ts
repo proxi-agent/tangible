@@ -40,6 +40,7 @@ import { engagementAssetsWhere } from '@/lib/asset-graph';
 import { fetchMappedDocument } from '@/lib/prior-mapping';
 import { engagementAccounts } from '@/lib/sites';
 import { HttpError } from '@/lib/http';
+import { passthrough, type StageStore } from '@/lib/run-checkpoints';
 import { getWarehouse } from '@/lib/warehouse';
 import { fetchEngagement } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
@@ -143,7 +144,27 @@ export interface SavingsInputs {
   fingerprint: string;
 }
 
-export async function loadSavingsInputs(engagementId: string): Promise<SavingsInputs> {
+/**
+ * How a run resumes: the expensive lookups below go through a store that
+ * remembers what a previous attempt already finished. Screens pass nothing and
+ * get `passthrough`, so the derived-on-read path is unchanged. See
+ * `run-checkpoints.ts` for which stages are recorded and which must not be.
+ */
+export interface LoadOptions {
+  stages?: StageStore;
+  /**
+   * The fingerprint the caller has already taken. A run computes it before it
+   * does anything else — it is the key the resume log is valid under, so it
+   * cannot be one of the lookups the log is protecting.
+   */
+  fingerprint?: string;
+}
+
+export async function loadSavingsInputs(
+  engagementId: string,
+  options: LoadOptions = {},
+): Promise<SavingsInputs> {
+  const stages = options.stages ?? passthrough;
   const { engagement, client } = await fetchEngagement(engagementId);
   const db = requireDb();
 
@@ -250,14 +271,20 @@ export async function loadSavingsInputs(engagementId: string): Promise<SavingsIn
     model,
     evidence,
   ] = await Promise.all([
-    lookupRoll(engagement.jurisdictionId, accountIds, engagement.taxYear),
+    stages('roll', () => lookupRoll(engagement.jurisdictionId, accountIds, engagement.taxYear)),
     lookupRate(engagement.jurisdictionId),
-    analysisFingerprint({ engagementId, source: 'savings' }),
-    loadPriorFiling(engagementId),
-    loadInvoiceSplits(engagementId),
-    learnedAcceptance(engagement.jurisdictionId),
+    options.fingerprint ?? analysisFingerprint({ engagementId, source: 'savings' }),
+    stages('prior', () => loadPriorFiling(engagementId)),
+    stages('invoices', () => loadInvoiceSplits(engagementId)),
+    stages('acceptance', () => learnedAcceptance(engagement.jurisdictionId)),
+    /**
+     * Not checkpointed, and the one place in this function where that is a
+     * decision rather than an omission: the fit carries a `Map` of
+     * coefficients, which JSON silently flattens to `{}`. Refitting costs one
+     * query; restoring an empty one would cost a wrong report.
+     */
     loadDetectionModel(),
-    evidenceFor(engagementId, assets),
+    stages('evidence', () => evidenceFor(engagementId, assets)),
   ]);
 
   const rate = roll?.rate ?? null;

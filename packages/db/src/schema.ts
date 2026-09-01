@@ -7,6 +7,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -2131,6 +2132,63 @@ export const analysisRuns = pgTable(
 ).enableRLS();
 
 /**
+ * What one attempt at a run finished, so the next one does not do it again.
+ *
+ * A run is started inside the request that queued it and torn down when that
+ * invocation ends. Before this table an attempt that ran out of wall clock lost
+ * everything: the reaper requeued it, it re-read the roll, re-matched every
+ * asset against every export, and hit the same wall in the same place. Three
+ * times, and then `failed` — a register that does not fit in one invocation
+ * could never be analysed at all, however many times it was retried.
+ *
+ * A row here is one stage's output, written the moment that stage returns. The
+ * next attempt reads it back instead of recomputing, so the unit of lost work
+ * is a stage rather than a run, and successive attempts get further. It is a
+ * resume log, not a cache: rows are scoped to one run, they are never shared
+ * between runs, and they die with it.
+ *
+ * `fingerprint` is what makes reuse safe. It is the run's input fingerprint at
+ * the moment the stage ran; if the client re-uploads their register between two
+ * attempts the fingerprint moves, every row here is discarded, and the run
+ * starts over rather than publishing a report assembled half from each. That
+ * check is the whole reason this is not simply a memo table.
+ *
+ * Not every stage belongs here — see `run-checkpoints.ts` for which do and, more
+ * importantly, which deliberately do not.
+ */
+export const runCheckpoints = pgTable(
+  'run_checkpoints',
+  {
+    runId: uuid('run_id')
+      .notNull()
+      .references(() => analysisRuns.id, { onDelete: 'cascade' }),
+    /** Internal stage name. Not a `RunStep`: those are the customer's words. */
+    stage: text('stage').notNull(),
+    /**
+     * The run's `input_fingerprint` when this stage ran. A row whose
+     * fingerprint no longer matches the run's is stale and gets dropped.
+     */
+    fingerprint: text('fingerprint').notNull(),
+    /**
+     * The stage's return value, as JSON. Anything stored here has to survive
+     * `JSON.parse(JSON.stringify(x))` unchanged — which is a real constraint,
+     * not a formality, and it is why the fitted detection model is not here.
+     */
+    payload: jsonb('payload').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.runId, table.stage] }),
+    /**
+     * The reaper's question: did this attempt achieve anything? It compares the
+     * newest checkpoint against the run's `started_at`, and an attempt that
+     * wrote none is one that will not get further next time either.
+     */
+    index('run_checkpoints_progress_idx').on(table.runId, table.createdAt),
+  ],
+).enableRLS();
+
+/**
  * Every message this app has sent to a person outside it.
  *
  * A row per recipient per message, written whether the send succeeded or not.
@@ -2420,6 +2478,7 @@ export type NotificationRow = typeof notifications.$inferSelect;
 export type NewNotificationRow = typeof notifications.$inferInsert;
 export type AnalysisRunRow = typeof analysisRuns.$inferSelect;
 export type NewAnalysisRunRow = typeof analysisRuns.$inferInsert;
+export type RunCheckpointRow = typeof runCheckpoints.$inferSelect;
 export type PortalUserRow = typeof portalUsers.$inferSelect;
 export type NewPortalUserRow = typeof portalUsers.$inferInsert;
 export type FilingAgentRow = typeof filingAgent.$inferSelect;

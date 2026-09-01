@@ -77,6 +77,18 @@ export interface WriteFindingSet {
   taxYear: number;
   label: string | null;
   actor: string | null;
+  /**
+   * A run recording, in the same transaction, that it wrote this set.
+   *
+   * Without it there is a window: the set commits, the invocation dies before
+   * the run row can be told about it, and the next attempt writes a second set
+   * that nothing points at. One statement wide, but a resume log makes it a
+   * window that gets *retried*, so it stops being theoretical. Writing the
+   * checkpoint inside the set's own transaction closes it — either both rows
+   * exist or neither does, and a resumed attempt finds the set it already
+   * wrote instead of writing another.
+   */
+  checkpoint?: { runId: string; stage: string; fingerprint: string };
 }
 
 /**
@@ -143,6 +155,21 @@ export async function writeFindingSet(input: WriteFindingSet): Promise<string> {
           cells: finding.cells,
         })),
       );
+    }
+
+    if (input.checkpoint) {
+      await tx
+        .insert(schema.runCheckpoints)
+        .values({
+          runId: input.checkpoint.runId,
+          stage: input.checkpoint.stage,
+          fingerprint: input.checkpoint.fingerprint,
+          payload: { v: set.id },
+        })
+        .onConflictDoUpdate({
+          target: [schema.runCheckpoints.runId, schema.runCheckpoints.stage],
+          set: { payload: { v: set.id }, createdAt: new Date() },
+        });
     }
 
     return set.id;
