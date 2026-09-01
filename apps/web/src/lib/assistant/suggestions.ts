@@ -53,6 +53,11 @@ const GROUPS: readonly StarterGroup[] = [
         question:
           'What is the statutory basis for taking real property and leased equipment off a personal property rendition?',
       },
+      {
+        label: 'Have we argued this',
+        question:
+          'Has this firm argued these findings to a district before, how did we word it, and how did each one turn out?',
+      },
     ],
   },
   {
@@ -71,6 +76,11 @@ const GROUPS: readonly StarterGroup[] = [
         label: 'Deadline',
         question:
           'What is the rendition deadline for this engagement, and what would an extension move it to?',
+      },
+      {
+        label: 'What worked here before',
+        question:
+          'What has this firm argued to this district in the past, and which of those arguments were allowed?',
       },
     ],
   },
@@ -239,6 +249,11 @@ const GENERAL: AssistantSuggestion[] = [
     label: 'The public roll',
     question:
       'Which counties have data loaded here, and what can the public roll tell me about an account?',
+  },
+  {
+    label: 'Our own prior work',
+    question:
+      'What arguments has this firm made to appraisal districts before, and which ones have been allowed?',
   },
   {
     label: 'How this works',

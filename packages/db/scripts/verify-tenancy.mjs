@@ -96,6 +96,7 @@ const FIRM_ONLY = [
   'assistant_conversations',
   'assistant_turns',
   'classification_memory',
+  'classification_reviews',
   'deletion_receipts',
   'engagement_fees',
   'fee_statements',

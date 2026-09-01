@@ -18,7 +18,7 @@ import {
   type PriorFiling,
   type SavingsAsset,
 } from '@tangible/savings';
-import { learnedAcceptance } from '@/lib/acceptance';
+import { learnedAcceptance, learnedSignalLifts } from '@/lib/acceptance';
 import { evidenceFor } from '@/lib/evidence';
 import type { EvidenceResult } from '@tangible/evidence';
 import { loadDetectionModel } from '@/lib/model';
@@ -124,6 +124,13 @@ export interface SavingsInputs {
    * the firm has learned since.
    */
   acceptance?: Awaited<ReturnType<typeof learnedAcceptance>>;
+  /**
+   * What each kind of evidence turned out to be worth to a district, measured
+   * on closed positions rather than assumed. Optional for the same reason as
+   * the rates above, and empty for longer: a rate needs five closed positions
+   * of a kind and a lift needs twelve.
+   */
+  signalLifts?: Awaited<ReturnType<typeof learnedSignalLifts>>;
   /**
    * Coefficients fitted from every decision the firm's reviewers have made,
    * for the findings that have enough of them to have earned one. Optional for
@@ -268,6 +275,7 @@ export async function loadSavingsInputs(
     priorFiling,
     invoiceSplits,
     acceptance,
+    signalLifts,
     model,
     evidence,
   ] = await Promise.all([
@@ -277,6 +285,7 @@ export async function loadSavingsInputs(
     stages('prior', () => loadPriorFiling(engagementId)),
     stages('invoices', () => loadInvoiceSplits(engagementId)),
     stages('acceptance', () => learnedAcceptance(engagement.jurisdictionId)),
+    stages('signal-lifts', () => learnedSignalLifts()),
     /**
      * Not checkpointed, and the one place in this function where that is a
      * decision rather than an omission: the fit carries a `Map` of
@@ -306,6 +315,7 @@ export async function loadSavingsInputs(
     priorFiling,
     invoiceSplits,
     acceptance,
+    signalLifts,
     model,
     evidence,
   };
@@ -346,6 +356,11 @@ export function analyzeLoaded(engagementId: string, inputs: SavingsInputs): Savi
         ? inputs.acceptance.rates
         : undefined,
     acceptanceEvidence: inputs.acceptance?.evidence,
+    // Only the lifts that are actually applied. The unpublished ones are
+    // reporting — the acceptance board prints them so a firm can see what was
+    // measured and found not to matter — and passing them into the engine
+    // would put rows through a lookup that can only ever miss.
+    signalLifts: inputs.signalLifts?.lifts.filter((lift) => lift.published),
     // Null rather than absent is the same thing to the engine; what matters is
     // that a fit with no adopted findings scores nothing, so every row falls
     // back to the authored weights and says `rules` on its face.

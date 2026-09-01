@@ -120,6 +120,23 @@ export function RecoveryBreakdown({
           </span>
           <span className="tabular">{percent(recovery.probabilityAccepted, 0)}</span>
         </li>
+        {/*
+          Why two lines of the same finding can carry different rates.
+          Without this the page shows one number moving between rows with no
+          account of itself, which reads as noise rather than as the one thing
+          on this panel that was learned from the district instead of from us.
+        */}
+        {recovery.acceptanceLift ? (
+          <li className="pl-3 text-[var(--color-ink-muted)]">
+            Moved for this line by what it is flagged on: {lower(recovery.acceptanceLift.label)}.
+            <InfoTip
+              title="Measured on this evidence"
+              content={recovery.acceptanceLift.basis}
+              size={11}
+              className="ml-1"
+            />
+          </li>
+        ) : null}
         {retroactive.route ? (
           <li className="flex items-baseline justify-between gap-3">
             <span>Prior years go back under {routeAuthority(retroactive.route)}</span>
@@ -131,6 +148,10 @@ export function RecoveryBreakdown({
       </ul>
     </div>
   );
+}
+
+function lower(text: string): string {
+  return text.charAt(0).toLowerCase() + text.slice(1);
 }
 
 function Line({

@@ -228,6 +228,25 @@ export const ExpectedRecoverySchema = z.object({
   }),
   probabilityCorrect: z.number(),
   probabilityAccepted: z.number(),
+  /**
+   * Where `probabilityAccepted` came from, when it was not simply the rate for
+   * the finding. One signal on this row was measured against closed positions
+   * that lacked it, and the district paid differently for them.
+   *
+   * Optional because every report written before the firm had outcomes to
+   * measure carries no such thing, and a stored report must keep parsing. Null
+   * and absent mean the same: this row got its finding's rate unmodified.
+   */
+  acceptanceLift: z
+    .object({
+      code: z.string(),
+      label: z.string(),
+      /** In log-odds, so it composes with the rate rather than adding to it. */
+      lift: z.number(),
+      basis: z.string(),
+    })
+    .nullable()
+    .optional(),
   /** The best case, before any of the three are applied. */
   undiscounted: z.number(),
 });

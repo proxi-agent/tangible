@@ -11,6 +11,8 @@ import type {
 import type {
   AcceptanceBoard,
   AnalysisRun,
+  BundleVocabularyBoard,
+  EngineDigestView,
   GrantPortalAccessRequest,
   IntakeFile,
   PortalUser,
@@ -965,6 +967,20 @@ export const api = {
    * every client the practice has.
    */
   acceptance: () => request<AcceptanceBoard>('/quality/acceptance'),
+  /**
+   * What the firm's settled classifications say the bundle advisor's wording
+   * list should be. Firm-only for a third reason again: it quotes register
+   * lines from every client, to show what each phrase is doing.
+   */
+  bundleTerms: () => request<BundleVocabularyBoard>('/quality/bundle-terms'),
+  /**
+   * What changed in all of the above since a date. The window is a parameter
+   * because the scheduled version of this has exactly one failure mode — a week
+   * it did not run is a week nobody was told — and widening the window is the
+   * recovery.
+   */
+  engineDigest: (days?: number) =>
+    request<EngineDigestView>(`/quality/digest${days ? `?days=${days}` : ''}`),
   model: () => request<DetectionModel>('/quality/model'),
   draftSchedule: (body: DraftScheduleRequest) =>
     request<DraftScheduleResult>('/quality/rule-drafts', {

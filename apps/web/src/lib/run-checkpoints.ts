@@ -58,6 +58,7 @@ export type CheckpointStage =
   | 'evidence'
   | 'invoices'
   | 'acceptance'
+  | 'signal-lifts'
   | 'prior'
   | 'report'
   | 'set';

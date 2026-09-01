@@ -216,6 +216,106 @@ export const ThresholdPointSchema = z.object({
 
 export type ThresholdPoint = z.infer<typeof ThresholdPointSchema>;
 
+/* ── The classification bar ──────────────────────────────────────────────────
+ *
+ * A second threshold, measured the same way and blind in a direction the first
+ * one is not.
+ *
+ * `AUTO_ACCEPT_CONFIDENCE` decides which of the engine's classifications stand
+ * without a person. It has been 0.85 since it was written, on an argument about
+ * what an error costs on each side, and until now nothing could say whether the
+ * argument was right: the review screen overwrote the machine's answer with the
+ * reviewer's, so the moment a person judged a classification was the moment the
+ * thing they judged stopped existing.
+ *
+ * `classification_reviews` keeps both halves, and these types report what they
+ * add up to. The asymmetry below is the whole point and is not a defect of the
+ * measurement — it is a fact about where the labels come from.
+ */
+
+/** How the engine reached the answer a reviewer then judged. */
+export const MachineSourceSchema = z.enum(['ai', 'memory']);
+export type MachineSource = z.infer<typeof MachineSourceSchema>;
+
+/**
+ * One review, reduced to what the threshold question needs.
+ *
+ * `autoAccepted` is whether the bar in force at the time let this row stand.
+ * Today it is false on every label, because only queued rows are ever seen —
+ * which is exactly the blindness the report has to state rather than paper
+ * over. It is a field and not an assumption so that a future audit sample,
+ * which would route some auto-accepted rows to a person anyway, needs no new
+ * shape here.
+ */
+export const ClassificationLabelSchema = z.object({
+  source: MachineSourceSchema,
+  confidence: z.number(),
+  autoAccepted: z.boolean(),
+  /** The machine's whole answer stood: same category *and* same life class. */
+  agreed: z.boolean(),
+});
+
+export type ClassificationLabel = z.infer<typeof ClassificationLabelSchema>;
+
+/**
+ * One candidate bar, and what moving to it would have done.
+ *
+ * `affected` counts only rows whose treatment changes — the band between this
+ * bar and the live one — because the rows outside that band are unaffected by
+ * the move and counting them would make every candidate look similar.
+ */
+export const AutoAcceptPointSchema = z.object({
+  threshold: z.number(),
+  direction: z.enum(['lower', 'live', 'raise']),
+  /** Labelled rows that would change treatment. */
+  affected: z.number().int().nonnegative(),
+  /**
+   * Of those, how many the reviewer changed. Null where no labels exist in the
+   * band — which is every bar above the live one until rows above it are
+   * sampled for review, and is reported as unknown rather than as no cost.
+   */
+  wrong: z.number().int().nonnegative().nullable(),
+  /** Whether `wrong` rests on labels at all. */
+  observed: z.boolean(),
+});
+
+export type AutoAcceptPoint = z.infer<typeof AutoAcceptPointSchema>;
+
+/**
+ * What the reviewers have said about the classifier, and what it licenses.
+ *
+ * Two numbers frame everything else. `below` is how many judged rows sit under
+ * the live bar — the evidence for lowering it. `above` is how many sit at or
+ * over it, and it is zero by construction while the only rows a person sees are
+ * the ones the bar sent them: nobody is asked whether an auto-accepted
+ * classification was right, so nothing here can say what raising the bar buys.
+ *
+ * Memory replays are reported apart from model answers. A reviewer overruling a
+ * remembered decision is a real and useful fact — it means a description two
+ * people read differently reached a third — but it is not evidence about a
+ * confidence score, because a memory hit does not have one in the sense the bar
+ * uses. Averaging them in would move the bar on the strength of rows the bar
+ * never governed.
+ */
+export const AutoAcceptReportSchema = z.object({
+  liveThreshold: z.number(),
+  labels: z.number().int().nonnegative(),
+  /** Model-sourced labels under the live bar, and how many the machine got right. */
+  below: z.number().int().nonnegative(),
+  belowAgreed: z.number().int().nonnegative(),
+  /** Model-sourced labels at or above it. Zero without an audit sample. */
+  above: z.number().int().nonnegative(),
+  aboveAgreed: z.number().int().nonnegative(),
+  points: z.array(AutoAcceptPointSchema),
+  /** Replayed human decisions a reviewer then overruled. */
+  memoryJudged: z.number().int().nonnegative(),
+  memoryOverruled: z.number().int().nonnegative(),
+  /** Null under the minimum sample, like every other precision in this file. */
+  agreement: z.number().nullable(),
+});
+
+export type AutoAcceptReport = z.infer<typeof AutoAcceptReportSchema>;
+
 export const QualityReportSchema = z.object({
   generatedAt: z.string(),
   labelCount: z.number().int().nonnegative(),
@@ -290,6 +390,7 @@ export type GateResult = z.infer<typeof GateResultSchema>;
 export const QualityViewSchema = z.object({
   report: QualityReportSchema,
   clientReport: QualityReportSchema,
+  autoAccept: AutoAcceptReportSchema,
   rules: z.array(RuleStatusSchema),
   gate: GateResultSchema,
   engagements: z.array(
@@ -500,3 +601,164 @@ export const DetectionModelSchema = z.object({
 });
 
 export type DetectionModel = z.infer<typeof DetectionModelSchema>;
+
+/* ── The bundle vocabulary, graded ───────────────────────────────────────────
+ *
+ * `bundles.ts` is a hand-written list of wordings that make the pre-capitalization
+ * advisor speak. It was never measured and it could never grow: a preparer who
+ * settles forty invoices reading the same phrase teaches it nothing. These
+ * shapes carry what the firm's own settled classifications say about it — the
+ * wordings that should be in the list, and the ones in it that the record
+ * mostly disagrees with.
+ *
+ * Everything here is a proposal. Nothing on this board changes what the advisor
+ * says; a person pastes a line into a file and opens a diff, the same rule the
+ * schedule drafter follows and for the same reason.
+ */
+
+export const BundleTermProposalSchema = z.object({
+  phrase: z.string(),
+  exclusionKey: z.string(),
+  label: z.string(),
+  /** Distinct settled wordings containing the phrase. */
+  mentions: z.number().int().nonnegative(),
+  /** Of those, how many a person settled as this exclusion. */
+  support: z.number().int().nonnegative(),
+  /** Of those, how many a person settled as taxable property on a schedule. */
+  contradicting: z.number().int().nonnegative(),
+  /** Shrunk toward the base rate, which is the "means nothing" hypothesis. */
+  precision: z.number(),
+  baseRate: z.number(),
+  samples: z.array(z.string()),
+  /** Wordings that fired on exactly the same rows — one finding, several faces. */
+  alternates: z.array(z.string()),
+  /** The line to paste. The board does not write it anywhere. */
+  source: z.string(),
+  basis: z.string(),
+});
+export type BundleTermProposalView = z.infer<typeof BundleTermProposalSchema>;
+
+export const BundleTermChallengeSchema = z.object({
+  phrase: z.string(),
+  exclusionKey: z.string(),
+  label: z.string(),
+  mentions: z.number().int().nonnegative(),
+  support: z.number().int().nonnegative(),
+  contradicting: z.number().int().nonnegative(),
+  precision: z.number(),
+  settledAs: z.array(z.object({ categoryKey: z.string(), count: z.number().int() })),
+  samples: z.array(z.string()),
+  basis: z.string(),
+});
+export type BundleTermChallengeView = z.infer<typeof BundleTermChallengeSchema>;
+
+export const WithheldPhraseSchema = z.object({
+  phrase: z.string(),
+  exclusionKey: z.string(),
+  mentions: z.number().int().nonnegative(),
+  support: z.number().int().nonnegative(),
+  precision: z.number(),
+  collidesWith: z.string(),
+  reason: z.string(),
+});
+export type WithheldPhraseView = z.infer<typeof WithheldPhraseSchema>;
+
+export const BundleVocabularyBoardSchema = z.object({
+  /** Distinct settled wordings read. */
+  observations: z.number().int().nonnegative(),
+  /** Of those, how many were settled as one of the three exclusions. */
+  exclusionObservations: z.number().int().nonnegative(),
+  /** Phrases that cleared the mention floor and were therefore judged. */
+  judgedPhrases: z.number().int().nonnegative(),
+  /** How many wordings the advisor knows today, before any of this. */
+  vocabularySize: z.number().int().nonnegative(),
+  proposals: z.array(BundleTermProposalSchema),
+  challenges: z.array(BundleTermChallengeSchema),
+  withheld: z.array(WithheldPhraseSchema),
+  /**
+   * Terms the record has never seen. Carried so the screen can say so plainly:
+   * silence is not disagreement, and a word no register used is not a bad word.
+   */
+  unobserved: z.array(z.string()),
+  baseRates: z.record(z.string(), z.number()),
+});
+export type BundleVocabularyBoard = z.infer<typeof BundleVocabularyBoardSchema>;
+
+/* ── The engine digest ───────────────────────────────────────────────────────
+ *
+ * Every learner in this system is pull-only: it recomputes when somebody opens
+ * a board, and nothing tells anyone that a number moved. So the fifth closed
+ * position that carries a finding over its bar changes what the report
+ * multiplies by, silently, and the firm finds out months later by opening a
+ * screen for an unrelated reason.
+ *
+ * The digest is two readings of the same engine — one now, one as of a date —
+ * and the difference between them, said in sentences. It applies nothing and
+ * proposes no code. What it removes is the quiet.
+ */
+
+export const EngineFactSchema = z.object({
+  /** Built from what the fact is about, never from a rate or a rank. */
+  id: z.string(),
+  kind: z.enum([
+    'acceptance',
+    'signal',
+    'bundle-term',
+    'bundle-challenge',
+    'precision',
+    'classifier',
+  ]),
+  subject: z.string(),
+  /** Whether the fact has cleared its own learner's bar and is being used. */
+  inForce: z.boolean(),
+  value: z.number().nullable(),
+  observations: z.number().int().nonnegative(),
+  /** The learner's own sentence, never rewritten. */
+  basis: z.string(),
+  href: z.string(),
+});
+export type EngineFact = z.infer<typeof EngineFactSchema>;
+export type EngineFactKind = EngineFact['kind'];
+
+export const EngineChangeSchema = z.object({
+  kind: z.enum(['crossed', 'withdrawn', 'appeared', 'moved', 'firmed']),
+  /** `act` is mailed; `read` rides along once something has been; `note` never. */
+  weight: z.enum(['act', 'read', 'note']),
+  fact: EngineFactSchema,
+  before: z
+    .object({
+      inForce: z.boolean(),
+      value: z.number().nullable(),
+      observations: z.number().int().nonnegative(),
+    })
+    .nullable(),
+  headline: z.string(),
+});
+export type EngineChange = z.infer<typeof EngineChangeSchema>;
+export type EngineChangeKind = EngineChange['kind'];
+export type EngineChangeWeight = EngineChange['weight'];
+
+export const EngineDigestSchema = z.object({
+  since: z.string(),
+  until: z.string(),
+  facts: z.number().int().nonnegative(),
+  inForce: z.number().int().nonnegative(),
+  changes: z.array(EngineChangeSchema),
+  /** True when something is worth sending. The cron's whole decision. */
+  material: z.boolean(),
+});
+export type EngineDigest = z.infer<typeof EngineDigestSchema>;
+
+export const EngineDigestViewSchema = z.object({
+  digest: EngineDigestSchema,
+  /** How many days back the earlier reading was taken. */
+  days: z.number().int().positive(),
+  /**
+   * Whether the corpus reconstruction can be trusted at this window's start.
+   * False when the firm's record does not reach back that far, in which case
+   * every fact reads as new and the screen should say why rather than let a
+   * wall of "appeared" look like a busy week.
+   */
+  reachesBack: z.boolean(),
+});
+export type EngineDigestView = z.infer<typeof EngineDigestViewSchema>;

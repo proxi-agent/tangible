@@ -300,11 +300,44 @@ export type AcceptanceDistrict = z.infer<typeof AcceptanceDistrictSchema>;
  * screen showing only the local numbers would make eight outcomes look like the
  * entire basis for a rate that is mostly inherited from everywhere else.
  */
+/**
+ * What one piece of evidence is worth to a district, measured.
+ *
+ * A level below the rate: the rate says how often a county concedes a kind of
+ * argument, and this says which arguments of that kind it concedes. Both arms
+ * are carried because a lift is a comparison and a number without its
+ * comparison is not one — "allowed 81%" means nothing until you know the rows
+ * without the signal were allowed 54%.
+ */
+export const SignalLiftSchema = z.object({
+  findingKey: z.string(),
+  code: z.string(),
+  label: z.string(),
+  withCount: z.number(),
+  withShare: z.number(),
+  withoutCount: z.number(),
+  withoutShare: z.number(),
+  /** In log-odds. Positive means the district pays more for rows carrying it. */
+  lift: z.number(),
+  /** True where it is actually moving estimates. */
+  published: z.boolean(),
+  basis: z.string(),
+});
+export type SignalLiftView = z.infer<typeof SignalLiftSchema>;
+
 export const AcceptanceBoardSchema = z.object({
   observations: z.number(),
   /** How many finding kinds have cleared the bar and are in use. */
   measured: z.number(),
   pooled: z.array(AcceptanceEvidenceSchema),
   districts: z.array(AcceptanceDistrictSchema),
+  /**
+   * The signal layer, reported whole — the lifts that were measured and found
+   * not to matter included. A board that showed only the published ones would
+   * make a firm think the engine had never looked at the rest.
+   */
+  signals: z.array(SignalLiftSchema),
+  /** Closed positions that carried frozen signals, which is what this layer reads. */
+  signalObservations: z.number(),
 });
 export type AcceptanceBoard = z.infer<typeof AcceptanceBoardSchema>;

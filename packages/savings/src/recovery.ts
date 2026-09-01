@@ -5,6 +5,7 @@ import type {
   RecoveryYear,
   TaxChain,
 } from '@tangible/types';
+import { adjustAcceptance, type AppliedLift } from './signal-acceptance.js';
 
 /**
  * The chain from cost to tax, and what a position on it is actually worth.
@@ -400,6 +401,17 @@ export interface RecoveryInput {
    */
   jurisdictionId?: string | null;
   acceptanceOverrides?: Record<string, number>;
+  /**
+   * What this particular row's evidence is worth to this district, where the
+   * firm's closed positions have measured it.
+   *
+   * Applied to the finding's rate rather than replacing it, and in log-odds, so
+   * a lift measured on ghost rows generally still means the same thing after a
+   * county's own rate has moved. Absent is the normal state and stays the
+   * normal state for a long while: it takes twelve closed positions on one
+   * finding before a single code can be compared against anything.
+   */
+  acceptanceLift?: AppliedLift | null;
 }
 
 export function expectedRecovery(input: RecoveryInput): ExpectedRecovery | null {
@@ -407,7 +419,10 @@ export function expectedRecovery(input: RecoveryInput): ExpectedRecovery | null 
 
   const tax = input.taxAtRisk;
   const pCorrect = clamp(input.confidence);
-  const pAccepted = clamp(acceptanceFor(input.findingKey, input.acceptanceOverrides));
+  const lift = input.acceptanceLift ?? null;
+  const pAccepted = clamp(
+    adjustAcceptance(acceptanceFor(input.findingKey, input.acceptanceOverrides), lift),
+  );
   const route = routeFor(input.findingKey, input.jurisdictionId ?? null);
 
   const prospectiveExpected = tax * pCorrect * pAccepted;
@@ -441,6 +456,7 @@ export function expectedRecovery(input: RecoveryInput): ExpectedRecovery | null 
     retroactive: { route, years, expected: retroExpected },
     probabilityCorrect: pCorrect,
     probabilityAccepted: pAccepted,
+    acceptanceLift: lift,
     undiscounted: tax * (1 + years.length),
   };
 }

@@ -10,6 +10,7 @@ import {
 } from '@tangible/filing';
 import type {
   ClaimRoute,
+  DetectionSignal,
   ClientRecoveryLine,
   ClientRecoveryStatement,
   EngagementRecovery,
@@ -55,6 +56,8 @@ interface PricedRow {
   valueRemoved: number;
   taxAtRisk: number | null;
   confidence: number | null;
+  /** What the row was flagged on. Frozen onto the claim; see the column note. */
+  signals: DetectionSignal[];
   acceptance: number | null;
   locationId: string | null;
 }
@@ -165,6 +168,7 @@ async function seedClaims(input: {
         taxClaimed: row.taxAtRisk,
         predictedConfidence: row.confidence,
         predictedAcceptance: row.acceptance,
+        predictedSignals: row.signals,
         filingId: input.filingId ?? null,
         motionId: input.motionId ?? null,
         claimedOn: input.claimedOn,
@@ -233,6 +237,7 @@ async function pricedRows(engagementId: string, locationId: string | null): Prom
         valueRemoved: row.valueRemoved,
         taxAtRisk: row.taxAtRisk,
         confidence: row.confidence.score,
+        signals: row.confidence.signals,
         acceptance: row.recovery?.probabilityAccepted ?? null,
         locationId: row.locationId,
       });

@@ -9,7 +9,14 @@ import {
   type AgentToolOutcome,
   type AgentTurn,
 } from '@tangible/ai';
-import { renderKnowledge, searchKnowledge } from '@tangible/knowledge';
+import {
+  precedentKindLabel,
+  renderKnowledge,
+  renderPrecedent,
+  searchKnowledge,
+  searchPrecedent,
+  tallyPrecedent,
+} from '@tangible/knowledge';
 import type {
   AssistantAnswer,
   AssistantAskRequest,
@@ -18,8 +25,9 @@ import type {
   AssistantTurn,
 } from '@tangible/types';
 import { HttpError } from '@/lib/http';
+import { precedentCorpus } from '@/lib/precedent';
 import { agentTools, findTool } from './registry';
-import { knowledgeCitation } from './types';
+import { knowledgeCitation, precedentCitation } from './types';
 import { recentTurns, recordTurn, resolveConversation } from './store';
 
 /**
@@ -229,14 +237,27 @@ function validate(answer: AssistantAnswer, state: Executed): AssistantAnswer {
 /**
  * What the assistant says when there is no model configured.
  *
- * Deliberately not an error page. The corpus is searchable without a provider,
- * so a statutory question still gets the article that answers it — with the
- * article's own words rather than a summary of them — and every other question
- * gets told plainly why it cannot be answered here.
+ * Deliberately not an error page. Both retrievers are lexical and neither needs
+ * a provider, so a statutory question still gets the article that answers it
+ * and a question the firm has argued before still gets the brief it argued in
+ * — each in its own words rather than a summary of them — and every other
+ * question gets told plainly why it cannot be answered here.
+ *
+ * The two corpora are printed under separate headings and never interleaved.
+ * That separation is load-bearing everywhere the assistant touches precedent,
+ * and it matters more here than anywhere else: there is no model in this path
+ * to carry the caution, so the prose has to. One section is what Texas
+ * requires; the other is what this firm once wrote, which may have been wrong
+ * and may have lost.
  */
-function fallbackAnswer(question: string): { answer: AssistantAnswer; calls: AssistantToolCall[] } {
+async function fallbackAnswer(question: string): Promise<{
+  answer: AssistantAnswer;
+  calls: AssistantToolCall[];
+  clientIds: string[];
+}> {
   const hits = searchKnowledge(question, { limit: 3 });
   const reason = aiUnavailableReason();
+  const prior = await fallbackPrecedent(question);
 
   const calls: AssistantToolCall[] = [
     {
@@ -250,13 +271,21 @@ function fallbackAnswer(question: string): { answer: AssistantAnswer; calls: Ass
       citations: hits.map((hit) => knowledgeCitation(hit.article.id, hit.article.title)),
       ms: 0,
     },
+    ...(prior === null ? [] : [prior.call]),
   ];
 
-  if (hits.length === 0) {
+  const citations = [
+    ...hits.map((hit) => knowledgeCitation(hit.article.id, hit.article.title)),
+    ...(prior?.call.citations ?? []),
+  ];
+  const clientIds = prior?.clientIds ?? [];
+
+  if (hits.length === 0 && prior === null) {
     return {
       calls,
+      clientIds,
       answer: {
-        answer: `The assistant cannot look anything up right now: ${reason} Nothing in the knowledge corpus matches this question either, so there is nothing to fall back on. The workspace and market screens still work — the record is all there, only the assistant is off.`,
+        answer: `The assistant cannot look anything up right now: ${reason} Nothing in the knowledge corpus matches this question either, and the firm has written nothing on file about it, so there is nothing to fall back on. The workspace and market screens still work — the record is all there, only the assistant is off.`,
         citations: [],
         limits: ['No model is configured, so no lookups against the record were run.'],
         followUps: [],
@@ -264,16 +293,80 @@ function fallbackAnswer(question: string): { answer: AssistantAnswer; calls: Ass
     };
   }
 
+  const sections = [`The assistant cannot look anything up right now: ${reason}`];
+  if (hits.length > 0) {
+    sections.push(
+      `**What the knowledge corpus requires**, in its own words rather than summarized.\n\n${renderKnowledge(hits)}`,
+    );
+  }
+  if (prior !== null) sections.push(prior.section);
+
   return {
     calls,
+    clientIds,
     answer: {
-      answer: `The assistant cannot look anything up right now: ${reason} What the knowledge corpus holds on this is below, in its own words rather than summarized.\n\n${renderKnowledge(hits)}`,
-      citations: hits.map((hit) => knowledgeCitation(hit.article.id, hit.article.title)),
+      answer: sections.join('\n\n'),
+      citations,
       limits: [
-        'No model is configured, so nothing in the client record or the county data was read — this is the corpus only.',
+        'No model is configured, so nothing in the client record or the county data was read — this is the two corpora only.',
+        ...(prior === null
+          ? []
+          : [
+              'The prior work below is history, not authority. It is what the firm argued, not what the law requires, and the outcome beside each one is the only thing that says whether it worked.',
+            ]),
       ],
       followUps: [],
     },
+  };
+}
+
+/**
+ * The same fallback, asked of the firm's own prior work.
+ *
+ * Wrapped in a try because this is the path that runs when the deployment is
+ * half-configured. A missing DATABASE_URL raises a 503 out of `requireDb`, and
+ * turning a degraded answer into an error page would be a worse failure than
+ * the one it is reporting. No prior work is a fine answer here; a stack trace
+ * instead of the statute is not.
+ */
+async function fallbackPrecedent(
+  question: string,
+): Promise<{ call: AssistantToolCall; section: string; clientIds: string[] } | null> {
+  let documents;
+  try {
+    documents = (await precedentCorpus()).documents;
+  } catch {
+    return null;
+  }
+
+  const hits = searchPrecedent(documents, question, { limit: 2 });
+  if (hits.length === 0) return null;
+
+  const tally = tallyPrecedent(hits);
+  return {
+    clientIds: [...new Set(hits.map((hit) => hit.document.clientId))],
+    call: {
+      id: randomUUID(),
+      tool: 'search_precedent',
+      args: { query: question, kinds: null, district: null, limit: 2 },
+      ok: true,
+      summary: `Precedent: ${hits.length} of ${documents.length} documents match — ${tally.favorable} went the firm's way, ${tally.unfavorable} did not, ${tally.unresolved} were never answered.`,
+      data: hits.map((hit) => ({
+        id: hit.document.id,
+        title: hit.document.title,
+        outcome: hit.document.outcome,
+      })),
+      error: null,
+      citations: hits.map((hit) =>
+        precedentCitation(
+          hit.document.id,
+          `${precedentKindLabel(hit.document.kind)}: ${hit.document.title}`,
+          hit.document.href,
+        ),
+      ),
+      ms: 0,
+    },
+    section: `**What this firm has argued before.** History, not authority — read the outcome on each one.\n\n${renderPrecedent(hits)}`,
   };
 }
 
@@ -287,7 +380,7 @@ export async function runAssistantTurn(request: AssistantAskRequest): Promise<As
   const scope = request.scope ?? null;
 
   if (!isAiConfigured()) {
-    const { answer, calls } = fallbackAnswer(request.question);
+    const { answer, calls, clientIds } = await fallbackAnswer(request.question);
     const turn = await recordTurn({
       conversationId: conversation.id,
       question: request.question,
@@ -296,7 +389,10 @@ export async function runAssistantTurn(request: AssistantAskRequest): Promise<As
       answer,
       source: 'fallback',
       model: null,
-      clientIds: [],
+      // Not empty any more. A fallback answer can quote a brief, and a
+      // conversation holding one client's words has to be reachable by that
+      // client's deletion sweep like any other.
+      clientIds,
     });
     return { conversationId: conversation.id, turn };
   }

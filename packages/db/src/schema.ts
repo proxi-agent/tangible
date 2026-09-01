@@ -887,6 +887,79 @@ export const classificationMemory = pgTable(
 ).enableRLS();
 
 /**
+ * What the machine said, what the person said, and the gap between them.
+ *
+ * `asset_classifications` holds one live row per asset and the review screen
+ * updates it in place, which is right for the rendition and destroys the only
+ * evidence about the classifier. The moment a reviewer settled a row was the
+ * moment the machine's answer — its category, and above all its confidence —
+ * stopped existing. `AUTO_ACCEPT_CONFIDENCE` has been 0.85 since it was
+ * written, defended by an argument about what an error costs on each side, and
+ * nothing in the database could have contradicted or confirmed it.
+ *
+ * A row here is one review, written before the update that overwrites it, and
+ * never touched again. Append-only on purpose: a label whose value depends on
+ * when you read it is not a label.
+ *
+ * Three restrictions, each of which changes what the numbers mean:
+ *
+ *   - **Only the row a person actually looked at.** A confirmation can apply to
+ *     every twin of a description in the engagement, and recording forty
+ *     inherited rows as forty labels would multiply one judgement by forty and
+ *     report the result as a sample size.
+ *   - **Only where the machine answered.** Re-reviewing a row a reviewer
+ *     already confirmed measures one person against another.
+ *   - **`agreed` is strict** — same category *and* same life class. Auto-accept
+ *     applies the whole decision, so a partial agreement is a decision that
+ *     should not have stood. Both halves are stored, so a softer question can
+ *     be asked later without a migration.
+ *
+ * `machine_status` is the bar's own verdict at the time. It is `needs-review`
+ * on every row this table will hold until something deliberately routes
+ * auto-accepted rows to a person anyway, and that is the honest shape of the
+ * dataset: it can price lowering the bar and cannot say a word about raising
+ * it. The column exists so that an audit sample needs no migration, and so the
+ * blindness is visible in the data rather than only in this comment.
+ *
+ * Firm-only — RLS on, no policy. It carries a client's asset ids because a
+ * label without them cannot be traced back to the row it judges, and it dies
+ * with the client for the same reason.
+ */
+export const classificationReviews = pgTable(
+  'classification_reviews',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    engagementId: uuid('engagement_id')
+      .notNull()
+      .references(() => engagements.id, { onDelete: 'cascade' }),
+    assetId: uuid('asset_id')
+      .notNull()
+      .references(() => assets.id, { onDelete: 'cascade' }),
+    /** Not a foreign key: the label outlives any particular decision row. */
+    classificationId: uuid('classification_id').notNull(),
+    fingerprint: text('fingerprint'),
+    /** 'ai' | 'memory'. Never 'human' — see the restrictions above. */
+    machineSource: text('machine_source').notNull(),
+    machineCategoryKey: text('machine_category_key'),
+    machineLifeClass: integer('machine_life_class'),
+    machineConfidence: doublePrecision('machine_confidence').notNull(),
+    /** 'auto-accepted' | 'needs-review': whether the bar had let this row stand. */
+    machineStatus: text('machine_status').notNull(),
+    model: text('model'),
+    humanCategoryKey: text('human_category_key').notNull(),
+    humanLifeClass: integer('human_life_class'),
+    /** Category and life class both unchanged. */
+    agreed: boolean('agreed').notNull(),
+    reviewedBy: text('reviewed_by'),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    index('classification_reviews_engagement_idx').on(table.engagementId, table.reviewedAt),
+    index('classification_reviews_source_idx').on(table.machineSource, table.machineConfidence),
+  ],
+).enableRLS();
+
+/**
  * What a header in a register means, once a person has settled it.
  *
  * The other half of the same idea as `classification_memory`, one step earlier
@@ -2495,6 +2568,7 @@ export type NewAssetPositionRow = typeof assetPositions.$inferInsert;
 export type AssetClassificationRow = typeof assetClassifications.$inferSelect;
 export type NewAssetClassificationRow = typeof assetClassifications.$inferInsert;
 export type ClassificationMemoryRow = typeof classificationMemory.$inferSelect;
+export type ClassificationReviewRow = typeof classificationReviews.$inferSelect;
 export type MappingMemoryRow = typeof mappingMemory.$inferSelect;
 export type PriorDocumentRow = typeof priorDocuments.$inferSelect;
 export type NewPriorDocumentRow = typeof priorDocuments.$inferInsert;
@@ -2619,6 +2693,23 @@ export const recoveryClaims = pgTable(
     predictedConfidence: doublePrecision('predicted_confidence'),
     /** The acceptance rate the model assumed. The number this table exists to replace. */
     predictedAcceptance: doublePrecision('predicted_acceptance'),
+    /**
+     * The signals the row was carrying when the position went out.
+     *
+     * Frozen here rather than joined back to `finding_row_decisions` for the
+     * same reason the two predictions above are frozen, and for one more. The
+     * decision row is mutable — a reviewer can revisit it, and re-importing a
+     * register rebuilds the assets underneath it — so a join would let the
+     * evidence a district is thought to have answered change after the answer
+     * arrived. And a category-level claim has no decision row at all, which
+     * would make the absence of evidence look like an absence of signals.
+     *
+     * A `DetectionSignal[]`. Null on every claim written before this column
+     * existed, and null reads as "not recorded", never as "none" — a claim that
+     * says it went out on no evidence would drag every measured lift toward
+     * zero.
+     */
+    predictedSignals: jsonb('predicted_signals'),
 
     /** What carried it: a filed rendition, a protest, a motion. */
     filingId: uuid('filing_id').references(() => renditionFilings.id, { onDelete: 'set null' }),

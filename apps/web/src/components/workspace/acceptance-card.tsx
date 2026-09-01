@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Scale } from 'lucide-react';
 import { useState } from 'react';
 import { ruleFor } from '@tangible/savings';
-import type { AcceptanceEvidenceView } from '@tangible/types';
+import type { AcceptanceEvidenceView, SignalLiftView } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, percent, plural } from '@/lib/format';
 import { Segmented } from '@/components/ui/controls';
@@ -111,6 +111,8 @@ export function AcceptanceCard() {
 
       <Table rows={rows} scoped={district !== undefined} />
 
+      <Signals lifts={data.signals} observations={data.signalObservations} />
+
       {data.measured === 0 ? (
         <div className="px-5 pb-5">
           <Callout tone="neutral" title="Nothing has replaced a rate yet">
@@ -122,6 +124,110 @@ export function AcceptanceCard() {
       ) : null}
     </Card>
   );
+}
+
+/**
+ * A level below the rate: which evidence a district actually pays for.
+ *
+ * The rate above says how often a county concedes a kind of argument. This says
+ * which arguments of that kind it concedes — and it is the only thing the
+ * engine learns that no one in the firm taught it. Every other loop in this
+ * product is the firm marking its own homework, which is worth a great deal and
+ * is still the firm's opinion. These rows are the district's.
+ *
+ * Both arms are printed on every line, including the ones that changed nothing,
+ * because a lift is a comparison: "allowed 81%" says nothing until you know the
+ * positions without that signal were allowed 54%. And a signal measured and
+ * found not to matter is a result — hiding it would leave a firm thinking the
+ * engine had simply never looked.
+ */
+function Signals({ lifts, observations }: { lifts: SignalLiftView[]; observations: number }) {
+  if (observations === 0) return null;
+
+  const sorted = [...lifts].sort(
+    (a, b) => Number(b.published) - Number(a.published) || Math.abs(b.lift) - Math.abs(a.lift) || 0,
+  );
+  const published = sorted.filter((one) => one.published).length;
+
+  return (
+    <div className="border-t border-[var(--color-hairline)]">
+      <div className="flex flex-wrap items-baseline justify-between gap-2 px-5 pt-4 pb-2">
+        <h3 className="text-sm font-medium">
+          <Tooltip content="Each signal is compared against every closed position of the same finding that did not carry it, and both arms are pulled toward that finding's own rate so a handful of wins cannot invent an effect. The lifts are measured one signal at a time, so they are not added together — a row takes the largest one it carries and nothing else.">
+            <span>Which evidence they pay for</span>
+          </Tooltip>
+        </h3>
+        <p className="text-xs text-[var(--color-ink-muted)]">
+          {count(observations)} {plural(observations, 'closed position')} carried the evidence they
+          went out on. {published === 0 ? 'None' : count(published)}{' '}
+          {published === 1 ? 'signal is' : 'signals are'} moving estimates.
+        </p>
+      </div>
+      {sorted.length === 0 ? (
+        <div className="px-5 pb-5 text-sm text-[var(--color-ink-muted)]">
+          Nothing to compare yet — every closed position of each kind carried the same evidence.
+        </div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[46rem] text-xs">
+            <thead>
+              <tr className="text-2xs border-y border-[var(--color-hairline)] text-left font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
+                <th className="px-5 py-2">Signal</th>
+                <th className="px-3 py-2 text-right">With it</th>
+                <th className="px-3 py-2 text-right">Without it</th>
+                <th className="px-3 py-2 text-right">Effect</th>
+                <th className="px-5 py-2">Standing</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-hairline)]">
+              {sorted.map((row) => (
+                <tr key={`${row.findingKey}:${row.code}`} className="align-top">
+                  <td className="px-5 py-2.5">
+                    <div>{row.label}</div>
+                    <div className="mt-0.5 text-[var(--color-ink-muted)]">
+                      {ruleFor(row.findingKey)?.title ?? row.findingKey}
+                    </div>
+                  </td>
+                  <td className="tabular px-3 py-2.5 text-right">
+                    {percent(row.withShare)}
+                    <span className="ml-1 text-[var(--color-ink-muted)]">
+                      ({count(row.withCount)})
+                    </span>
+                  </td>
+                  <td className="tabular px-3 py-2.5 text-right text-[var(--color-ink-muted)]">
+                    {percent(row.withoutShare)} ({count(row.withoutCount)})
+                  </td>
+                  <td className="tabular px-3 py-2.5 text-right font-medium">
+                    {row.published ? points(row.withShare, row.withoutShare) : '—'}
+                  </td>
+                  <td className="px-5 py-2.5">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone={row.published ? 'good' : 'neutral'}>
+                        {row.published ? 'In use' : 'Watching'}
+                      </Badge>
+                      <span className="text-[var(--color-ink-muted)]">{row.basis}</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The effect in percentage points of allowed share, not in log-odds.
+ *
+ * The lift is stored in log-odds because that is what composes with a rate, and
+ * nobody reads log-odds. The two arms are already on the row, so the difference
+ * between them is the same claim in the units the rest of the column is in.
+ */
+function points(withShare: number, withoutShare: number): string {
+  const delta = Math.round((withShare - withoutShare) * 100);
+  return `${delta > 0 ? '+' : ''}${delta} pts`;
 }
 
 function Table({ rows, scoped }: { rows: AcceptanceEvidenceView[]; scoped: boolean }) {

@@ -28,11 +28,17 @@ import * as t from './schema.js';
  * ownership test, so "an invoice line is visible when its invoice is" stays one
  * fact in one place.
  *
- * Seventeen tables appear nowhere in this file. That is deliberate and it is the
+ * Eighteen tables appear nowhere in this file. That is deliberate and it is the
  * strongest setting available: RLS is on for them, no policy exists, and a
  * client connection therefore reads nothing. They are the firm's own records —
  * lead lists, saved views, the classification and mapping memories, the
  * assistant's transcripts — and none is a client's to see even in principle.
+ *
+ * `classification_reviews` is the newest and reads like an exception, since a
+ * row on it names a client's asset. It is not one. The row is the firm marking
+ * its own engine's homework — what the classifier said, what the reviewer said
+ * instead — and the client wing has no screen that asks the question, let alone
+ * one that should answer it with the machine's discarded first guess.
  *
  * The four newest are the operational floor: `incidents`, `health_probes`,
  * `engagement_fees` and `fee_statements`. A client's own bill is the one of

@@ -4,7 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { CircleCheck, FlaskConical, ShieldAlert, TriangleAlert } from 'lucide-react';
 import { useState } from 'react';
 import { SCHEDULES } from '@tangible/valuation';
-import type { FindingMetrics, QualityView, RuleStatus } from '@tangible/types';
+import type { AutoAcceptReport, FindingMetrics, QualityView, RuleStatus } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, day, money, percent, plural } from '@/lib/format';
 import { Segmented } from '@/components/ui/controls';
@@ -23,6 +23,8 @@ import {
 } from '@/components/ui/primitives';
 import { InfoTip } from '@/components/ui/tooltip';
 import { AcceptanceCard } from '@/components/workspace/acceptance-card';
+import { BundleTermsCard } from '@/components/workspace/bundle-terms-card';
+import { EngineDigestCard } from '@/components/workspace/engine-digest-card';
 import { ModelCard } from '@/components/workspace/model-card';
 import { RuleDraftCard } from '@/components/workspace/rule-draft-card';
 
@@ -65,6 +67,16 @@ export function QualityBoard() {
       />
 
       <GateCard view={view} />
+
+      {/*
+        Above everything it summarises, because it is the only card here that
+        answers "what changed". The rest of the page is a set of current
+        readings, and a current reading cannot tell a returning reader that a
+        rate started being applied to a client's number three weeks ago. The
+        same digest goes out weekly; this is the copy you can widen the window
+        on.
+      */}
+      <EngineDigestCard />
 
       <Card>
         <CardHeader
@@ -222,6 +234,8 @@ export function QualityBoard() {
         </Card>
       ) : null}
 
+      <AutoAcceptCard report={view.autoAccept} />
+
       {/*
         Under precision and above the rules, which is the order these four
         answer a single question: is a finding right, how sure was the engine
@@ -238,7 +252,16 @@ export function QualityBoard() {
 
       <RulesCard rules={view.rules} />
 
+      {/*
+        The two cards that produce source text rather than numbers, together at
+        the bottom. One drafts a district's schedule from its published guide;
+        the other reads what the firm settled and says which wordings the
+        advisor should have known. Neither writes anything: what comes out of
+        both is a line somebody pastes into a file and defends in a diff.
+      */}
       <RuleDraftCard />
+
+      <BundleTermsCard />
 
       {view.engagements.length > 0 ? (
         <Card>
@@ -536,6 +559,115 @@ function RulesCard({ rules }: { rules: RuleStatus[] }) {
           </li>
         ))}
       </ul>
+    </Card>
+  );
+}
+
+/**
+ * The second threshold, and the one whose evidence only points one way.
+ *
+ * The floor above is a filter on findings a person sees either way, so its
+ * sweep can argue in both directions. This one decides who ever looks: a
+ * classification above the bar is applied to a sworn form without a reviewer,
+ * and no reviewer is therefore ever asked whether it was right. So the card
+ * prints the cost of lowering the bar, which is measured, and refuses to print
+ * a cost for raising it, which is not.
+ *
+ * The blind half is stated on the card rather than left as a gap in a table.
+ * A reader who sees "0 wrong" next to a higher bar and is not told it means
+ * "0 rows examined" has been misled by an accurate number, which is the
+ * failure mode this whole screen exists to prevent.
+ */
+function AutoAcceptCard({ report }: { report: AutoAcceptReport }) {
+  if (report.labels === 0 && report.memoryJudged === 0) return null;
+
+  const lower = report.points.filter((point) => point.direction === 'lower');
+
+  return (
+    <Card>
+      <CardHeader
+        title="Where to set the classification bar"
+        description={`Above ${report.liveThreshold.toFixed(2)} the engine's class stands without a person. This is what reviewers have said about the answers below it.`}
+        help="A wrong class does not look wrong — it produces a confident, plausible number on a form signed under penalty of perjury. The bar is set high for that reason, and until now nothing could say whether it was set right: the review screen overwrote the machine's answer with the reviewer's."
+      />
+      <StatGrid>
+        <StatCell>
+          <Stat
+            label="Judged below the bar"
+            value={count(report.below)}
+            note={`${count(report.belowAgreed)} the reviewer left alone`}
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Agreement"
+            value={report.agreement === null ? '—' : percent(report.agreement)}
+            note={
+              report.agreement === null
+                ? 'Too few judged rows to state one'
+                : 'Category and life class both'
+            }
+          />
+        </StatCell>
+        <StatCell>
+          <Stat
+            label="Judged above it"
+            value={count(report.above)}
+            note={report.above === 0 ? 'Nobody reviews an auto-accepted row' : 'From sampled rows'}
+          />
+        </StatCell>
+      </StatGrid>
+
+      {lower.some((point) => point.affected > 0) ? (
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[34rem] text-sm">
+            <thead>
+              <tr className="border-b border-[var(--color-hairline)] text-left">
+                <Th>Bar</Th>
+                <Th align="right">Reviews saved</Th>
+                <Th align="right">Wrong classes let through</Th>
+                <Th align="right">Of those saved</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {lower.map((point) => (
+                <tr key={point.threshold} className="border-b border-[var(--color-hairline)]">
+                  <Td>{point.threshold.toFixed(2)}</Td>
+                  <Td align="right">{count(point.affected)}</Td>
+                  <Td align="right">{point.wrong === null ? '—' : count(point.wrong)}</Td>
+                  <Td align="right">
+                    {point.wrong === null || point.affected === 0
+                      ? '—'
+                      : percent(point.wrong / point.affected)}
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+
+      {report.above === 0 ? (
+        <div className="p-5 pt-0">
+          <Callout tone="warning" icon={TriangleAlert} title="Nothing here argues for a higher bar">
+            Every label above comes from a row the bar sent to a person. No one is asked whether an
+            auto-accepted class was right, so the cost of the bar being too low is measured and the
+            cost of it being too high is unknown. Routing a sample of auto-accepted rows to the
+            queue anyway is what would close that — it is reviewer time spent on rows that look
+            fine, which is a decision about how much the firm wants to know.
+          </Callout>
+        </div>
+      ) : null}
+
+      {report.memoryJudged > 0 ? (
+        <div className="border-t border-[var(--color-hairline)] px-5 py-4 text-sm text-[var(--color-ink-soft)]">
+          Separately: {count(report.memoryJudged)}{' '}
+          {plural(report.memoryJudged, 'replayed decision')} reached a reviewer and{' '}
+          {count(report.memoryOverruled)} were overruled. That is not evidence about the bar — a
+          remembered answer carries full confidence because a person was sure, not because the model
+          was — but a description two people read differently is worth knowing about.
+        </div>
+      ) : null}
     </Card>
   );
 }

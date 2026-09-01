@@ -8,6 +8,10 @@
     {
       "path": "/api/health/probe",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/quality/digest/send",
+      "schedule": "0 14 * * 1"
     }
   ]
 }

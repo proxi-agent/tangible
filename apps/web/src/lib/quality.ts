@@ -1,6 +1,8 @@
 import 'server-only';
 import { desc, eq, inArray } from 'drizzle-orm';
+import { AUTO_ACCEPT_CONFIDENCE } from '@tangible/classification';
 import {
+  autoAcceptReport,
   labelsFrom,
   runGate,
   ruleStatuses,
@@ -8,7 +10,13 @@ import {
   type DecisionRecord,
 } from '@tangible/eval';
 import { SAVINGS_RULES_VERSION } from '@tangible/savings';
-import type { DetectionSignal, EvalLabel, QualityView, RuleStatus } from '@tangible/types';
+import type {
+  ClassificationLabel,
+  DetectionSignal,
+  EvalLabel,
+  QualityView,
+  RuleStatus,
+} from '@tangible/types';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**
@@ -59,6 +67,7 @@ export async function qualityView(today: string): Promise<QualityView> {
   return {
     report,
     clientReport: scoreLabels(client, generatedAt),
+    autoAccept: autoAcceptReport(await classificationLabels(), AUTO_ACCEPT_CONFIDENCE),
     rules: withLabelCounts(ruleStatuses(today), firm),
     gate: runGate({ today }),
     engagements: await engagementLabels(counts),
@@ -132,6 +141,52 @@ export async function harvestLabels(): Promise<EvalLabel[]> {
   }));
 
   return labelsFrom(records);
+}
+
+/**
+ * The classifier's own labels, read back off the reviews.
+ *
+ * Unfiltered by date and by engagement for the same reason `harvestLabels` is:
+ * the rare descriptions are the ones nobody can state a number for, and a
+ * rolling window discards exactly those.
+ *
+ * Not filtered by reviewer audience either, because it cannot be — the
+ * classification queue is the firm's screen and a client never reaches it. If
+ * that ever changes, this needs the split `harvestLabels` makes, since "the
+ * controller knows what that machine actually is" and "the model was wrong"
+ * are different facts here too.
+ */
+export interface DatedClassificationLabel {
+  label: ClassificationLabel;
+  /** When a person judged the row. The digest's only use for this table. */
+  reviewedAt: Date;
+}
+
+export async function datedClassificationLabels(): Promise<DatedClassificationLabel[]> {
+  const db = requireDb();
+  const rows = await db
+    .select({
+      source: schema.classificationReviews.machineSource,
+      confidence: schema.classificationReviews.machineConfidence,
+      status: schema.classificationReviews.machineStatus,
+      agreed: schema.classificationReviews.agreed,
+      reviewedAt: schema.classificationReviews.reviewedAt,
+    })
+    .from(schema.classificationReviews);
+
+  return rows.map((row) => ({
+    label: {
+      source: row.source === 'memory' ? 'memory' : 'ai',
+      confidence: row.confidence,
+      autoAccepted: row.status === 'auto-accepted',
+      agreed: row.agreed,
+    },
+    reviewedAt: row.reviewedAt,
+  }));
+}
+
+async function classificationLabels(): Promise<ClassificationLabel[]> {
+  return (await datedClassificationLabels()).map((row) => row.label);
 }
 
 /** The column is free text; the harness's tiers are three. Anything else is absent. */

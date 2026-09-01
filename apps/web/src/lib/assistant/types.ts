@@ -60,6 +60,24 @@ export const marketCitation = (ref: string, label: string): AssistantCitation =>
   href: ref,
 });
 
+/**
+ * The firm's own prior work: its record, so `workspace`, but its ref is a
+ * document id rather than a route and most of them have no screen that shows
+ * one document. `href` is therefore whatever the corpus could supply, which is
+ * usually nothing — a precedent is checked by reading the brief, and the ref
+ * is what a reader needs to find it.
+ */
+export const precedentCitation = (
+  ref: string,
+  label: string,
+  href: string | null,
+): AssistantCitation => ({
+  kind: 'workspace',
+  ref,
+  label,
+  href,
+});
+
 /** Knowledge has no screen to link to; the ref is the article id. */
 export const knowledgeCitation = (ref: string, label: string): AssistantCitation => ({
   kind: 'knowledge',

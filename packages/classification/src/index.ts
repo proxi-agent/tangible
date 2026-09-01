@@ -16,11 +16,29 @@ export {
   type MemoryRecord,
 } from './decide.js';
 export {
+  BUNDLE_TERMS,
+  INCLUDED_TERMS,
   bundledComponents,
   includedComponents,
+  mentions,
   type BundleSignal,
+  type BundleTerm,
   type IncludedSignal,
 } from './bundles.js';
+// The vocabulary above, held up against what the firm actually settled. Every
+// output is a proposal; nothing in here rewrites the list it grades.
+export {
+  CHALLENGE_PRECISION,
+  MIN_MENTIONS,
+  MIN_SUPPORT,
+  PROPOSE_PRECISION,
+  reviewBundleVocabulary,
+  type BundleTermChallenge,
+  type BundleTermProposal,
+  type BundleVocabularyReview,
+  type SettledDescription,
+  type WithheldPhrase,
+} from './bundle-learning.js';
 export {
   CLASSIFICATION_KEYS,
   EXCLUSION_CATEGORIES,

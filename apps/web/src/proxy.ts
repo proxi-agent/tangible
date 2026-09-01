@@ -47,6 +47,14 @@ export async function proxy(request: NextRequest) {
   /** The probe beside it is the scheduled runner again, and checks the same secret. */
   if (request.nextUrl.pathname === '/api/health/probe') return NextResponse.next();
 
+  /**
+   * And the weekly engine digest, which is the same runner a third time. Exact
+   * path, and note that it is deliberately *not* `/api/quality/digest` — that
+   * one is the firm's screen and must stay behind the session gate. The sibling
+   * `/send` is the only thing here a machine calls.
+   */
+  if (request.nextUrl.pathname === '/api/quality/digest/send') return NextResponse.next();
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return NextResponse.next();

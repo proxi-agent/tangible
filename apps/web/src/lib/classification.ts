@@ -406,6 +406,46 @@ export async function recordDecision(
       body.rationale ?? null,
     );
 
+    /**
+     * The label, written before the update that erases what it judges.
+     *
+     * This row is the only place the machine's answer survives a review, and it
+     * exists because `AUTO_ACCEPT_CONFIDENCE` was a number nothing could argue
+     * with: the classifier's confidence lived on the row a reviewer overwrote.
+     *
+     * Only the row the person looked at. `applyToMatching` below settles every
+     * twin of this description in the engagement, and those are one judgement
+     * inherited rather than forty made — recording them here would report a
+     * sample size nobody produced.
+     *
+     * And only where a machine answered. Re-opening a row another reviewer
+     * already confirmed measures one person against another, which is a
+     * different question and not this table's.
+     */
+    if (existing.source === 'ai' || existing.source === 'memory') {
+      await tx.insert(schema.classificationReviews).values({
+        engagementId: existing.engagementId,
+        assetId: existing.assetId,
+        classificationId: existing.id,
+        fingerprint: existing.fingerprint,
+        machineSource: existing.source,
+        machineCategoryKey: existing.categoryKey,
+        machineLifeClass: existing.lifeClassOverride,
+        machineConfidence: existing.confidence,
+        machineStatus: existing.status,
+        model: existing.model,
+        humanCategoryKey: body.categoryKey,
+        humanLifeClass: override,
+        // Strict: auto-accept would have applied the life class too, so a
+        // reviewer who kept the category and moved the class is a reviewer the
+        // bar should not have skipped.
+        agreed:
+          existing.categoryKey === body.categoryKey && existing.lifeClassOverride === override,
+        reviewedBy: reviewer,
+        reviewedAt: now,
+      });
+    }
+
     const set = {
       categoryKey: decision.categoryKey,
       lifeClassOverride: decision.lifeClassOverride,

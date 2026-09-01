@@ -41,13 +41,14 @@ export interface IncludedSignal {
   note: string;
 }
 
-interface Term {
+/** One wording, and the exclusion it argues for. */
+export interface BundleTerm {
   /** Matched case-insensitively on a word boundary. */
   match: string;
   exclusionKey: ExclusionKey;
 }
 
-const TERMS: readonly Term[] = [
+const TERMS: readonly BundleTerm[] = [
   { match: 'software', exclusionKey: 'excluded-intangible' },
   { match: 'licence', exclusionKey: 'excluded-intangible' },
   { match: 'license', exclusionKey: 'excluded-intangible' },
@@ -105,6 +106,36 @@ const INCLUDED: readonly { match: string; note: string }[] = [
 const boundary = (term: string) =>
   new RegExp(`(^|[^a-z0-9])${term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-z0-9]|$)`, 'i');
 
+/**
+ * Does this text use this wording, as a word rather than as a substring?
+ *
+ * Exported because the vocabulary review has to ask the same question this file
+ * asks, about phrases this file has never heard of. Two spellings of "is it in
+ * there" would be two places for "release contains lease" to come back.
+ */
+export function mentions(text: string, phrase: string): boolean {
+  return boundary(phrase).test(text);
+}
+
+/**
+ * The hand-written vocabulary, published so it can be argued with.
+ *
+ * `bundle-learning.ts` reads this to do two things the list cannot do for
+ * itself: avoid proposing a wording that already fires, and hold each of these
+ * up against what the firm's reviewers actually settled. A literal nobody can
+ * measure is a literal nobody can retire.
+ */
+export const BUNDLE_TERMS: readonly BundleTerm[] = TERMS;
+
+/**
+ * The wordings that must never become exclusion terms, whatever the record says.
+ *
+ * These are the costs that stay in. A phrase that overlaps one of them is
+ * withheld from proposal even when it predicts an exclusion well — see the
+ * reasoning in `bundle-learning.ts`, which is about which way an error costs.
+ */
+export const INCLUDED_TERMS: readonly string[] = INCLUDED.map((term) => term.match);
+
 const LABELS = new Map(EXCLUSION_CATEGORIES.map((rule) => [rule.key, rule]));
 
 /**
@@ -120,7 +151,7 @@ export function bundledComponents(description: string | null | undefined): Bundl
   const signals: BundleSignal[] = [];
   for (const term of TERMS) {
     if (seen.has(term.exclusionKey)) continue;
-    if (!boundary(term.match).test(description)) continue;
+    if (!mentions(description, term.match)) continue;
     const rule = LABELS.get(term.exclusionKey);
     if (!rule) continue;
     seen.add(term.exclusionKey);
@@ -141,7 +172,7 @@ export function includedComponents(description: string | null | undefined): Incl
   const signals: IncludedSignal[] = [];
   for (const term of INCLUDED) {
     if (seen.has(term.note)) continue;
-    if (!boundary(term.match).test(description)) continue;
+    if (!mentions(description, term.match)) continue;
     seen.add(term.note);
     signals.push({ phrase: term.match, note: term.note });
   }

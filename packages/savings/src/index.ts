@@ -68,3 +68,16 @@ export {
   type AcceptanceObservation,
   type LearnedAcceptance,
 } from './acceptance.js';
+export {
+  adjustAcceptance,
+  learnSignalLifts,
+  liftFor,
+  MAX_LIFT,
+  MIN_ARM,
+  MIN_LIFT,
+  SIGNAL_PRIOR_STRENGTH,
+  type AppliedLift,
+  type SignalLift,
+  type SignalLiftModel,
+  type SignalOutcome,
+} from './signal-acceptance.js';

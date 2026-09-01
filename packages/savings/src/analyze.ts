@@ -26,6 +26,7 @@ import {
 } from '@tangible/valuation';
 import { confidenceFor, signal } from './confidence.js';
 import { modelScore, type DetectionModelFit } from './model.js';
+import { liftFor, type SignalLift } from './signal-acceptance.js';
 import {
   carryForwardPlans,
   classLife,
@@ -202,6 +203,15 @@ export interface SavingsInput {
    */
   acceptanceEvidence?: AcceptanceEvidenceLine[];
   /**
+   * What each piece of evidence turned out to be worth to a district, measured
+   * on the firm's closed positions. See `signal-acceptance.ts`.
+   *
+   * A plain array rather than a prepared lookup, deliberately: this input is
+   * checkpointed and replayed, and a `Map` survives neither. The lookup is
+   * rebuilt per row, which is a filter over a list a dozen long.
+   */
+  signalLifts?: SignalLift[];
+  /**
    * Coefficients fitted from the firm's own decisions, for the findings that
    * have enough of them.
    *
@@ -308,6 +318,7 @@ function rowFor(args: {
   /** Whose correction statute the prior years run on. */
   jurisdictionId?: string | null;
   acceptanceOverrides?: Record<string, number>;
+  signalLifts?: SignalLift[];
   model?: DetectionModelFit | null;
 }): FindingRow {
   const { asset, assessedAsFiled, correctedValue, basis } = args;
@@ -328,6 +339,11 @@ function rowFor(args: {
     firstExposedYear: args.firstExposedYear ?? null,
     jurisdictionId: args.jurisdictionId ?? null,
     acceptanceOverrides: args.acceptanceOverrides,
+    // The signals the row was *actually* flagged on, including anything an
+    // external source added, because that is the set a future outcome will be
+    // attributed to. Asking the lift model about a smaller set than the claim
+    // will freeze would price the row on evidence it is not making.
+    acceptanceLift: liftFor(args.signalLifts ?? [], args.findingKey, confidence.signals),
   });
   const prior = recovery === null ? null : recoverySignal(recovery);
   return {
@@ -842,6 +858,7 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
       taxYear: input.taxYear,
       jurisdictionId: input.jurisdictionId,
       acceptanceOverrides: input.acceptanceOverrides,
+      signalLifts: input.signalLifts,
       model: input.model ?? null,
     });
   };

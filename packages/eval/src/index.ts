@@ -15,6 +15,8 @@ export {
   LABEL_TARGET,
   MIN_JUDGED,
 } from './metrics.js';
+export { autoAcceptReport } from './auto-accept.js';
+export { diffEngineFacts, renderDigest, FIRM_FACTOR, MOVE_THRESHOLD } from './digest.js';
 export {
   runValuationGolden,
   runValuationGoldens,
