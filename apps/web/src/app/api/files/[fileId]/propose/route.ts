@@ -8,6 +8,7 @@ import {
 import { parseWorkbook, type ParsedWorkbook } from '@tangible/far';
 import type { SheetSummary } from '@tangible/types';
 import { answeredAsks, syncAsks } from '@/lib/asks';
+import { hintsForFile } from '@/lib/mapping-memory';
 import { downloadFarFile } from '@/lib/far-storage';
 import { HttpError, handle } from '@/lib/route';
 import { farFileDto, fetchFarFile } from '@/lib/workspace';
@@ -53,9 +54,27 @@ export function POST(
     // how an answer becomes a mapping.
     const answers = await answeredAsks(fileId);
 
+    /**
+     * What the firm has already settled about these headers, deduped to a
+     * vocabulary. Conflicted rows are held back: a header two reviewers read
+     * differently is exactly the one the model should decide for itself from
+     * the rows, and the review grid shows the disagreement to a person anyway.
+     */
+    const hints = await hintsForFile(row);
+    const memory = [
+      ...new Map(
+        hints
+          .filter((hint) => !hint.conflicted)
+          .map((hint) => [
+            `${hint.header}\u0000${hint.field}`,
+            { header: hint.header, field: hint.field, confirmations: hint.confirmations },
+          ]),
+      ).values(),
+    ];
+
     let result;
     try {
-      const context = { filename: row.originalFilename, answers };
+      const context = { filename: row.originalFilename, answers, memory };
       result = workbook
         ? await proposeVerifiedMapping(workbook, summaries, context)
         : await proposeMapping(summaries, context);

@@ -317,6 +317,39 @@ export const UpdateAskRequestSchema = z
   });
 export type UpdateAskRequest = z.infer<typeof UpdateAskRequestSchema>;
 
+/**
+ * What the firm has settled about a header it is looking at again.
+ *
+ * A hint is memory speaking about one column of one sheet: this header text has
+ * been pointed at this field before, this many times, and here is whether
+ * anybody disagreed. It is never a decision — the model gets the unconflicted
+ * ones as vocabulary, the review grid shows all of them beside the dropdown,
+ * and the person confirming is still the only thing that writes an asset.
+ */
+export const MappingMemoryHintSchema = z.object({
+  sheetName: z.string(),
+  /** 0-based column the header sits in, on this file. */
+  index: z.number().int().nonnegative(),
+  /** The header as this file writes it — what the reviewer sees in the grid. */
+  header: z.string(),
+  /** The field the firm has pointed this header at. */
+  field: CanonicalAssetFieldSchema,
+  /** How many times a person has confirmed it. */
+  confirmations: z.number().int().positive(),
+  /** Set when reviewers have settled this header two ways; the hint stops asserting. */
+  conflicted: z.boolean(),
+  /** The field the disagreement was with, so the grid can name both. */
+  conflictingField: CanonicalAssetFieldSchema.nullable(),
+});
+
+export type MappingMemoryHint = z.infer<typeof MappingMemoryHintSchema>;
+
+export const MappingMemoryResponseSchema = z.object({
+  hints: z.array(MappingMemoryHintSchema),
+});
+
+export type MappingMemoryResponse = z.infer<typeof MappingMemoryResponseSchema>;
+
 export const FarMappingProposalSchema = FarMappingSchema.extend({
   /** The model's own read on how safe this mapping is to trust unreviewed. */
   confidence: z.number().min(0).max(1),
@@ -436,6 +469,18 @@ export const NormalizationResultSchema = z.object({
   changedCount: z.number().int().nonnegative(),
   /** Assets the graph holds that this register did not mention. Not disposals. */
   absentCount: z.number().int().nonnegative(),
+  /**
+   * What the confirmed mapping taught the firm's header memory. Optional
+   * because a confirm that lands with the memory table unreachable is still a
+   * successful import — the assets are what the caller asked for, and the
+   * learning is a by-product it is merely told about.
+   */
+  learned: z
+    .object({
+      headers: z.number().int().nonnegative(),
+      conflicts: z.number().int().nonnegative(),
+    })
+    .optional(),
 });
 
 export type NormalizationResult = z.infer<typeof NormalizationResultSchema>;

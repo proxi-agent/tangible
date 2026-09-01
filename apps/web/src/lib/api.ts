@@ -91,6 +91,7 @@ import type {
   LineMappingDecisionResult,
   LineMappingRunResult,
   MappedPriorLine,
+  MappingMemoryResponse,
   MarketOverview,
   NormalizationResult,
   OpenYears,
@@ -1139,6 +1140,13 @@ export const api = {
 
   /** The asks ledger for a file — every question the mapping raised. */
   fileAsks: (fileId: string) => request<{ items: AskRecord[] }>(`/files/${fileId}/asks`),
+
+  /**
+   * What the firm already knows about this file's column headers, from every
+   * mapping anybody here has confirmed. Advisory — the reviewer still decides.
+   */
+  fileMappingMemory: (fileId: string) =>
+    request<MappingMemoryResponse>(`/files/${fileId}/mapping-memory`),
 
   /** Every question outstanding against a season: mapping asks and findings. */
   engagementAsks: (engagementId: string) =>

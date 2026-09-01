@@ -12,6 +12,8 @@ export {
   proposeMapping,
   proposeVerifiedMapping,
   type AskAnswer,
+  type HeaderMemory,
+  type MappingContext,
   type MappingProposalResult,
   type VerifiedMappingResult,
 } from './mapping.js';

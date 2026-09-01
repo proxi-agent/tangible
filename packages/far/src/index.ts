@@ -15,3 +15,15 @@ export {
 export { dateValue, isoDate, numberValue, textValue, yearValue } from './values.js';
 export { verifyMapping, type VerifyResult } from './verify.js';
 export { askFingerprint, askLooseFingerprint, planAskSync, type AskSyncPlan, type ExistingAsk } from './asks.js';
+export {
+  harvestHeaderDecisions,
+  headerFingerprint,
+  headerFingerprints,
+  headerHints,
+  headersFromSummaries,
+  headersFromWorkbook,
+  memoryDisagreements,
+  type HeaderDecision,
+  type HeaderMemoryRecord,
+  type SheetHeaders,
+} from './header-memory.js';

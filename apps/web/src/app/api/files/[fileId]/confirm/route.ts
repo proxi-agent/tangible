@@ -1,11 +1,17 @@
 import { eq } from 'drizzle-orm';
 import { after } from 'next/server';
-import { applyMapping, parseWorkbook } from '@tangible/far';
+import {
+  applyMapping,
+  harvestHeaderDecisions,
+  headersFromWorkbook,
+  parseWorkbook,
+} from '@tangible/far';
 import { ConfirmMappingRequestSchema, type NormalizationResult } from '@tangible/types';
 import { handle } from '@/lib/route';
 import { applyImportBatch } from '@/lib/asset-graph';
 import { downloadFarFile } from '@/lib/far-storage';
 import { executeRun, requestRun } from '@/lib/runs';
+import { rememberHeaderDecisions } from '@/lib/mapping-memory';
 import { fetchEngagement, fetchFarFile } from '@/lib/workspace';
 import { requireDb, schema } from '@/lib/workspace-db';
 
@@ -60,6 +66,30 @@ export function POST(
       actor: row.uploadedBy,
     });
 
+    /**
+     * The confirm is the moment a person settled what these headers mean, and
+     * it is the only moment that is true — the proposal was a guess and the
+     * grid was a draft. So the headers are harvested here, from the workbook
+     * rather than the preview, which is how a column past the preview's
+     * fortieth is learned from at all.
+     *
+     * Best-effort for the same reason the run is: the assets are already in the
+     * graph, and a memory write that failed must not fail an import that
+     * worked. The next confirm of the same header will teach it again.
+     */
+    let learned: { headers: number; conflicts: number } | undefined;
+    try {
+      const remembered = await rememberHeaderDecisions({
+        decisions: harvestHeaderDecisions(headersFromWorkbook(workbook, mapping), mapping),
+        farFileId: fileId,
+        reviewer: row.uploadedBy,
+        now: new Date(),
+      });
+      learned = { headers: remembered.remembered, conflicts: remembered.conflicts };
+    } catch (error) {
+      console.error('[files] imported, but the header memory was not updated', fileId, error);
+    }
+
     const db = requireDb();
     await db
       .update(schema.farFiles)
@@ -100,6 +130,7 @@ export function POST(
       matchedCount: batch.matchedCount,
       changedCount: batch.changedCount,
       absentCount: batch.absentCount,
+      learned,
     };
   });
 }

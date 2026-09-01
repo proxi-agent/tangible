@@ -10,6 +10,7 @@ import type {
   FarFile,
   FarMapping,
   MappingAsk,
+  MappingMemoryHint,
   MappingVerification,
   NormalizationResult,
   SheetMapping,
@@ -57,6 +58,18 @@ export default function MappingReviewPage() {
   } = useQuery({
     queryKey: ['far-file', fileId],
     queryFn: () => api.farFile(fileId),
+  });
+
+  /**
+   * What the firm has settled about these headers on every register it has
+   * confirmed before. Advisory the whole way down: it annotates the grid and
+   * offers to fill the columns nobody has decided yet, and it never moves a
+   * selection on its own. Silent if the call fails — a mapping screen without
+   * memory is the screen as it was.
+   */
+  const { data: memory } = useQuery({
+    queryKey: ['file-mapping-memory', fileId],
+    queryFn: () => api.fileMappingMemory(fileId),
   });
 
   const [mapping, setMapping] = useState<FarMapping | null>(null);
@@ -150,6 +163,49 @@ export default function MappingReviewPage() {
     ? mapping.sheets.find((s) => s.sheetName === summary.name)
     : undefined;
 
+  /**
+   * The hints that still describe what the reviewer is looking at.
+   *
+   * The server matched memory against the header row the file was last
+   * understood to have. If the reviewer has since moved the header row, those
+   * words are no longer in that cell, and a hint about them would be pointing
+   * at a column for a reason that is no longer on screen. Comparing the
+   * remembered text against the live header cell drops exactly those, so
+   * changing the header row makes hints disappear rather than mislead.
+   */
+  const headerCells =
+    summary && sheetMapping?.headerRow !== null && sheetMapping !== undefined
+      ? (summary.preview[sheetMapping.headerRow] ?? [])
+      : [];
+  const hints = new Map<number, MappingMemoryHint>();
+  for (const hint of memory?.hints ?? []) {
+    if (!summary || hint.sheetName !== summary.name) continue;
+    if ((headerCells[hint.index] ?? null) !== hint.header) continue;
+    hints.set(hint.index, hint);
+  }
+
+  /**
+   * Columns memory would fill: settled, unconflicted, and still empty here.
+   *
+   * A field two remembered headers both claim is dropped rather than picked
+   * between — the same rule the harvest uses on a file that contradicts
+   * itself. Memory that cannot say which column is the cost column has not
+   * earned the right to choose one.
+   */
+  const claimed = new Map<CanonicalAssetField, number>();
+  for (const hint of hints.values()) {
+    if (hint.conflicted) continue;
+    if (sheetMapping && fieldAt(sheetMapping, hint.index) !== null) continue;
+    claimed.set(hint.field, (claimed.get(hint.field) ?? 0) + 1);
+  }
+  const fillable = [...hints.values()].filter(
+    (hint) =>
+      !hint.conflicted &&
+      sheetMapping !== undefined &&
+      fieldAt(sheetMapping, hint.index) === null &&
+      claimed.get(hint.field) === 1,
+  );
+
   const updateSheet = (sheetName: string, patch: Partial<SheetMapping>) => {
     setEdited(true);
     setMapping((current) =>
@@ -181,6 +237,41 @@ export default function MappingReviewPage() {
         }),
       };
     });
+  };
+
+  /**
+   * Fill the empty columns from memory, in one edit rather than a click each.
+   *
+   * Only ever writes columns that were null, so nothing the reviewer or the
+   * model decided is overwritten; and it sets `edited`, so the result is the
+   * reviewer's mapping to confirm like any other.
+   */
+  const fillFromMemory = (sheetName: string, picks: readonly MappingMemoryHint[]) => {
+    if (picks.length === 0) return;
+    setEdited(true);
+    const assigned = new Map(picks.map((pick) => [pick.index, pick.field]));
+    const taken = new Set(assigned.values());
+    setMapping((current) =>
+      current
+        ? {
+            sheets: current.sheets.map((s) => {
+              if (s.sheetName !== sheetName) return s;
+              return {
+                ...s,
+                columns: s.columns.map((column) => {
+                  const field = assigned.get(column.index);
+                  if (field !== undefined) return { ...column, field };
+                  // One field, one column — same rule the single select keeps.
+                  if (column.field !== null && taken.has(column.field)) {
+                    return { ...column, field: null };
+                  }
+                  return column;
+                }),
+              };
+            }),
+          }
+        : current,
+    );
   };
 
   const checklist = mappingChecklist(mapping);
@@ -341,6 +432,33 @@ export default function MappingReviewPage() {
             </span>
           </div>
 
+          {/* What the firm already knows about these headers. It sits above the
+              grid rather than inside a column, because the offer is about the
+              sheet; the per-column notes below say which columns it means. */}
+          {hints.size > 0 ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 border-b border-[var(--color-hairline)] bg-[var(--color-plane)] px-5 py-2.5 text-xs">
+              <span className="text-[var(--color-ink-secondary)]">
+                {count(hints.size)} {plural(hints.size, 'header')} on this sheet{' '}
+                {plural(hints.size, 'has', 'have')} been mapped here before.
+              </span>
+              {fillable.length > 0 && sheetMapping.include ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  onClick={() => fillFromMemory(summary.name, fillable)}
+                >
+                  Fill {count(fillable.length)} empty {plural(fillable.length, 'column')} from
+                  memory
+                </Button>
+              ) : null}
+              <InfoTip
+                title="What the firm remembers"
+                content="Every confirmed mapping records which field each header was pointed at. These notes are that record — they never change a selection on their own, and a header two reviewers settled differently says so instead of asserting either answer."
+                size={12}
+              />
+            </div>
+          ) : null}
+
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-xs">
               <thead>
@@ -349,11 +467,17 @@ export default function MappingReviewPage() {
                     #
                   </th>
                   {Array.from({ length: Math.min(summary.colCount, 40) }, (_, index) => (
-                    <th key={index} className="min-w-36 px-1.5 py-2">
+                    <th key={index} className="min-w-36 px-1.5 py-2 align-top">
                       <FieldSelect
                         value={fieldAt(sheetMapping, index)}
                         onChange={(field) => setField(summary.name, index, field)}
                         disabled={!sheetMapping.include}
+                      />
+                      <MemoryNote
+                        hint={hints.get(index)}
+                        current={fieldAt(sheetMapping, index)}
+                        disabled={!sheetMapping.include}
+                        onApply={(field) => setField(summary.name, index, field)}
                       />
                     </th>
                   ))}
@@ -444,6 +568,17 @@ export default function MappingReviewPage() {
             <Stat label="Rows with warnings" value={count(result.warningCount)} />
             <Stat label="Rows skipped" value={count(result.skippedCount)} />
           </div>
+          {result.learned && result.learned.headers > 0 ? (
+            <p className="border-t border-[var(--color-hairline)] px-5 py-3 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+              {count(result.learned.headers)} column{' '}
+              {plural(result.learned.headers, 'header')} recorded against the firm's memory — the
+              next register that uses {plural(result.learned.headers, 'it', 'them')} arrives
+              already mapped.
+              {result.learned.conflicts > 0
+                ? ` ${count(result.learned.conflicts)} ${plural(result.learned.conflicts, 'header')} ${plural(result.learned.conflicts, 'was', 'were')} mapped differently here than last time; ${plural(result.learned.conflicts, 'it', 'they')} will now ask rather than suggest.`
+                : ''}
+            </p>
+          ) : null}
           {result.skipped.length > 0 ? (
             <div className="border-t border-[var(--color-hairline)] px-5 py-3">
               <p className="text-2xs font-medium tracking-wide text-[var(--color-ink-muted)] uppercase">
@@ -530,6 +665,66 @@ function FieldSelect({
         </option>
       ))}
     </Select>
+  );
+}
+
+/**
+ * What the firm has settled about one column's header, said in a line.
+ *
+ * Four things it can say, and the distinction between them is the whole point:
+ * a header nobody has settled says nothing at all; one that agrees with the
+ * current selection confirms quietly; one that disagrees offers itself and
+ * waits; and one two reviewers have settled differently reports the
+ * disagreement without taking a side. The last case is why memory is not a
+ * default — a "Cost" column that is original cost at one client and net book
+ * value at the next is the exact shape of mistake that silently moves money,
+ * and the honest answer there is to say so and let a person read the rows.
+ */
+function MemoryNote({
+  hint,
+  current,
+  disabled,
+  onApply,
+}: {
+  hint: MappingMemoryHint | undefined;
+  current: CanonicalAssetField | null;
+  disabled: boolean;
+  onApply: (field: CanonicalAssetField) => void;
+}) {
+  if (!hint) return null;
+  const times = `${count(hint.confirmations)}×`;
+
+  if (hint.conflicted) {
+    return (
+      <p className="text-2xs mt-1 leading-snug font-normal text-[var(--color-ink-muted)]">
+        Settled both ways here: {CANONICAL_FIELD_INFO[hint.field].label}
+        {hint.conflictingField ? ` and ${CANONICAL_FIELD_INFO[hint.conflictingField].label}` : ''}.
+        Read the rows.
+      </p>
+    );
+  }
+
+  if (current === hint.field) {
+    return (
+      <p className="text-2xs mt-1 flex items-center gap-1 leading-snug font-normal text-[var(--color-ink-muted)]">
+        <Check size={10} strokeWidth={3} className="shrink-0 text-[var(--color-good)]" />
+        Matches the firm, {times}
+      </p>
+    );
+  }
+
+  return (
+    <p className="text-2xs mt-1 leading-snug font-normal text-[var(--color-warning)]">
+      Firm maps this to {CANONICAL_FIELD_INFO[hint.field].label} ({times}).{' '}
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => onApply(hint.field)}
+        className="underline decoration-dotted disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        use it
+      </button>
+    </p>
   );
 }
 

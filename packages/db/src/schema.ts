@@ -887,6 +887,51 @@ export const classificationMemory = pgTable(
 ).enableRLS();
 
 /**
+ * What a header in a register means, once a person has settled it.
+ *
+ * The other half of the same idea as `classification_memory`, one step earlier
+ * in the pipeline. That table remembers what an *asset* is; this one remembers
+ * what a *column* is — "Acq. Cost" is original cost, "In Svc Date" is the
+ * in-service date — so the fortieth export of the same accounting report does
+ * not arrive as unfamiliar as the first. The key is the folded header text, not
+ * the column position: positions move between exports and the words do not.
+ *
+ * A separate table rather than a third vocabulary inside `classification_memory`,
+ * which does hold two. Those two share a table because they share an *answer
+ * space* — both name a valuation category, and `isKnownClassification` is the
+ * guard that protects the classification path from a key that does not. A
+ * canonical asset field is a different answer space entirely, and storing one
+ * in `category_key` would make that guard false for every row here.
+ *
+ * The conflict rule is the same one, and for the same reason: two reviewers who
+ * settle "Cost" differently have discovered that the header does not decide the
+ * field, and the row stops asserting itself until somebody agrees with one of
+ * them. Firm-wide like its sibling — no `client_id`, RLS on with no policy, so
+ * a client connection cannot read a word of it.
+ */
+export const mappingMemory = pgTable(
+  'mapping_memory',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** The folded header text — see `headerFingerprint` in @tangible/far. */
+    fingerprint: text('fingerprint').notNull(),
+    /** A representative header as some register actually wrote it. */
+    sampleHeader: text('sample_header').notNull(),
+    /** A CanonicalAssetField. Never null: an unmapped column is not a decision. */
+    field: text('field').notNull(),
+    confirmations: integer('confirmations').notNull().default(1),
+    /** Set when a later confirmation disagreed; the row stops asserting itself. */
+    conflicted: boolean('conflicted').notNull().default(false),
+    conflictingField: text('conflicting_field'),
+    sourceFarFileId: uuid('source_far_file_id'),
+    lastConfirmedBy: text('last_confirmed_by'),
+    lastConfirmedAt: timestamp('last_confirmed_at', { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('mapping_memory_fingerprint_unique').on(table.fingerprint)],
+).enableRLS();
+
+/**
  * A document the client filed or received: last year's rendition, an assessment
  * notice.
  *
@@ -2450,6 +2495,7 @@ export type NewAssetPositionRow = typeof assetPositions.$inferInsert;
 export type AssetClassificationRow = typeof assetClassifications.$inferSelect;
 export type NewAssetClassificationRow = typeof assetClassifications.$inferInsert;
 export type ClassificationMemoryRow = typeof classificationMemory.$inferSelect;
+export type MappingMemoryRow = typeof mappingMemory.$inferSelect;
 export type PriorDocumentRow = typeof priorDocuments.$inferSelect;
 export type NewPriorDocumentRow = typeof priorDocuments.$inferInsert;
 export type PriorReturnLineRow = typeof priorReturnLines.$inferSelect;

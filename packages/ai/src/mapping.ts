@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   CANONICAL_ASSET_FIELDS,
   CANONICAL_FIELD_INFO,
+  type CanonicalAssetField,
   type FarMappingProposal,
   type MappingAsk,
   type MappingVerification,
@@ -105,15 +106,52 @@ function renderAnswers(answers: AskAnswer[]): string {
   ].join('\n');
 }
 
+/** A header this firm has settled before, as the header reads on *this* file. */
+export interface HeaderMemory {
+  header: string;
+  field: CanonicalAssetField;
+  confirmations: number;
+}
+
+/**
+ * The firm's own column vocabulary, built one confirmed mapping at a time.
+ *
+ * Evidence, and deliberately not an instruction. The model can see the rows
+ * under a header and memory cannot: a column headed "Cost" that has been
+ * original cost on nine registers can still be net book value on this one, and
+ * that is precisely the case where following memory would poison every number
+ * downstream. So the wording asks for the data to win and for the departure to
+ * be said out loud — a disagreement a reviewer can read is the point, since the
+ * screen flags it against memory either way.
+ */
+function renderMemory(memory: HeaderMemory[]): string {
+  return [
+    'Column headers this firm has already confirmed on other registers, with how many times a reviewer settled each:',
+    ...memory.map(
+      (entry) =>
+        `- ${JSON.stringify(entry.header)} → ${entry.field} (confirmed ${entry.confirmations}×)`,
+    ),
+    'Treat these as strong evidence about what a header means — they are past human decisions, not guesses. But you can see the rows beneath the header and this list cannot: where the data plainly contradicts a remembered field, follow the data and say so in the rationale.',
+  ].join('\n');
+}
+
+export interface MappingContext {
+  filename: string;
+  answers?: AskAnswer[];
+  /** Headers the firm has settled before. Unconflicted rows only. */
+  memory?: HeaderMemory[];
+}
+
 export async function proposeMapping(
   summaries: SheetSummary[],
-  context: { filename: string; answers?: AskAnswer[] },
+  context: MappingContext,
 ): Promise<MappingProposalResult> {
   const { parsed, model } = await parseStructured({
     system: SYSTEM,
     user: [
       `Workbook: ${JSON.stringify(context.filename)}`,
       summaries.map(renderSheet).join('\n\n'),
+      ...(context.memory && context.memory.length > 0 ? [renderMemory(context.memory)] : []),
       ...(context.answers && context.answers.length > 0 ? [renderAnswers(context.answers)] : []),
     ].join('\n\n'),
     schema: ProposalOutputSchema,
@@ -226,7 +264,7 @@ export interface VerifiedMappingResult extends MappingProposalResult {
 export async function proposeVerifiedMapping(
   workbook: ParsedWorkbook,
   summaries: SheetSummary[],
-  context: { filename: string; answers?: AskAnswer[] },
+  context: MappingContext,
 ): Promise<VerifiedMappingResult> {
   const workbookText = summaries.map(renderSheet).join('\n\n');
 
@@ -240,6 +278,7 @@ export async function proposeVerifiedMapping(
       user: [
         `Workbook: ${JSON.stringify(context.filename)}`,
         workbookText,
+        ...(context.memory && context.memory.length > 0 ? [renderMemory(context.memory)] : []),
         ...(context.answers && context.answers.length > 0 ? [renderAnswers(context.answers)] : []),
         REVISE,
         `Your previous mapping:\n${JSON.stringify({ sheets: proposal.sheets })}`,
