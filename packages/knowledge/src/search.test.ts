@@ -44,6 +44,11 @@ describe('corpus integrity', () => {
 
   it('cites authority for everything that is not a product article', () => {
     for (const article of KNOWLEDGE) {
+      // `product` is the whole exemption, including for the method articles
+      // that only describe how Tangible weighs evidence — those carry both
+      // topics precisely so this rule does not have to be widened. A `method`
+      // article that states a rule of tax carries the detector's own citation
+      // and is caught here if it stops.
       const isProduct = article.topics.includes('product');
       if (isProduct) continue;
       expect(article.authority.length, article.id).toBeGreaterThan(0);
@@ -85,6 +90,13 @@ describe('corpus integrity', () => {
       'product-two-wings',
       'product-findings-and-dispositions',
       'product-ready-and-blockers',
+      // The three method articles that describe how this product weighs
+      // evidence rather than what a state requires. A confidence threshold is
+      // not Texas law. The other five method articles state tax rules, carry
+      // citations, and are tagged `tx` like anything else that does.
+      'method-kinds-and-effects',
+      'method-confidence-tiers',
+      'method-register-limits',
     ]);
     const untagged = KNOWLEDGE.filter((article) => !article.jurisdiction).map(
       (article) => article.id,
@@ -185,6 +197,38 @@ describe('searchKnowledge', () => {
     }
   });
 
+  it('defines a ghost asset from the phrase a preparer uses', () => {
+    const ids = searchKnowledge('what counts as a ghost asset').map((hit) => hit.article.id);
+    expect(ids[0]).toBe('method-ghost-assets');
+  });
+
+  it('separates a recorded disposal from one that is only suspected', () => {
+    const ids = searchKnowledge('assets that look retired but were never marked disposed').map(
+      (hit) => hit.article.id,
+    );
+    expect(ids).toContain('method-suspected-retired');
+  });
+
+  it('finds the confidence thresholds from a reviewer question', () => {
+    const ids = searchKnowledge('why is this finding low confidence').map((hit) => hit.article.id);
+    expect(ids).toContain('method-confidence-tiers');
+  });
+
+  it('answers why a screening finding carries no dollar figure', () => {
+    const ids = searchKnowledge('screening finding has no number, measured or modeled').map(
+      (hit) => hit.article.id,
+    );
+    expect(ids).toContain('method-kinds-and-effects');
+  });
+
+  it('reaches the method articles under a Texas filter without excluding the neutral ones', () => {
+    const ids = searchKnowledge('ghost asset confidence and what the register cannot prove', {
+      jurisdictions: ['tx'],
+    }).map((hit) => hit.article.id);
+    expect(ids).toContain('method-ghost-assets');
+    expect(ids).toContain('method-register-limits');
+  });
+
   it('honours the limit', () => {
     expect(searchKnowledge('rendition', { limit: 2 }).length).toBeLessThanOrEqual(2);
   });
@@ -213,6 +257,12 @@ describe('getArticle and listArticles', () => {
 
   it('lists the whole corpus when no topic is given', () => {
     expect(listArticles()).toHaveLength(KNOWLEDGE.length);
+  });
+
+  it('lists the method articles under their own topic', () => {
+    const method = listArticles(['method']);
+    expect(method.length).toBe(8);
+    for (const article of method) expect(article.topics).toContain('method');
   });
 
   it('filters by topic', () => {

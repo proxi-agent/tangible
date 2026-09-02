@@ -4,6 +4,7 @@ import { DISPUTE_ARTICLES } from './disputes.js';
 import { VALUE_ARTICLES } from './value.js';
 import { PRACTICE_ARTICLES } from './practice.js';
 import { FLORIDA_ARTICLES } from './florida.js';
+import { METHOD_ARTICLES } from './method.js';
 
 /**
  * The whole corpus: Texas in the order a season runs — file the return, argue
@@ -16,6 +17,11 @@ import { FLORIDA_ARTICLES } from './florida.js';
  * alternating down a page invite exactly the confusion the `jurisdiction` tag
  * exists to prevent. Retrieval does not care about this order; people do.
  *
+ * The method articles come last and belong to neither state's season. They
+ * describe how this practice reads a register — what each detector claims, how
+ * sure it is, what would settle it — and a reader reaches for them from a
+ * findings screen rather than from a calendar.
+ *
  * Ordering is not cosmetic for the rest either. Retrieval breaks ties by
  * article id, but the listing and the topic filter both walk this array, so a
  * screen that shows the corpus shows it in the order the work happens rather
@@ -27,6 +33,7 @@ export const KNOWLEDGE: readonly KnowledgeArticle[] = [
   ...DISPUTE_ARTICLES,
   ...PRACTICE_ARTICLES,
   ...FLORIDA_ARTICLES,
+  ...METHOD_ARTICLES,
 ];
 
 export {
@@ -35,4 +42,5 @@ export {
   VALUE_ARTICLES,
   PRACTICE_ARTICLES,
   FLORIDA_ARTICLES,
+  METHOD_ARTICLES,
 };

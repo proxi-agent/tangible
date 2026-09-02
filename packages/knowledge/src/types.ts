@@ -58,6 +58,14 @@ export const KNOWLEDGE_TOPICS = [
   'county-data',
   /** How this product works — what a screen means, what a status implies. */
   'product',
+  /**
+   * How this practice reads a register: what each detector claims, how sure it
+   * is, and what would settle it. Distinct from `product` because a method
+   * article is usually also a statement about tax — but an article that only
+   * describes how Tangible weighs evidence carries both topics, and carries no
+   * authority for the same reason the `product` ones do not.
+   */
+  'method',
 ] as const;
 
 export type KnowledgeTopic = (typeof KNOWLEDGE_TOPICS)[number];
