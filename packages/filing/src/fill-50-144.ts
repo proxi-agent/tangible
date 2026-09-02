@@ -382,7 +382,17 @@ export function planFormFill(input: FormFillInput): FormFillPlan {
   });
 
   const estimate = rendition.totalGoodFaithEstimate;
-  if (usingEstimate && estimate !== null) {
+  if (rendition.certification.elected) {
+    // The 22.24(c) box. On a certifying return this is the filing: the
+    // schedules stay blank, and what the signer swears to is the reasonable
+    // belief that the property here is not worth more than the exemption. It
+    // is answered on either basis, because the belief rests on the district's
+    // own schedules rather than on a good faith estimate the form asked for.
+    // The printed figure is the form's, so the option name stays literal —
+    // a form for a year with a different exemption is a different pinned PDF.
+    choices.push({ field: 'Total market value of your property-2', option: '$125,000 or less' });
+    choices.push({ field: 'S5_market value', option: null });
+  } else if (usingEstimate && estimate !== null) {
     const under = estimate <= 125_000;
     choices.push({
       field: 'Total market value of your property-2',
@@ -421,82 +431,96 @@ export function planFormFill(input: FormFillInput): FormFillPlan {
     );
   }
 
-  // ---- Page 2: Schedules A through D -----------------------------------
-
-  fillListSchedule(
-    rendition,
-    'A',
-    'ScA:General Property Description by TypeCategory',
-    usingEstimate,
-    put,
-    overflow,
-  );
-  fillListSchedule(
-    rendition,
-    'B',
-    'ScB:Property Description by TypeCategory',
-    usingEstimate,
-    put,
-    overflow,
-  );
-  fillListSchedule(
-    rendition,
-    'C',
-    'ScC:Property Description by TypeCategory',
-    usingEstimate,
-    put,
-    overflow,
-  );
-
-  const vehicles = scheduleOf(rendition, 'D');
-  if (vehicles && vehicles.lines.length > 0) {
-    vehicles.lines.slice(0, PRINTED_ROWS).forEach((line, i) => {
-      const row = i + 1;
-      put(`ScD:Historical Cost When New Omit CentsRow${row}`, money(line.historicalCost));
-      if (line.yearAcquired !== null) put(`ScD:Year AcquiredRow${row}`, String(line.yearAcquired));
-      if (usingEstimate && line.goodFaithEstimate !== null) {
-        put(`ScD:Good Faith Estimate of Market ValueRow${row}`, money(line.goodFaithEstimate));
-      }
-    });
-    countOverflow(vehicles, 'Schedule D — vehicles', overflow);
+  if (rendition.certification.elected) {
+    // Not an oversight the district should read as one. 22.01(j-1) relieves
+    // the owner of rendering at this value, and 22.01(j-3) asks for the
+    // certification in Section 5 in its place, so every schedule goes out
+    // blank. The rendition still carries them — the file copy prints them, and
+    // next season compares against them — but none of it reaches the paper.
     omit(
-      'Schedule D year, make, model and VIN',
-      'The register carries cost and year, not vehicle identity. The form marks those columns ' +
-        'optional, but a district that cannot match the vehicle to its own source values it from ' +
-        'cost instead, which is usually the higher number.',
+      'Schedules A through F',
+      `Left blank on purpose. ${rendition.certification.reason} The certification in Section 5 stands in place of the schedules; the file copy keeps them so next season has something to compare to.`,
+      'warning',
     );
-  }
+  } else {
+    // ---- Page 2: Schedules A through D -----------------------------------
 
-  const inventory = scheduleOf(rendition, 'B');
-  if (inventory && inventory.lines.length > 0) {
-    omit(
-      'Inventory questions (Sept. 1 date, interstate commerce, freeport)',
-      'Three questions the form asks about inventory. Freeport in particular is worth an answer ' +
-        'rather than a blank — an exemption goes unclaimed if nobody ticks it.',
+    fillListSchedule(
+      rendition,
+      'A',
+      'ScA:General Property Description by TypeCategory',
+      usingEstimate,
+      put,
+      overflow,
     );
-  }
+    fillListSchedule(
+      rendition,
+      'B',
+      'ScB:Property Description by TypeCategory',
+      usingEstimate,
+      put,
+      overflow,
+    );
+    fillListSchedule(
+      rendition,
+      'C',
+      'ScC:Property Description by TypeCategory',
+      usingEstimate,
+      put,
+      overflow,
+    );
 
-  // ---- Page 3: Schedule E, on the printed ladder -----------------------
+    const vehicles = scheduleOf(rendition, 'D');
+    if (vehicles && vehicles.lines.length > 0) {
+      vehicles.lines.slice(0, PRINTED_ROWS).forEach((line, i) => {
+        const row = i + 1;
+        put(`ScD:Historical Cost When New Omit CentsRow${row}`, money(line.historicalCost));
+        if (line.yearAcquired !== null)
+          put(`ScD:Year AcquiredRow${row}`, String(line.yearAcquired));
+        if (usingEstimate && line.goodFaithEstimate !== null) {
+          put(`ScD:Good Faith Estimate of Market ValueRow${row}`, money(line.goodFaithEstimate));
+        }
+      });
+      countOverflow(vehicles, 'Schedule D — vehicles', overflow);
+      omit(
+        'Schedule D year, make, model and VIN',
+        'The register carries cost and year, not vehicle identity. The form marks those columns ' +
+          'optional, but a district that cannot match the vehicle to its own source values it from ' +
+          'cost instead, which is usually the higher number.',
+      );
+    }
 
-  const equipment = scheduleOf(rendition, 'E');
-  if (equipment) fillLadder(equipment, rendition.taxYear, usingEstimate, put, overflow);
+    const inventory = scheduleOf(rendition, 'B');
+    if (inventory && inventory.lines.length > 0) {
+      omit(
+        'Inventory questions (Sept. 1 date, interstate commerce, freeport)',
+        'Three questions the form asks about inventory. Freeport in particular is worth an answer ' +
+          'rather than a blank — an exemption goes unclaimed if nobody ticks it.',
+      );
+    }
 
-  // ---- Page 3: Schedule F ----------------------------------------------
+    // ---- Page 3: Schedule E, on the printed ladder -----------------------
 
-  const bailment = scheduleOf(rendition, 'F');
-  if (bailment && bailment.lines.length > 0) {
-    bailment.lines.slice(0, BAILMENT_ROWS).forEach((line, i) => {
-      put(`General Property DescriptionRow${i + 1}`, line.type);
-    });
-    countOverflow(bailment, 'Schedule F — property held but not owned', overflow, BAILMENT_ROWS);
-    omissions.push({
-      field: 'Schedule F owner names and addresses',
-      missing:
-        'Schedule F is a list of owners, and the register records leased-in property without ' +
-        'recording who it belongs to. The description goes on; the name and address the district ' +
-        'needs in order to assess the actual owner do not.',
-      severity: 'blocking',
-    });
+    const equipment = scheduleOf(rendition, 'E');
+    if (equipment) fillLadder(equipment, rendition.taxYear, usingEstimate, put, overflow);
+
+    // ---- Page 3: Schedule F ----------------------------------------------
+
+    const bailment = scheduleOf(rendition, 'F');
+    if (bailment && bailment.lines.length > 0) {
+      bailment.lines.slice(0, BAILMENT_ROWS).forEach((line, i) => {
+        put(`General Property DescriptionRow${i + 1}`, line.type);
+      });
+      countOverflow(bailment, 'Schedule F — property held but not owned', overflow, BAILMENT_ROWS);
+      omissions.push({
+        field: 'Schedule F owner names and addresses',
+        missing:
+          'Schedule F is a list of owners, and the register records leased-in property without ' +
+          'recording who it belongs to. The description goes on; the name and address the district ' +
+          'needs in order to assess the actual owner do not.',
+        severity: 'blocking',
+      });
+    }
   }
 
   return {

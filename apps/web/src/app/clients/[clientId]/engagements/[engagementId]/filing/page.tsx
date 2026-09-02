@@ -93,6 +93,10 @@ function FilingDraft() {
   const searchParams = useSearchParams();
   const [basis, setBasis] = useState<RenditionBasis>('cost');
   const [filedByAgent, setFiledByAgent] = useState(true);
+  // Three-valued on purpose. Undefined leaves the 22.01(j-3) election to the
+  // builder, which takes it wherever the site is eligible — the same posture
+  // the returns board runs on, so a row it calls a certification opens as one.
+  const [certify, setCertify] = useState<boolean | undefined>(undefined);
   // Null is "no return chosen". For the ordinary one-site engagement that is
   // also the answer, and the server resolves it to the only return there is.
   //
@@ -144,8 +148,8 @@ function FilingDraft() {
   const unchosen = (returns.data?.returns.length ?? 0) > 1 && locationId === null;
 
   const { data, error, isLoading } = useQuery({
-    queryKey: ['engagement-rendition', engagementId, basis, filedByAgent, locationId],
-    queryFn: () => api.rendition(engagementId, { basis, filedByAgent, locationId }),
+    queryKey: ['engagement-rendition', engagementId, basis, filedByAgent, certify, locationId],
+    queryFn: () => api.rendition(engagementId, { basis, filedByAgent, certify, locationId }),
     placeholderData: (previous) => previous,
     enabled: returns.data !== undefined && !unchosen,
   });
@@ -206,7 +210,7 @@ function FilingDraft() {
         }
         actions={
           <LinkButton
-            href={`/clients/${clientId}/engagements/${engagementId}/filing/form?basis=${basis}&agent=${filedByAgent}${site}`}
+            href={`/clients/${clientId}/engagements/${engagementId}/filing/form?basis=${basis}&agent=${filedByAgent}${certify === undefined ? '' : `&certify=${certify}`}${site}`}
           >
             <FileText size={13} strokeWidth={2} />
             View the form
@@ -234,6 +238,7 @@ function FilingDraft() {
           filedByAgent={filedByAgent}
           onBasis={setBasis}
           onAgent={setFiledByAgent}
+          onCertify={setCertify}
           rendition={data}
         />
         <Totals rendition={data} />
@@ -246,6 +251,7 @@ function FilingDraft() {
         locationId={locationId}
         basis={basis}
         filedByAgent={filedByAgent}
+        certify={certify}
         unchosen={(returns.data?.returns.length ?? 1) > 1 && locationId === null}
       />
       {data.decisions.length > 0 ? <Decisions rendition={data} /> : null}
@@ -411,14 +417,17 @@ function BasisControls({
   filedByAgent,
   onBasis,
   onAgent,
+  onCertify,
   rendition,
 }: {
   basis: RenditionBasis;
   filedByAgent: boolean;
   onBasis: (basis: RenditionBasis) => void;
   onAgent: (value: boolean) => void;
+  onCertify: (value: boolean) => void;
   rendition: Rendition;
 }) {
+  const { certification } = rendition;
   return (
     <div className="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-[var(--color-hairline)] px-5 py-3">
       <div className="flex items-center gap-2">
@@ -467,6 +476,27 @@ function BasisControls({
         Filed by us as agent
       </label>
 
+      {/* Shown only where the election is on the table: eligible, or taken over
+          the builder's objection and blocked for it. On an over-threshold site
+          there is no decision to make, and the "Filed as" tile says why. The
+          checkbox reflects what the draft actually is, not the last click, so
+          a site that becomes ineligible reads as un-certified. */}
+      {certification.eligible || certification.elected ? (
+        <label className="flex cursor-pointer items-center gap-1.5 text-xs text-[var(--color-ink-secondary)]">
+          <input
+            type="checkbox"
+            checked={certification.elected}
+            onChange={(e) => onCertify(e.target.checked)}
+            className="cursor-pointer"
+          />
+          <Tooltip title="Certification under Tax Code 22.01(j-3)" content={certification.reason}>
+            <span className="cursor-help underline decoration-dotted underline-offset-2">
+              Certify under the exemption instead of rendering
+            </span>
+          </Tooltip>
+        </label>
+      ) : null}
+
       <div
         className={cn(
           'ml-auto flex items-center gap-1.5 text-xs',
@@ -501,11 +531,24 @@ function Totals({ rendition }: { rendition: Rendition }) {
     {
       label: 'District schedule value',
       value: money(rendition.scheduleValue),
-      note: 'shown for comparison, not filed',
+      note: rendition.certification.elected
+        ? 'what the certification rests on'
+        : 'shown for comparison, not filed',
+    },
+    {
+      label: 'Filed as',
+      value: rendition.certification.elected ? 'Certification' : 'Full rendition',
+      note: rendition.certification.elected
+        ? `22.01(j-3) · ${money(rendition.certification.exemption)} exemption · no schedules`
+        : rendition.certification.eligible
+          ? 'the 22.01(j-3) certification is available and not taken'
+          : rendition.certification.value === null
+            ? 'no 22.01(j-3) election on this return'
+            : `over the ${money(rendition.certification.exemption)} exemption`,
     },
   ];
   return (
-    <div className="grid grid-cols-1 gap-px overflow-hidden border-b border-[var(--color-hairline)] sm:grid-cols-3">
+    <div className="grid grid-cols-1 gap-px overflow-hidden border-b border-[var(--color-hairline)] sm:grid-cols-4">
       {tiles.map((tile) => (
         <StatCell key={tile.label}>
           <Stat label={tile.label} value={tile.value} note={tile.note} size="lg" />
@@ -637,7 +680,17 @@ function Decision({ decision }: { decision: RenditionDecision }) {
 function Schedules({ rendition }: { rendition: Rendition }) {
   return (
     <>
-      {rendition.qualifiesForScheduleA ? (
+      {rendition.certification.elected ? (
+        <Card>
+          <p className="px-5 py-3 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
+            Not filed. This return goes out as a certification under Tax Code 22.01(j-3), with the
+            Section 5 box ticked and every schedule blank. The schedules below are what the
+            certification rests on; they stay on the file copy so next season has a figure to
+            compare to.
+          </p>
+        </Card>
+      ) : null}
+      {rendition.qualifiesForScheduleA && !rendition.certification.elected ? (
         <Card>
           <p className="px-5 py-3 text-xs leading-relaxed text-[var(--color-ink-secondary)]">
             Total value is under $20,000, so the whole rendition goes on Schedule A: a general

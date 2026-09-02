@@ -4,11 +4,13 @@ import type {
   FilingBlocker,
   Rendition,
   RenditionBasis,
+  RenditionCertification,
   RenditionExclusion,
   RenditionLine,
   RenditionSchedule,
   RenditionScheduleKey,
 } from '@tangible/types';
+import { exemptionForYear } from '@tangible/types';
 import { appraise, type DepreciationSchedule, type LifeClass } from '@tangible/valuation';
 import { deadlinesFor } from './deadlines.js';
 import { appraisalDistrictName } from './districts.js';
@@ -88,6 +90,13 @@ export interface RenditionInput {
    * was put to a client is the same form it always was.
    */
   positions?: readonly RenditionPosition[];
+  /**
+   * Whether to file the Tax Code 22.01(j-3) certification in place of a
+   * rendition. Omitted means "when eligible", which is what the season runs
+   * on; `false` renders in full at any value; `true` insists, and is answered
+   * with a blocker where the value cannot be known. See `certificationFor`.
+   */
+  certify?: boolean;
 }
 
 /**
@@ -362,6 +371,17 @@ export function buildRendition(input: RenditionInput): Rendition {
               : 'Filed on historical cost and year acquired rather than a good faith estimate, so the 22.24(e) notarization requirement is not triggered at any value.',
         };
 
+  const certification = certificationFor({
+    input,
+    scheduleValue,
+    hasSchedule: schedule !== null,
+    anythingToFile: buckets.size > 0,
+    unvaluable,
+    undated,
+    unclassified,
+    needsReview,
+  });
+
   return {
     engagementId: input.engagementId,
     clientName: input.clientName,
@@ -381,6 +401,7 @@ export function buildRendition(input: RenditionInput): Rendition {
     scheduleValue,
     qualifiesForScheduleA,
     notarization,
+    certification,
     blockers: blockersFor({
       input,
       needsReview,
@@ -393,6 +414,7 @@ export function buildRendition(input: RenditionInput): Rendition {
       disposedStillListed,
       hasSchedule: schedule !== null,
       anythingToFile: buckets.size > 0,
+      certification,
       plan,
     }),
     deadlines: deadlinesFor(input.taxYear, input.jurisdictionId),
@@ -489,6 +511,76 @@ function assemble(
 }
 
 /**
+ * The election under Tax Code 22.01(j-1) not to render.
+ *
+ * 11.145(b) exempts business personal property worth $125,000 or less per
+ * taxing unit at a location, and 22.01(j-1) then says a rendition is required
+ * only where the aggregate value at a location exceeds that amount in at
+ * least one taxing unit. What goes in its place is 22.01(j-3)'s certification
+ * — a rendition statement carrying the person's certification that they
+ * reasonably believe the value is not more than the exempted amount, on the
+ * box 22.24(c) puts on the form. The return still goes out; the schedules
+ * stay blank.
+ *
+ * "Reasonably believes" is the test, and the district's own published
+ * schedules are the most defensible belief on offer: they are how the
+ * district will value the property if it disagrees. The election is taken
+ * automatically when that figure is at or under the exemption and nothing
+ * stands in the way of knowing it — every asset valued, none undated, none
+ * still in the review queue. A firm that wants the full rendition anyway
+ * says so with `certify: false`; one that wants the certification over the
+ * builder's objection gets a blocker instead, because a certification of a
+ * value nobody can compute is a sworn guess.
+ *
+ * Texas only, and only from 2026: the election arrived with the exemption
+ * (HB 9, 89th Legislature), and a return for an earlier year answers to the
+ * $2,500 exemption that had no such election.
+ */
+function certificationFor(context: {
+  input: RenditionInput;
+  scheduleValue: number;
+  hasSchedule: boolean;
+  anythingToFile: boolean;
+  unvaluable: number;
+  undated: number;
+  unclassified: number;
+  needsReview: number;
+}): RenditionCertification {
+  const { input, scheduleValue } = context;
+  const exemption = exemptionForYear(input.taxYear);
+  const texas = input.jurisdictionId?.startsWith('tx-') ?? false;
+  const valuedInFull = context.hasSchedule && context.unvaluable === 0 && context.undated === 0;
+  const settled = context.unclassified === 0 && context.needsReview === 0;
+  const value = valuedInFull ? scheduleValue : null;
+
+  const obstacle = !texas
+    ? 'The certification under Tax Code 22.01(j-3) is a Texas election, and this return is not filed in Texas.'
+    : input.taxYear < 2026
+      ? `The election under Tax Code 22.01(j-1) took effect for the 2026 tax year; ${input.taxYear} answers to the earlier ${money(exemption)} exemption, which carried no such election.`
+      : !context.anythingToFile
+        ? 'There is nothing to file at this site, so there is nothing to certify.'
+        : !context.hasSchedule
+          ? 'The district has no published schedule loaded, so the property here cannot be valued against the exemption.'
+          : !valuedInFull
+            ? 'Not every asset here could be valued on the district’s schedules — some carry no year acquired or no life class — so no total exists to hold against the exemption.'
+            : !settled
+              ? 'Assets here are still in the review queue, and a certification of a total that may yet change is a guess.'
+              : scheduleValue > exemption
+                ? `The district’s schedules put the property here at ${money(scheduleValue)}, above the ${money(exemption)} exempted by Tax Code 11.145(b), so 22.01(j-1) requires a rendition.`
+                : null;
+
+  const eligible = obstacle === null;
+  const elected = input.certify ?? eligible;
+  const reason = eligible
+    ? elected
+      ? `The district’s schedules put the property here at ${money(scheduleValue)}, at or under the ${money(exemption)} that Tax Code 11.145(b) exempts for ${input.taxYear}. Under 22.01(j-1) it need not be rendered; this return certifies that belief under 22.01(j-3) and leaves the schedules blank. Once filed, the election takes effect from the following tax year and continues until the property’s ownership changes, unless the chief appraiser requires a rendition.`
+      : `Rendered in full by choice. The district’s schedules put the property here at ${money(scheduleValue)}, at or under the ${money(exemption)} exemption, so the 22.01(j-3) certification was available and was not taken.`
+    : obstacle;
+
+  return { elected, eligible, exemption, value, reason };
+}
+
+/**
  * What stands between this and a signature.
  *
  * `blocking` means the form would be wrong or incomplete if sent today.
@@ -509,10 +601,47 @@ function blockersFor(context: {
   disposedStillListed: number;
   hasSchedule: boolean;
   anythingToFile: boolean;
+  certification: RenditionCertification;
   plan: PositionPlan;
 }): FilingBlocker[] {
   const blockers: FilingBlocker[] = [];
-  const { input } = context;
+  const { input, certification } = context;
+
+  if (certification.elected && !certification.eligible) {
+    blockers.push({
+      key: 'certification-ineligible',
+      severity: 'blocking',
+      message: `Asked to file as a certification under Tax Code 22.01(j-3), but it cannot be signed. ${certification.reason}`,
+      resolution: 'Clear what stops the value from being known, or file the full rendition.',
+    });
+  }
+
+  if (certification.elected && certification.eligible) {
+    // The parts of 11.145 the register cannot see. (f) aggregates related
+    // entities that compose a unified business enterprise; (d) and (d-1)
+    // allow one exemption per taxing unit regardless of location for property
+    // leased out or held where the owner neither owns nor leases. A site that
+    // is under the cap on its own may not be under it once those apply, and
+    // the only person who knows is the client.
+    blockers.push({
+      key: 'certification-aggregation',
+      severity: 'warning',
+      message: `Filed as a certification under Tax Code 22.01(j-3) rather than a rendition: the signer certifies a reasonable belief that the property here is worth not more than ${money(certification.exemption)}. Two things bear on that which the register cannot see — 11.145(f) aggregates property at this location across related entities that compose a unified business enterprise, and 11.145(d) and (d-1) allow only one exemption per taxing unit regardless of location for property leased out or held where the owner neither owns nor leases.`,
+      resolution:
+        'Confirm with the client that no affiliate holds property at this location, and that the property is neither leased out nor kept at a third party’s premises, before signing.',
+    });
+
+    const value = certification.value ?? 0;
+    if (value > certification.exemption * 0.9) {
+      blockers.push({
+        key: 'certification-headroom',
+        severity: 'warning',
+        message: `Within ${money(certification.exemption - value)} of the exemption on the district’s own schedules. A district that values higher and lands above ${money(certification.exemption)} will treat this account as one that was required to render under 22.01(j-1), and 22.28 charges 10% of the taxes due on property that was not rendered.`,
+        resolution:
+          'Consider filing the full rendition instead: at this value it costs nothing, and it forecloses the penalty.',
+      });
+    }
+  }
 
   if (!input.jurisdictionId) {
     blockers.push({

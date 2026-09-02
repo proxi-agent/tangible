@@ -35,6 +35,9 @@ const rendition = (assets: RenditionAsset[], over: Partial<RenditionInput> = {})
     schedule: S,
     basis: 'cost',
     filedByAgent: true,
+    // Off by default so the rest of this file exercises the full rendition; the
+    // election's own tests hand the decision back with `certify: undefined`.
+    certify: false,
     generatedAt: '2026-08-19T00:00:00.000Z',
     ...over,
   });
@@ -234,5 +237,27 @@ describe('against the real form', () => {
       const p = plan([asset()], {}, { signer: signer({ capacity }) });
       expect(options).toContain(chosen(p, 'Representation'));
     }
+  });
+});
+
+describe('the certification election', () => {
+  it('ticks the Section 5 box and leaves every schedule blank', () => {
+    // On the cost basis, which the ordinary rendition would leave unanswered:
+    // the belief rests on the district's schedules, not on an estimate.
+    const p = plan([asset()], { certify: undefined });
+    expect(chosen(p, 'Total market value of your property-2')).toBe('$125,000 or less');
+    expect(chosen(p, 'S5_market value')).toBeNull();
+    expect(p.text.some((t) => t.field.startsWith('Sc') || t.field.startsWith('HCWN'))).toBe(false);
+    expect(p.overflow).toHaveLength(0);
+    expect(omission(p, 'Schedules A through F')?.missing).toContain('22.01(j-3)');
+    expect(omission(p, 'Market value $125,000')).toBeUndefined();
+    expect(p.blocked).toBeNull();
+  });
+
+  it('still fills the schedules when the firm renders in full', () => {
+    const p = plan([asset()], { certify: false });
+    expect(cell(p, 'HCWN_4B')).toBe('100000');
+    expect(chosen(p, 'S5_market value')).toBeUndefined();
+    expect(omission(p, 'Schedules A through F')).toBeUndefined();
   });
 });

@@ -586,6 +586,14 @@ function ReturnRow({ entry }: { entry: PracticeReturn }) {
     <li className="px-5 py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
         <Badge tone={TONE[entry.status]}>{entry.status}</Badge>
+        {(entry.status === 'filed' ? entry.filing?.certified : entry.certifiable) ? (
+          <Tooltip
+            title="Certification, not a rendition"
+            content="At or under the 11.145(b) exemption on the district’s schedules, so the return elects not to render under Tax Code 22.01(j-1) and files the 22.01(j-3) certification instead."
+          >
+            <Badge tone="neutral">{entry.status === 'filed' ? 'certified' : 'certification'}</Badge>
+          </Tooltip>
+        ) : null}
         {/* The client leads. Above one engagement the site label identifies
             nothing on its own — half the firms in Texas have a Main Office.
             The name goes to the engagement rather than the client page: this

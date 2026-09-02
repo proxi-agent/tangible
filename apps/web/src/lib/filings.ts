@@ -13,12 +13,13 @@ import {
   type FormParty,
   type FormSigner,
 } from '@tangible/filing';
-import type {
-  FilingBlocker,
-  RecordFilingRequest,
-  Rendition,
-  RenditionFiling,
-  RenditionFilingRecord,
+import {
+  exemptionForYear,
+  type FilingBlocker,
+  type RecordFilingRequest,
+  type Rendition,
+  type RenditionFiling,
+  type RenditionFilingRecord,
 } from '@tangible/types';
 import { currentActor } from '@/lib/actor';
 import { seedClaimsForFiling } from '@/lib/recovery';
@@ -61,6 +62,7 @@ export async function recordFiling(
   const inputs = await formInputs(engagementId, {
     basis: body.basis,
     filedByAgent: body.filedByAgent,
+    certify: body.certify,
     locationId: body.locationId,
   });
   const { rendition, assetIds, party, signer, beyond, target, actor } = inputs;
@@ -325,6 +327,7 @@ function toSummary(row: RenditionFilingRow): RenditionFiling {
     totalGoodFaithEstimate: row.totalGoodFaithEstimate,
     scheduleValue: row.scheduleValue,
     assetCount: row.assetCount,
+    certified: frozenRendition(row).certification.elected,
     formRevision: row.formRevision,
     formSha256: row.formSha256,
     recordedBy: row.recordedBy,
@@ -338,8 +341,34 @@ function toSummary(row: RenditionFilingRow): RenditionFiling {
 function toRecord(row: RenditionFilingRow): RenditionFilingRecord {
   return {
     ...toSummary(row),
-    rendition: row.rendition as Rendition,
+    rendition: frozenRendition(row),
     assetIds: row.assetIds as string[],
+  };
+}
+
+/**
+ * The frozen rendition, with the one field a record may predate filled in.
+ *
+ * `certification` arrived after the first returns were recorded, and a frozen
+ * row is never rewritten. Reading one back without the field would make every
+ * consumer ask whether it is there; answering once here — a return recorded
+ * before the election existed was a full rendition, and says so — keeps the
+ * type honest everywhere else. Any later addition to `RenditionSchema` gets
+ * the same treatment in the same place.
+ */
+function frozenRendition(row: RenditionFilingRow): Rendition {
+  const frozen = row.rendition as Omit<Rendition, 'certification'> &
+    Partial<Pick<Rendition, 'certification'>>;
+  return {
+    ...frozen,
+    certification: frozen.certification ?? {
+      elected: false,
+      eligible: false,
+      exemption: exemptionForYear(frozen.taxYear),
+      value: null,
+      reason:
+        'Recorded before the 22.01(j-3) election was modelled, so it was filed as a full rendition.',
+    },
   };
 }
 
@@ -357,7 +386,7 @@ export function frozenFormInputs(row: RenditionFilingRow): {
   signer: FormSigner;
 } {
   return {
-    rendition: row.rendition as Rendition,
+    rendition: frozenRendition(row),
     party: row.party as FormParty,
     signer: row.signer as FormSigner,
   };

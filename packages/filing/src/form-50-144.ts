@@ -297,6 +297,11 @@ export function buildForm50144(input: Form50144Input): Form50144 {
         'Tax Code 22.01(a)(5). An estimate is inadmissible later except in a 41.41 protest, and it is the estimate — not the value — that drags an agent-filed rendition into notarization under 22.24(e).',
     },
     {
+      label: `Elects not to render under Tax Code 22.01(j-1); certifies under 22.01(j-3) that the value here is not more than ${money(rendition.certification.exemption)}`,
+      checked: rendition.certification.elected,
+      basis: `Tax Code 11.145(b) exempts ${money(rendition.certification.exemption)} per taxing unit at a location, and 22.24(c) puts the certification box on this form, so a certifying return is this form with Section 5 answered and the schedules blank. ${rendition.certification.reason}`,
+    },
+    {
       label: 'Total taxable value at this location is under $20,000 (Schedule A)',
       checked: rendition.qualifiesForScheduleA,
       basis:
@@ -304,9 +309,28 @@ export function buildForm50144(input: Form50144Input): Form50144 {
     },
   ];
 
-  const schedules = rendition.schedules.map((schedule) => tableFor(schedule, usingEstimate));
+  // A certifying return files no schedules. The district copy shows none, as
+  // the paper will; the file copy keeps them, because a reviewer asked next
+  // season why this account certified wants to see the figure it rested on.
+  const certified = rendition.certification.elected;
+  const schedules =
+    certified && audience === 'district'
+      ? []
+      : rendition.schedules.map((schedule) => tableFor(schedule, usingEstimate));
 
   const totals: FormFieldValue[] = [
+    ...(certified
+      ? [
+          {
+            label: 'Filed as',
+            value: 'Certification under Tax Code 22.01(j-3), not a rendition',
+            note:
+              audience === 'file'
+                ? 'The schedules below are not filed. They are kept on this copy so next season has something to compare to.'
+                : 'The schedules are left blank; the Section 5 certification stands in their place.',
+          },
+        ]
+      : []),
     { label: 'Total historical cost', value: money(rendition.totalHistoricalCost) },
     {
       label: 'Total good faith estimate of market value',
@@ -365,8 +389,9 @@ export function buildForm50144(input: Form50144Input): Form50144 {
       signerName: signer.name,
       signerTitle: signer.title,
       capacityLabel: CAPACITY_LABEL[signer.capacity],
-      affirmation:
-        'The signer swears that the property described is what the owner held on January 1, and that the figures given are true to the best of their knowledge and belief.',
+      affirmation: certified
+        ? `The signer certifies that they reasonably believe the market value of the tangible personal property at this location is not more than ${money(rendition.certification.exemption)} (Tax Code 22.01(j-3)), and that the property described is what the owner held on January 1.`
+        : 'The signer swears that the property described is what the owner held on January 1, and that the figures given are true to the best of their knowledge and belief.',
       penaltyNotice:
         'A rendition that is late or not filed carries a penalty of 10% of the taxes on the property (Tax Code 22.28). A rendition filed with intent to defraud carries 50% (22.29).',
       notarization: rendition.notarization,

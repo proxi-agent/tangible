@@ -22,16 +22,19 @@ export function GET(
   return handle(async (): Promise<Rendition> => {
     const { engagementId } = await params;
     const raw = queryParams(request);
-    const { basis, filedByAgent } = RenditionRequestSchema.parse({
+    const { basis, filedByAgent, certify } = RenditionRequestSchema.parse({
       basis: raw.basis ?? 'cost',
       // `z.coerce.boolean()` treats any non-empty string as true, so map it.
       filedByAgent: raw.filedByAgent === undefined ? true : raw.filedByAgent === 'true',
+      // Three-valued: absent leaves the election to the builder.
+      certify: raw.certify === undefined ? undefined : raw.certify === 'true',
     });
     // Which return, where the engagement owes more than one. Absent means "the
     // only one", and the builder blocks rather than guessing when there isn't.
     return buildEngagementRendition(engagementId, {
       basis,
       filedByAgent,
+      certify,
       locationId: raw.location ?? null,
     });
   });

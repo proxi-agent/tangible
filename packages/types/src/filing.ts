@@ -202,15 +202,56 @@ export const RenditionSchema = z.object({
     reason: z.string(),
   }),
 
+  /**
+   * The election under Tax Code 22.01(j-1) not to render, and the certification
+   * 22.01(j-3) puts in its place.
+   *
+   * 11.145(b) exempts business personal property worth $125,000 or less per
+   * taxing unit at a location, and 22.01(j-1) then relieves the owner of
+   * rendering it. The return still goes out — 22.01(j-3) requires a rendition
+   * statement carrying a certification that the person reasonably believes the
+   * value is not more than the exempted amount, on the box 22.24(c) puts on the
+   * form — but the schedules stay blank. The schedules are still built and
+   * frozen here regardless, so next season has a figure to compare to and a
+   * reviewer can see what the certification rested on.
+   */
+  certification: z.object({
+    /** Whether this return goes out as a certification rather than a rendition. */
+    elected: z.boolean(),
+    /**
+     * Whether it could: a Texas return, every asset valued on the district's
+     * schedules, none still under review, and the total at or under the
+     * exemption for the tax year.
+     */
+    eligible: z.boolean(),
+    /** The 11.145(b) amount for the tax year. */
+    exemption: z.number(),
+    /**
+     * What the district's schedules make of the property here — the figure the
+     * belief rests on. Null where it could not be valued in full.
+     */
+    value: z.number().nullable(),
+    /** Why it is or is not elected, in a sentence a signer can read. */
+    reason: z.string(),
+  }),
+
   blockers: z.array(FilingBlockerSchema),
   deadlines: z.array(FilingDeadlineSchema),
 });
 
 export type Rendition = z.infer<typeof RenditionSchema>;
+export type RenditionCertification = Rendition['certification'];
 
 export const RenditionRequestSchema = z.object({
   basis: RenditionBasisSchema.default('cost'),
   filedByAgent: z.boolean().default(true),
+  /**
+   * Whether to file the 22.01(j-3) certification instead of rendering. Omitted
+   * means "whenever the site is eligible", which is the posture the season
+   * board runs on; `false` renders in full at any value; `true` insists, and
+   * is refused with a blocker where the value cannot be known.
+   */
+  certify: z.boolean().optional(),
 });
 
 export type RenditionRequest = z.infer<typeof RenditionRequestSchema>;
@@ -296,6 +337,12 @@ export const RenditionFilingSchema = z.object({
   scheduleValue: z.number(),
   /** Assets on the schedules — the property sworn to, not the register slice. */
   assetCount: z.number().int().nonnegative(),
+  /**
+   * Filed as a 22.01(j-3) certification rather than a rendition: the Section 5
+   * box ticked, the schedules blank. Read off the frozen rendition rather than
+   * stored as a column, so a record predating the election reads as false.
+   */
+  certified: z.boolean(),
 
   /** The revision and checksum of the PDF that was filled at the time. */
   formRevision: z.string(),
@@ -343,6 +390,8 @@ export const RecordFilingRequestSchema = z.object({
   locationId: z.string(),
   basis: RenditionBasisSchema.default('cost'),
   filedByAgent: z.boolean().default(true),
+  /** As on `RenditionRequestSchema`: omitted elects the certification when eligible. */
+  certify: z.boolean().optional(),
   method: FilingMethodSchema,
   /** ISO date (YYYY-MM-DD). Defaults to today on the client, never here. */
   filedOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected a YYYY-MM-DD date.'),
@@ -1368,6 +1417,14 @@ export const SeasonReturnSchema = z.object({
   blockers: z.array(FilingBlockerSchema),
   /** Things worth reading before signing, but which do not stop a filing. */
   warnings: z.number().int().nonnegative(),
+  /**
+   * Whether this return may go out as a 22.01(j-3) certification instead of a
+   * rendition — the site's value on the district's schedules is at or under the
+   * 11.145(b) exemption and nothing stops that figure from being known. The
+   * season's own posture takes the election wherever this is true, so on an
+   * unfiled row it also says which paper the draft is.
+   */
+  certifiable: z.boolean(),
 
   /**
    * The deadline this return is actually working to, and how long is left.

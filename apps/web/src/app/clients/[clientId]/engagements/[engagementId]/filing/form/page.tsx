@@ -26,16 +26,25 @@ export default async function FormPage({
   searchParams,
 }: {
   params: Promise<{ clientId: string; engagementId: string }>;
-  searchParams: Promise<{ basis?: string; agent?: string; copy?: string; location?: string }>;
+  searchParams: Promise<{
+    basis?: string;
+    agent?: string;
+    certify?: string;
+    copy?: string;
+    location?: string;
+  }>;
 }) {
   const { clientId, engagementId } = await params;
   const query = await searchParams;
   const basis: RenditionBasis = query.basis === 'estimate' ? 'estimate' : 'cost';
   const audience: FormAudience = query.copy === 'district' ? 'district' : 'file';
   const filedByAgent = query.agent !== 'false';
+  // Absent means the builder's own election, the same as the draft page.
+  const certify = query.certify === undefined ? undefined : query.certify === 'true';
   const { form, clientName, printed, target, owed } = await buildEngagementForm(engagementId, {
     basis,
     filedByAgent,
+    certify,
     audience,
     locationId: query.location ?? null,
   });
@@ -51,6 +60,7 @@ export default async function FormPage({
     const location = 'location' in overrides ? overrides.location : (target?.locationId ?? null);
     return (
       `?basis=${basis}&agent=${filedByAgent}&copy=${copy}` +
+      (certify === undefined ? '' : `&certify=${certify}`) +
       (location ? `&location=${encodeURIComponent(location)}` : '')
     );
   };
@@ -83,6 +93,7 @@ export default async function FormPage({
             <a
               href={
                 `/api/engagements/${engagementId}/rendition/pdf?basis=${basis}&filedByAgent=${filedByAgent}` +
+                (certify === undefined ? '' : `&certify=${certify}`) +
                 (target ? `&location=${encodeURIComponent(target.locationId)}` : '')
               }
               className={buttonClasses('secondary', 'sm')}

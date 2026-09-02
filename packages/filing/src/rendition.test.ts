@@ -29,6 +29,9 @@ const build = (assets: RenditionAsset[], over: Partial<RenditionInput> = {}) =>
     schedule: S,
     basis: 'cost',
     filedByAgent: true,
+    // Off by default so the rest of this file exercises the full rendition; the
+    // election's own tests hand the decision back with `certify: undefined`.
+    certify: false,
     generatedAt: '2026-08-19T00:00:00.000Z',
     ...over,
   });
@@ -500,5 +503,83 @@ describe('what a decision does to the form', () => {
     const rendition = build([asset()]);
     expect(rendition.decisions).toEqual([]);
     expect(rendition.blockers.some((b) => b.key.startsWith('finding:'))).toBe(false);
+  });
+});
+
+describe('the certification election', () => {
+  // `build` pins the election off so the rest of this file exercises the full
+  // rendition. These hand the decision back to the builder.
+  const auto = (assets: RenditionAsset[], over: Partial<RenditionInput> = {}) =>
+    build(assets, { certify: undefined, ...over });
+
+  it('elects the certification once the schedule value sits at or under the exemption', () => {
+    const rendition = auto([asset()]);
+    expect(rendition.scheduleValue).toBeLessThanOrEqual(125_000);
+    expect(rendition.certification).toMatchObject({
+      elected: true,
+      eligible: true,
+      exemption: 125_000,
+      value: rendition.scheduleValue,
+    });
+    expect(rendition.certification.reason).toContain('22.01(j-3)');
+    // The schedules are still built — the file copy and next season need them.
+    expect(rendition.schedules.length).toBeGreaterThan(0);
+    // And the parts of 11.145 the register cannot see are put to the signer.
+    expect(blocker(rendition, 'certification-aggregation')?.severity).toBe('warning');
+    expect(blocker(rendition, 'certification-ineligible')).toBeUndefined();
+  });
+
+  it('renders in full once the value clears the exemption', () => {
+    const rendition = auto([asset({ originalCost: 500_000 })]);
+    expect(rendition.certification.elected).toBe(false);
+    expect(rendition.certification.eligible).toBe(false);
+    expect(rendition.certification.reason).toContain('22.01(j-1) requires a rendition');
+    expect(blocker(rendition, 'certification-aggregation')).toBeUndefined();
+  });
+
+  it('lets the firm render in full anyway', () => {
+    const rendition = build([asset()], { certify: false });
+    expect(rendition.certification.eligible).toBe(true);
+    expect(rendition.certification.elected).toBe(false);
+    expect(rendition.certification.reason).toContain('by choice');
+    expect(blocker(rendition, 'certification-aggregation')).toBeUndefined();
+  });
+
+  it('refuses to certify a value it cannot compute', () => {
+    const rendition = build([asset({ acquisitionYear: null })], { certify: true });
+    expect(rendition.certification.eligible).toBe(false);
+    expect(rendition.certification.elected).toBe(true);
+    expect(rendition.certification.value).toBeNull();
+    expect(blocker(rendition, 'certification-ineligible')?.severity).toBe('blocking');
+  });
+
+  it('will not certify while assets are still in the review queue', () => {
+    const rendition = auto([asset(), asset({ status: 'needs-review' })]);
+    expect(rendition.certification.eligible).toBe(false);
+    expect(rendition.certification.reason).toContain('review queue');
+  });
+
+  it('is a Texas election', () => {
+    const rendition = auto([asset()], { jurisdictionId: 'fl-miami-dade' });
+    expect(rendition.certification.eligible).toBe(false);
+    expect(rendition.certification.reason).toContain('Texas');
+  });
+
+  it('did not exist before 2026', () => {
+    const rendition = auto([asset()], { taxYear: 2025 });
+    expect(rendition.certification.eligible).toBe(false);
+    expect(rendition.certification.exemption).toBe(2_500);
+  });
+
+  it('warns when the value sits close under the cap', () => {
+    // Scale the fixture so the schedule lands inside the top tenth of the
+    // exemption, whatever percent good the schedule gives a 2022 lathe.
+    const factor = auto([asset()]).scheduleValue / 100_000;
+    const close = auto([asset({ originalCost: Math.floor(120_000 / factor) })]);
+    expect(close.scheduleValue).toBeGreaterThan(112_500);
+    expect(close.scheduleValue).toBeLessThanOrEqual(125_000);
+    expect(close.certification.elected).toBe(true);
+    expect(blocker(close, 'certification-headroom')?.severity).toBe('warning');
+    expect(blocker(auto([asset()]), 'certification-headroom')).toBeUndefined();
   });
 });

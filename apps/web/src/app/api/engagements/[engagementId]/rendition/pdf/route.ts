@@ -22,15 +22,17 @@ export async function GET(
 ): Promise<Response> {
   const { engagementId } = await params;
   const raw = queryParams(request);
-  const { basis, filedByAgent } = RenditionRequestSchema.parse({
+  const { basis, filedByAgent, certify } = RenditionRequestSchema.parse({
     basis: raw.basis ?? 'cost',
     filedByAgent: raw.filedByAgent === undefined ? true : raw.filedByAgent === 'true',
+    certify: raw.certify === undefined ? undefined : raw.certify === 'true',
   });
 
   try {
     const { bytes, plan, filename } = await buildEngagementFormPdf(engagementId, {
       basis,
       filedByAgent,
+      certify,
       locationId: raw.location ?? null,
     });
     const blocking = plan.omissions.filter((o) => o.severity === 'blocking').length;

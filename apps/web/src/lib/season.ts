@@ -43,6 +43,8 @@ import { fetchEngagement } from '@/lib/workspace';
  * draft telling them something new, not the two screens disagreeing.
  */
 const POSTURE = { basis: 'cost', filedByAgent: true } as const;
+// `certify` is deliberately absent: the builder takes the 22.01(j-3) election
+// wherever the site is eligible, which is what the draft screen also opens on.
 
 export async function filingSeason(engagementId: string): Promise<FilingSeason> {
   const { engagement } = await fetchEngagement(engagementId);
@@ -113,6 +115,7 @@ export async function filingSeason(engagementId: string): Promise<FilingSeason> 
         extension: deadline.extension,
         blockers,
         warnings: rendition.blockers.filter((blocker) => blocker.severity === 'warning').length,
+        certifiable: rendition.certification.eligible,
         filing,
         notice: noticed.get(entry.locationId) ?? null,
         driftedBy: filing ? rendition.totalHistoricalCost - filing.totalHistoricalCost : null,
@@ -170,6 +173,7 @@ function filedButNoLongerOwed(
         extension: deadline.extension,
         blockers: [],
         warnings: 0,
+        certifiable: false,
         filing,
         // Carried here too. A site whose property has all gone still received
         // a notice for the year it was rendered, and the protest window on it

@@ -46,6 +46,12 @@ export interface RenditionOptions {
    * the honest answer to "show me the form" when the answer is "there are two".
    */
   locationId?: string | null;
+  /**
+   * Whether to file the Tax Code 22.01(j-3) certification in place of a
+   * rendition. Omitted means "when the site is eligible", which is what the
+   * season runs on. See `certificationFor` in the filing package.
+   */
+  certify?: boolean;
 }
 
 /**
@@ -233,6 +239,7 @@ async function renditionParts(
     schedule: jurisdictionId ? (scheduleFor(jurisdictionId, engagement.taxYear) ?? null) : null,
     basis: options.basis,
     filedByAgent: options.filedByAgent,
+    certify: options.certify,
     // The draft screen and the printed form both ask whether an agent may sign
     // this, and they have to give the same answer. It is asked as of today
     // because that is when a draft would go out; a return already recorded

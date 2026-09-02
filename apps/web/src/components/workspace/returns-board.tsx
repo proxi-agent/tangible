@@ -324,6 +324,31 @@ const STATUS_LABEL = {
   filed: 'filed',
 } as const;
 
+/**
+ * The Tax Code 22.01(j-3) certification, where a return is or would be one.
+ *
+ * Not a status. A certifying return is filed, ready or blocked like any other;
+ * this says which paper it is. The board's posture elects it wherever the site
+ * is eligible, so an unfiled `certifiable` row is a certification unless the
+ * preparer unticks it on the draft.
+ */
+function Certification({ entry }: { entry: SeasonReturn }) {
+  const filed = entry.status === 'filed';
+  if (filed ? !entry.filing?.certified : !entry.certifiable) return null;
+  return (
+    <Tooltip
+      title={filed ? 'Filed as a certification' : 'Drafts as a certification'}
+      content={
+        filed
+          ? 'Went out under Tax Code 22.01(j-3): the Section 5 box ticked, no schedules. The value on the district’s schedules was at or under the 11.145(b) exemption, so the owner elected not to render.'
+          : 'The district’s schedules put this site at or under the 11.145(b) exemption, so the draft elects not to render under 22.01(j-1) and files the 22.01(j-3) certification instead. Untick it on the draft to render in full.'
+      }
+    >
+      <Badge tone="neutral">{filed ? 'certified' : 'certification'}</Badge>
+    </Tooltip>
+  );
+}
+
 function ReturnRow({
   entry,
   draft,
@@ -347,6 +372,7 @@ function ReturnRow({
     <li className="px-5 py-3">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
         <Badge tone={TONE[entry.status]}>{STATUS_LABEL[entry.status]}</Badge>
+        <Certification entry={entry} />
         <span className="font-medium">{entry.label}</span>
         <span className="text-xs text-[var(--color-ink-secondary)]">
           {entry.accountId ? (

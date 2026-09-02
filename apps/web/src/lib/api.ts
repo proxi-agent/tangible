@@ -820,11 +820,18 @@ export const api = {
    */
   rendition: (
     engagementId: string,
-    options: { basis: RenditionBasis; filedByAgent: boolean; locationId?: string | null },
+    options: {
+      basis: RenditionBasis;
+      filedByAgent: boolean;
+      locationId?: string | null;
+      /** Omitted leaves the 22.01(j-3) election to the builder. */
+      certify?: boolean;
+    },
   ) =>
     request<Rendition>(
       `/engagements/${engagementId}/rendition?basis=${options.basis}&filedByAgent=${options.filedByAgent}` +
-        (options.locationId ? `&location=${encodeURIComponent(options.locationId)}` : ''),
+        (options.locationId ? `&location=${encodeURIComponent(options.locationId)}` : '') +
+        (options.certify === undefined ? '' : `&certify=${options.certify}`),
     ),
 
   /**

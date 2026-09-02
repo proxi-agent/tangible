@@ -52,6 +52,7 @@ export function FilingRecordCard({
   locationId,
   basis,
   filedByAgent,
+  certify,
   /** True when the engagement owes more than one return and none is picked. */
   unchosen,
 }: {
@@ -60,6 +61,8 @@ export function FilingRecordCard({
   locationId: string | null;
   basis: Rendition['basis'];
   filedByAgent: boolean;
+  /** The 22.01(j-3) election as the draft has it; undefined leaves it to the builder. */
+  certify: boolean | undefined;
   unchosen: boolean;
 }) {
   // An amendment is a second recording over a standing one, so the form has to
@@ -112,6 +115,7 @@ export function FilingRecordCard({
           locationId={locationId}
           basis={basis}
           filedByAgent={filedByAgent}
+          certify={certify}
           unchosen={unchosen}
           superseding={amending ? standing : null}
           onRecorded={() => setAmending(false)}
@@ -165,6 +169,9 @@ function Standing({
           {count(filing.assetCount)} {plural(filing.assetCount, 'asset')}
         </Fact>
         <Fact label="Signed as">{filing.filedByAgent ? 'agent' : 'the owner'}</Fact>
+        <Fact label="Filed as">
+          {filing.certified ? 'a certification under 22.01(j-3)' : 'a full rendition'}
+        </Fact>
       </div>
 
       {filing.note ? (
@@ -237,6 +244,7 @@ function RecordForm({
   locationId,
   basis,
   filedByAgent,
+  certify,
   unchosen,
   /** The standing record this one would replace, where it is an amendment. */
   superseding,
@@ -247,6 +255,7 @@ function RecordForm({
   locationId: string | null;
   basis: Rendition['basis'];
   filedByAgent: boolean;
+  certify: boolean | undefined;
   unchosen: boolean;
   superseding: RenditionFiling | null;
   onRecorded: () => void;
@@ -265,6 +274,7 @@ function RecordForm({
         locationId: locationId ?? '',
         basis,
         filedByAgent,
+        certify,
         method,
         filedOn,
         confirmation: confirmation.trim() || null,
@@ -375,9 +385,9 @@ function RecordForm({
               : 'Record this as filed'}
         </Button>
         <p className="text-xs text-[var(--color-ink-muted)]">
-          Freezes {money(rendition.totalHistoricalCost)} across{' '}
-          {count(rendition.schedules.reduce((n, s) => n + s.lines.length, 0))} lines on{' '}
-          {basis === 'cost' ? 'cost and year' : 'a good faith estimate'}.
+          {rendition.certification.elected
+            ? `Freezes a certification under 22.01(j-3): ${money(rendition.certification.value ?? 0)} on the district’s schedules against the ${money(rendition.certification.exemption)} exemption, with no schedules filed.`
+            : `Freezes ${money(rendition.totalHistoricalCost)} across ${count(rendition.schedules.reduce((n, s) => n + s.lines.length, 0))} lines on ${basis === 'cost' ? 'cost and year' : 'a good faith estimate'}.`}
         </p>
       </div>
 

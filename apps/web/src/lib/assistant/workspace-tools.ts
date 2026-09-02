@@ -380,6 +380,13 @@ export const workspaceTools: AssistantTool[] = [
                 }
               : null,
             filedOn: r.filing?.filedOn ?? null,
+            /**
+             * The Tax Code 22.01(j-3) certification: whether a filed return went
+             * out as one, and whether an unfiled one would (the season's own
+             * posture elects it wherever the site is eligible).
+             */
+            certified: r.filing?.certified ?? null,
+            certifiable: r.certifiable,
             /** Register movement since filing. Not a defect — a question. */
             driftedBy: money(r.driftedBy),
             noticedValue: r.notice?.appraisedValue ?? null,

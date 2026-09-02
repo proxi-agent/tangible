@@ -33,6 +33,9 @@ const rendition = (assets: RenditionAsset[], over: Partial<RenditionInput> = {})
     schedule: S,
     basis: 'cost',
     filedByAgent: true,
+    // Off by default so the rest of this file exercises the full rendition; the
+    // election's own tests hand the decision back with `certify: undefined`.
+    certify: false,
     generatedAt: '2026-08-19T00:00:00.000Z',
     ...over,
   });
@@ -219,5 +222,45 @@ describe('the signature block', () => {
   it('carries the blocking reasons the rendition already found', () => {
     const f = form({ rendition: rendition([asset({ status: 'needs-review' })]) });
     expect(f.omissions.some((o) => o.severity === 'blocking')).toBe(true);
+  });
+});
+
+describe('the certification election', () => {
+  const certifying = () => rendition([asset()], { certify: undefined });
+
+  it('affirms the election and files no schedules on the district copy', () => {
+    const r = certifying();
+    expect(r.certification.elected).toBe(true);
+    const district = buildForm50144({
+      rendition: r,
+      party: party(),
+      signer: signer(),
+      audience: 'district',
+    });
+    const election = district.affirmations.find((a) => a.label.includes('22.01(j-1)'));
+    expect(election?.checked).toBe(true);
+    expect(election?.label).toContain('$125,000');
+    expect(district.schedules).toHaveLength(0);
+    expect(field(district.totals, 'Filed as')?.value).toContain('22.01(j-3)');
+    expect(district.signature.affirmation).toContain('reasonably believe');
+  });
+
+  it('keeps the unfiled schedules on the file copy', () => {
+    const file = buildForm50144({
+      rendition: certifying(),
+      party: party(),
+      signer: signer(),
+      audience: 'file',
+    });
+    expect(file.schedules.length).toBeGreaterThan(0);
+    expect(field(file.totals, 'Filed as')?.note).toContain('not filed');
+  });
+
+  it('leaves the election unchecked on a full rendition', () => {
+    const f = form();
+    const election = f.affirmations.find((a) => a.label.includes('22.01(j-1)'));
+    expect(election?.checked).toBe(false);
+    expect(f.schedules.length).toBeGreaterThan(0);
+    expect(field(f.totals, 'Filed as')).toBeUndefined();
   });
 });
