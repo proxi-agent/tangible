@@ -171,7 +171,7 @@ const RULES: Readonly<Record<string, PositionRule>> = {
     says: {
       accepted: (p) => ({
         severity: 'warning',
-        message: `“${p.title}” was accepted against the ${p.taxYear} return: ${money(p.cost)} of cost was on the register and not on that filing. This rendition files it, which discloses the gap — Tax Code 25.21 lets the district add omitted property for up to five prior years.`,
+        message: `“${p.title}” was accepted against the ${p.taxYear} return: ${money(p.cost)} of cost was on the register and not on that filing. This rendition files it, which discloses the gap — Tax Code 25.21 lets the district add omitted property for either of the two preceding tax years.`,
         resolution:
           'Tell the client what the disclosure exposes, and decide together whether to correct the earlier year before this one is sent.',
       }),

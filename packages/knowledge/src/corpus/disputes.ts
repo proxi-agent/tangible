@@ -187,4 +187,112 @@ One drafting note: the (c) bar text says "section," not "subsection," in the pla
 The deadline belongs to the subject year, not to today's season. A 2023 correction filed in 2026 is measured off 2023.`,
     related: ['corrections-25-25-routes', 'corrections-what-bars-each-route'],
   },
+  {
+    id: 'protest-notice-of-appraised-value',
+    title: 'When a notice of appraised value comes, and what it means when it does not',
+    jurisdiction: 'tx',
+    topics: ['protest', 'deadlines'],
+    authority: [
+      'Tax Code 25.19',
+      'Tax Code 41.44',
+      'Tax Code 41.411',
+      'Tax Code 41.4115',
+      'Tax Code 1.06',
+    ],
+    keywords: [
+      'notice',
+      'notice of appraised value',
+      'no notice',
+      'never received',
+      'did not get a notice',
+      'have not heard',
+      'may 1',
+      '1,000',
+      'increase',
+      'newly appraised',
+      'exceeds rendered value',
+      'failure to deliver notice',
+    ],
+    body: `Tax Code 25.19(a) tells the chief appraiser to deliver a notice of appraised value by May 1, or as soon after as practicable, for a business personal property account in four situations: the appraised value is greater than last year's, it is greater than the value the owner rendered, the property was not on the roll last year, or an exemption was cancelled or reduced. The notice separates real from personal property and carries the value, last year's value, the exemptions, and the protest deadline and procedure.
+
+Two consequences follow for a preparer waiting on the mail. First, an account whose value held level or went down, and whose rendered figure was accepted, may lawfully get no notice at all, and 25.19(e) lets the board excuse the notice where the increase is $1,000 or less. For that account the protest deadline is simply May 15 under 41.44, moved by 1.06 where it falls on a weekend, because there is no thirtieth-day-after-delivery to be later. Silence from the district is not reassurance; it is a fixed deadline with nothing to trigger a reminder. Second, a value above the rendered value always triggers a notice, since the district disagreeing with your number is precisely what the notice exists to say.
+
+Where a notice was owed and never delivered, 41.411 lets the owner protest the failure itself, and if the board finds the notice was not delivered it goes on to hear the other grounds. That protest is late by definition, so 41.411(c) conditions it on 41.4115: the tax on the undisputed portion must be paid before the delinquency date or the protest is forfeited. It is a live route for a client who genuinely never got the mail, and a poor one for a client who did and lost it, because the district keeps a delivery record.
+
+The date that matters on a notice is the date it was delivered, not the date it was printed, and the deadline that binds is the one printed on it. Tangible records both and starts the three clocks from the delivery date.`,
+    related: ['protest-three-clocks', 'deadlines-season', 'protest-what-can-be-protested'],
+  },
+  {
+    id: 'corrections-omitted-property',
+    title: 'Omitted property: how far back the district can reach a non-filer',
+    jurisdiction: 'tx',
+    topics: ['corrections', 'penalties', 'rendition'],
+    authority: ['Tax Code 25.21', 'Tax Code 22.28', 'Tax Code 25.19', 'Tax Code 41.44'],
+    keywords: [
+      'omitted property',
+      'back assessment',
+      'back taxes',
+      'prior years',
+      'never filed',
+      'never rendered',
+      'never registered',
+      'two years',
+      'look-back',
+      'discovered',
+      'new account',
+      'should we start filing',
+    ],
+    body: `Tax Code 25.21(a) is the district's route back into a closed year. Where the chief appraiser discovers personal property that was omitted from the appraisal roll in either of the two preceding tax years, the property is appraised as of January 1 of each year it was omitted and entered on the current records, with each omitted year's value shown separately. The window for real property is longer; for personal property it is two years and no more.
+
+That is the exposure behind a business that has never registered with the district. Silence is not safety. When the account is found, whether through a sales tax permit, a lessor's report of property held for others, or a field inspection under 22.07, it is entered for the current year and up to two prior ones, and each year that went unrendered draws its own 22.28 penalty of ten percent of that year's tax. The owner receives a 25.19 notice for the omitted-year entries and may protest them under 41.44 within the usual thirty days.
+
+It is also the reason the answer to "should we start filing" is to start now. The look-back is fixed at two years, so every further year of silence is a year that stays reachable, and the year the district finds the account is the year it stops being the client's choice which years are on the roll.
+
+The asymmetry is worth stating plainly. 25.21 is the district's route back into a year and reaches two; 25.25 is the owner's, and its routes reach up to five. A client who has under-reported and a client who has over-reported are not in mirror-image positions.`,
+    related: [
+      'penalties-late-and-fraudulent',
+      'corrections-25-25-routes',
+      'rendition-inspection-and-explanation',
+    ],
+  },
+  {
+    id: 'protest-after-the-arb',
+    title: 'After the ARB order: arbitration, district court, and the tax due meanwhile',
+    jurisdiction: 'tx',
+    topics: ['protest', 'deadlines', 'billing'],
+    authority: [
+      'Tax Code 41A.01',
+      'Tax Code 41A.03',
+      'Tax Code 41A.09',
+      'Tax Code 42.21',
+      'Tax Code 42.08',
+    ],
+    keywords: [
+      'arbitration',
+      'binding arbitration',
+      'appeal',
+      'district court',
+      'lawsuit',
+      'judicial appeal',
+      'judicial review',
+      '60 days',
+      'sixty days',
+      'deposit',
+      'ARB order',
+      'lost the protest',
+      'lost the hearing',
+      '5 million',
+      'pay under protest',
+    ],
+    body: `An appraisal review board order is not the end of the road, but both roads past it are short and both are paid for.
+
+Binding arbitration under Chapter 41A is the cheaper one. It is available for an order on appraised or market value where the value is five million dollars or less, and the request goes to the district within 60 days after the owner receives notice of the order under 41A.03(a). It is filed with a deposit that scales with value: for a non-homestead account, $500 up to one million, $800 up to two, $1,050 up to three, and $1,550 up to five. The arbitrator's decision is final. Under 41A.09, if the award is nearer the owner's opinion of value than the board's, the district pays the arbitrator and the deposit comes back less the comptroller's fee; otherwise the arbitrator is paid out of the deposit. So the deposit is the cost of losing, not the cost of trying.
+
+District court under 42.21 is the other. The owner's petition for review is due within 60 days after receiving notice of the final order. The 15-day figure that sometimes gets quoted is 42.06(a)'s deadline for parties other than the owner, and a firm that plans around it files early for no reason; a firm that plans around 60 days from the hearing rather than from receipt files late for a bad one, since receipt is later than the hearing and the window can close no earlier than sixty days after the order arrived.
+
+Neither route pauses the bill. Under 42.08(b) the owner must pay, before the delinquency date, the lesser of the tax on the undisputed portion, the tax under the order being appealed, or last year's tax, or the appeal is forfeited. That payment is what keeps the appeal alive, so a client who withholds the whole bill to make a point loses the case on that fact alone.
+
+Tangible records the order date and computes the 60-day appeal window and the five-million-dollar arbitration test on each resolution; the deposit tiers above are the schedule to read against the appraised value on the order.`,
+    related: ['protest-four-endings', 'protest-three-clocks', 'billing-from-value-to-bill'],
+  },
 ];

@@ -66,6 +66,8 @@ export const KNOWLEDGE_TOPICS = [
    * authority for the same reason the `product` ones do not.
    */
   'method',
+  /** From the certified roll to the tax bill: due dates, delinquency, refunds, who is liable. */
+  'billing',
 ] as const;
 
 export type KnowledgeTopic = (typeof KNOWLEDGE_TOPICS)[number];

@@ -14,10 +14,12 @@ export {
   KNOWLEDGE,
   FILING_ARTICLES,
   DISPUTE_ARTICLES,
+  BILLING_ARTICLES,
   VALUE_ARTICLES,
   PRACTICE_ARTICLES,
   FLORIDA_ARTICLES,
   METHOD_ARTICLES,
+  DOCUMENT_ARTICLES,
 } from './corpus/index.js';
 
 export type { KnowledgeSearchOptions } from './search.js';

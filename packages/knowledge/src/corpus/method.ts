@@ -333,4 +333,37 @@ The rendition itself is confidential in the district's hands, so what an account
 When the record does not answer a question, the correct answer is that it does not, together with what would. Filling the gap with a plausible figure is the one failure mode this whole product is arranged against.`,
     related: ['method-suspected-retired', 'method-kinds-and-effects', 'product-ready-and-blockers'],
   },
+  {
+    id: 'method-return-comparisons',
+    title: 'The findings that come from a prior return rather than from the register',
+    jurisdiction: 'tx',
+    topics: ['method', 'corrections', 'rendition'],
+    authority: ['Tax Code 22.01(a)', 'Tax Code 25.21', 'Tax Code 25.25(c)', 'Tax Code 25.25(c-1)', 'Tax Code 22.28'],
+    keywords: [
+      'prior return',
+      'last year',
+      'compare',
+      'comparison',
+      'register comparison',
+      'carry forward',
+      'carry-forward',
+      'rendered after disposal',
+      'over-reported',
+      'under-reported',
+      'misscheduled',
+      'omitted',
+      'dropped',
+      'not itemized',
+      'aggregate',
+      'reconcile',
+    ],
+    body: `The fourteen detectors read the register on its own. Two further readings need a prior return beside it, and they produce findings of their own that are worded differently because they prove different things.
+
+The register comparison subtracts a filed return, read line by line and mapped into the same categories the register is classified to, from the register itself. Four findings can come out. Rendered after disposal: cost on the return for property the register says was already gone by that January 1; measured, a saving, and the ground for a 25.25(c)(3) motion on the earlier roll. Over-reported: cost on the return the register does not carry at all; modelled, because the books may be incomplete rather than the return wrong. Under-reported: property on the register the return never accounted for; an exposure, worded against the client's own filing, and the one that is disclosed rather than hidden when the next return goes out, since 25.21 lets the district reach either of the two preceding years. Misscheduled: cost filed under the wrong category for its year, which moves value in whichever direction the two schedules' tables point. Three rules keep the comparison honest: property bought after that January 1 or disposed before it is set aside by name rather than netted in; nothing still in the classification queue is compared; and the compared cost plus the set-aside cost is the whole register, so every figure walks back to a total.
+
+The carry-forward reads last season's return as this app froze it, at the level of the individual assets the return was built from, which is the one comparison the paper cannot make. Its verdicts are per asset. Omitted from the prior return, the critical one: owned before that January 1 by its own acquisition year and not in the slice the return was built from, which is 25.21 exposure with a 22.28 penalty attaching to the omitted year. Dropped from the register: on last year's return and not on this year's book, and absence is not disposal, so it is a question for the client rather than a retirement. Not itemized: the prior return is a document the client filed, which reports in aggregate and never names an asset, so it proves the site was rendered and nothing about any single line. Undated and unrendered: no acquisition year, so whether it was renderable last year cannot be said either way. Carried and now disposed: the disposal date decides which side of January 1 it falls on, and the rendition applies that test itself. And no prior return on file, which is a gap in the filing cabinet and not a finding about the client, because a location whose return this app never held cannot be called omitted on the strength of our own missing records.
+
+Both readings say considered rather than filed. A return's frozen asset list is the slice it was built from, and the rendition then set part of that slice aside for recorded reasons; the comparison is worded against the return, which is the part that can be proven.`,
+    related: ['method-finding-catalogue', 'method-ghost-assets', 'corrections-25-25-routes', 'corrections-omitted-property'],
+  },
 ];

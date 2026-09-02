@@ -97,6 +97,11 @@ describe('corpus integrity', () => {
       'method-kinds-and-effects',
       'method-confidence-tiers',
       'method-register-limits',
+      // The document articles describe what this product reads and how, from
+      // the reader's own rules. A header-row heuristic is not Florida law.
+      'documents-what-tangible-reads',
+      'documents-reading-a-register',
+      'documents-evidence-exports',
     ]);
     const untagged = KNOWLEDGE.filter((article) => !article.jurisdiction).map(
       (article) => article.id,
@@ -261,7 +266,7 @@ describe('getArticle and listArticles', () => {
 
   it('lists the method articles under their own topic', () => {
     const method = listArticles(['method']);
-    expect(method.length).toBe(8);
+    expect(method.length).toBe(12);
     for (const article of method) expect(article.topics).toContain('method');
   });
 
@@ -306,5 +311,108 @@ describe('renderKnowledge', () => {
       expect(rendered).toContain('not what a state requires');
       expect(rendered).toContain('applies regardless of state');
     }
+  });
+});
+
+/**
+ * The second wave: questions that arrive outside the rendition season, or
+ * about the mail rather than the law. Each was a gap before the article
+ * existed — the assistant answered from the nearest season article or not at
+ * all — so each is pinned to the article written for it.
+ */
+describe('searchKnowledge, beyond the season', () => {
+  const topFor = (query: string, jurisdictions?: readonly ('tx' | 'fl')[]) =>
+    searchKnowledge(query, jurisdictions ? { jurisdictions } : {})[0]?.article.id;
+
+  it('answers when the tax bill is due and what late costs', () => {
+    expect(topFor('when is the tax bill due and what happens if we pay late', ['tx'])).toBe(
+      'billing-from-value-to-bill',
+    );
+  });
+
+  it('answers who owes the tax when the business was sold in March', () => {
+    expect(topFor('client sold the business in March, who owes the tax', ['tx'])).toBe(
+      'billing-sold-or-closed',
+    );
+  });
+
+  it('answers which schedule supplies go on', () => {
+    expect(topFor('which schedule do supplies go on', ['tx'])).toBe('rendition-form-schedules');
+  });
+
+  it('answers the appraiser asking to inspect', () => {
+    expect(topFor('the appraiser wants to inspect the premises', ['tx'])).toBe(
+      'rendition-inspection-and-explanation',
+    );
+  });
+
+  it('answers the client who never received a notice', () => {
+    expect(topFor('client never received a notice of appraised value', ['tx'])).toBe(
+      'protest-notice-of-appraised-value',
+    );
+  });
+
+  it('answers the arbitration deposit after an ARB order', () => {
+    expect(topFor('binding arbitration deposit after the ARB order', ['tx'])).toBe(
+      'protest-after-the-arb',
+    );
+  });
+
+  it('answers how far back the district can reach a non-filer', () => {
+    expect(topFor('never filed, how many prior years can they back assess', ['tx'])).toBe(
+      'corrections-omitted-property',
+    );
+  });
+
+  it('answers whether a trial balance can be uploaded', () => {
+    expect(topFor('can I upload a trial balance')).toBe('documents-what-tangible-reads');
+  });
+
+  it('answers whether an insurance schedule of values proves an asset exists', () => {
+    expect(topFor('insurance schedule of values as proof the asset exists')).toBe(
+      'documents-evidence-exports',
+    );
+  });
+
+  it('answers the net book value column question from the reader', () => {
+    expect(topFor('register only has net book value, no original cost column')).toBe(
+      'documents-reading-a-register',
+    );
+  });
+
+  it('answers the Florida tax warrant in Florida', () => {
+    expect(topFor('tax warrant for delinquent tangible personal property', ['fl'])).toBe(
+      'fl-billing-and-delinquency',
+    );
+  });
+
+  it('answers the Florida estimate when no return was filed', () => {
+    expect(topFor('no return filed, appraiser estimated the assessment', ['fl'])).toBe(
+      'fl-no-return-estimated-assessment',
+    );
+  });
+
+  it('answers the certification election under the exemption', () => {
+    expect(topFor('can we elect not to render and file a certification instead', ['tx'])).toBe(
+      'exemptions-bpp-threshold',
+    );
+  });
+
+  it('answers the vehicle question', () => {
+    expect(topFor('owner uses the truck personally, does it go on schedule D', ['tx'])).toBe(
+      'classification-vehicles-schedule-d',
+    );
+  });
+
+  it('answers the September 1 inventory election', () => {
+    expect(topFor('inventory valued on september 1 instead of january 1', ['tx'])).toBe(
+      'valuation-inventory-september-1',
+    );
+  });
+
+  it('answers what the carry-forward verdicts mean', () => {
+    expect(topFor('what does dropped from the register mean in the carry forward', ['tx'])).toBe(
+      'method-return-comparisons',
+    );
   });
 });

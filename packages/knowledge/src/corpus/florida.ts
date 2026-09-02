@@ -390,4 +390,64 @@ Two other forms carry authority where authority is actually needed. DR-835 is th
 Returns are confidential under s. 193.074, in the same way Tax Code 22.27 covers a Texas rendition. The form is headed CONFIDENTIAL and its contents do not appear on any public roll — which is also why the Florida county files this product ingests carry no filing-status field to read.`,
     related: ['fl-return-what-must-be-filed', 'fl-protest-vab'],
   },
+  {
+    id: 'fl-billing-and-delinquency',
+    title: 'The Florida tangible personal property bill: discounts, April 1, and the warrant',
+    jurisdiction: 'fl',
+    topics: ['billing', 'deadlines', 'penalties'],
+    authority: ['s. 197.333, F.S.', 's. 197.162, F.S.', 's. 197.413, F.S.'],
+    keywords: [
+      'tax bill',
+      'bill',
+      'when do I pay',
+      'discount',
+      '4 percent',
+      'early payment',
+      'november',
+      'delinquent',
+      'delinquency',
+      'april 1',
+      'tax warrant',
+      'warrant',
+      'seizure',
+      'levy',
+      'tax collector',
+    ],
+    body: `Florida bills tangible personal property on the same calendar as real estate, and the calendar rewards paying early rather than only punishing paying late.
+
+Under s. 197.333, F.S., taxes are due on November 1 or as soon as the certified roll reaches the tax collector, and they become delinquent on April 1 of the following year or 60 days after the bill was mailed, whichever is later. Under s. 197.162, F.S., a bill paid in November, or within 30 days of mailing where the roll was late, earns a four percent discount; December earns three, January two, February one, and March earns nothing. For a client with a material account the November discount is real money, and it is the one thing a firm can say about the bill in October that the client will act on.
+
+April 1 is a collision worth naming. It is the date the next year's return is due under s. 193.062 and the date the prior year's tax becomes delinquent under s. 197.333, for two different tax years, and a firm working both dates from one calendar should label which is which.
+
+Delinquent tangible personal property tax does not sit as a lien and wait. Under s. 197.413, F.S., the tax collector lists unpaid tangible personal property taxes before May 1 of the year after they became delinquent, prepares warrants before April 30 for their collection by levy and seizure of the property, and petitions the circuit court within 30 days of the warrants for an order ratifying them. A warrant is not issued for a bill under $50, though the tax is still owed. The practical difference from Texas is the remedy: a Florida delinquency ends with the collector authorized to seize the equipment the tax was on, not only with penalty and interest accruing against it.`,
+    related: ['fl-deadlines-season', 'fl-penalties'],
+  },
+  {
+    id: 'fl-no-return-estimated-assessment',
+    title: 'What Florida does when no return comes: an estimate that stands',
+    jurisdiction: 'fl',
+    topics: ['rendition', 'penalties', 'protest'],
+    authority: ['s. 193.073, F.S.', 's. 193.072, F.S.', 's. 194.034(1)(j), F.S.'],
+    keywords: [
+      'no return',
+      'did not file',
+      'never filed',
+      'estimate',
+      'estimated assessment',
+      'best information available',
+      'prima facie',
+      'incomplete return',
+      'erroneous return',
+      '30 days',
+      'notice to file',
+    ],
+    body: `A Florida property appraiser who receives no return does not wait, and does not need the owner's help.
+
+Under s. 193.073, F.S., a return that is erroneous or incomplete draws a notice, and the owner has 30 days from its mailing to file a complete one. Where no return is filed at all, the appraiser assesses the property from the best information available, and that estimate is deemed prima facie correct and placed on the roll. In practice the best information is the client's own prior returns, a comparable business, or a site visit, and it errs upward because nothing about the process rewards guessing low.
+
+Two other sections turn the estimate into a trap. Under s. 193.072, F.S., the non-filer owes the 25 percent penalty on top of the tax, and under s. 194.034(1)(j), F.S., a petition to the value adjustment board is barred where no return was filed on time. So the non-filer pays tax on the appraiser's figure, plus a quarter, with no board before which to argue that the figure is wrong. That is the whole reason a late return is worth filing on the day it is discovered: it converts the estimate into a value the client can at least contest.
+
+The 30-day letter under s. 193.073 is a clock the firm should track the way it tracks a Texas request under Tax Code 22.07, because the consequence of missing it is the same estimate with the same bar behind it.`,
+    related: ['fl-penalties', 'fl-protest-vab', 'fl-return-what-must-be-filed'],
+  },
 ];
