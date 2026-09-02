@@ -19,6 +19,48 @@ function isRealDate(year: number, month: number, day: number): boolean {
   return probe.getFullYear() === year && probe.getMonth() === month - 1 && probe.getDate() === day;
 }
 
+/**
+ * Month names as registers write them: three-letter, full, and the one
+ * abbreviation that is neither ("Sept"). Matching is case-insensitive and a
+ * trailing period is stripped before lookup, so "MAR", "Mar." and "March" all
+ * arrive here as the same key.
+ */
+const MONTHS: ReadonlyMap<string, number> = new Map([
+  ['jan', 1],
+  ['january', 1],
+  ['feb', 2],
+  ['february', 2],
+  ['mar', 3],
+  ['march', 3],
+  ['apr', 4],
+  ['april', 4],
+  ['may', 5],
+  ['jun', 6],
+  ['june', 6],
+  ['jul', 7],
+  ['july', 7],
+  ['aug', 8],
+  ['august', 8],
+  ['sep', 9],
+  ['sept', 9],
+  ['september', 9],
+  ['oct', 10],
+  ['october', 10],
+  ['nov', 11],
+  ['november', 11],
+  ['dec', 12],
+  ['december', 12],
+]);
+
+function monthNumber(token: string): number | null {
+  return MONTHS.get(token.toLowerCase().replace(/\.$/, '')) ?? null;
+}
+
+/** Two digits are a year the way every accounting export means them. */
+function fullYear(n: number): number {
+  return n < 100 ? n + (n >= 50 ? 1900 : 2000) : n;
+}
+
 /** Local components, not toISOString: SheetJS builds Dates whose local fields match the sheet. */
 export function isoDate(d: Date): string | null {
   if (Number.isNaN(d.getTime())) return null;
@@ -159,6 +201,12 @@ export function dateValue(value: unknown): DateParse {
     return NO_DATE;
   }
 
+  // A named month settles the order by itself: "14-Mar-2020" and "Mar 14, 2020"
+  // cannot be read two ways, which is exactly what makes m/d/y hard. Sage,
+  // AssetKeeper and most printed depreciation schedules write dates this way.
+  const named = namedMonthDate(s);
+  if (named) return named;
+
   // "FY20", "FY 2020", or a bare year.
   const fy = /^fy\s*(\d{2,4})$/i.exec(s);
   if (fy) {
@@ -170,6 +218,58 @@ export function dateValue(value: unknown): DateParse {
   if (bare) return { date: null, year: Number(bare[1]) };
 
   return NO_DATE;
+}
+
+/**
+ * A date written with the month spelled out, in any of the orders that are
+ * unambiguous once it is.
+ *
+ * Three tokens with the month in the middle are day-month-year unless the first
+ * token is a full year ("2020-Mar-14"); with the month first they are
+ * month-day-year. Two tokens — "Mar-2020" — name a month and a year with no
+ * day, which yields a year the way "FY20" does. "Mar-20" is refused: it is
+ * either March 2020 or the twentieth of March in an unstated year, and there is
+ * no way to tell which.
+ */
+function namedMonthDate(s: string): DateParse | null {
+  const tokens = s.split(/[\s,./-]+/).filter((token) => token !== '');
+  if (tokens.length < 2 || tokens.length > 3) return null;
+
+  const at = tokens.findIndex((token) => monthNumber(token) !== null);
+  if (at < 0) return null;
+  const month = monthNumber(tokens[at] ?? '');
+  if (month === null) return null;
+
+  const rest = tokens.filter((_, i) => i !== at);
+  if (rest.some((token) => !/^\d{1,4}$/.test(token))) return null;
+  const numbers = rest.map(Number);
+
+  if (numbers.length === 1) {
+    const [only] = numbers;
+    // Only a 4-digit token is certainly a year rather than a day.
+    if (only === undefined || only < 1900 || only > 2100) return null;
+    return { date: null, year: only };
+  }
+
+  const [first, second] = numbers as [number, number];
+  let day: number;
+  let year: number;
+  if (at === 0) {
+    // "Mar 14 2020"
+    [day, year] = [first, fullYear(second)];
+  } else if (at === 1 && first >= 1000) {
+    // "2020 Mar 14"
+    [year, day] = [first, second];
+  } else if (at === 1) {
+    // "14 Mar 2020"
+    [day, year] = [first, fullYear(second)];
+  } else {
+    // The month trailing two numbers is not an ordering anyone writes.
+    return null;
+  }
+
+  if (!isRealDate(year, month, day)) return NO_DATE;
+  return { date: `${year}-${pad(month)}-${pad(day)}`, year };
 }
 
 /** For columns mapped as year-only. */

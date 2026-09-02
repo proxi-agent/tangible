@@ -109,6 +109,51 @@ function normalizeLabel(value: string): string {
     .trim();
 }
 
+/**
+ * Matching control characters is the point here rather than an accident: a form
+ * feed is how a printer says "new page", and on a print-to-file register it is
+ * the one mark on the row that says where the row came from.
+ */
+// oxlint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\u0000-\u001f]+/g;
+
+/**
+ * A row reduced to the shape of the line it is, for comparison against the
+ * masthead a printed report repeats on every page.
+ *
+ * Three things are normalized away, and each one is something a printer varies
+ * while meaning the same line. Form feeds and stray control characters mark
+ * where a page broke. Case and spacing are typography. Digits become `#`,
+ * because the whole point of a page header is that "PAGE 1" and "PAGE 4" are
+ * the same furniture — as are two run dates, or a report printed for two
+ * different years.
+ *
+ * Column positions are kept. A row is only the same line if its cells are in
+ * the same places, which is what stops a match on wording alone.
+ */
+function pageSignature(row: readonly unknown[]): string {
+  return filled(row)
+    .map(({ index, value }) => {
+      const text = String(value)
+        .replace(CONTROL_CHARS, ' ')
+        .toLowerCase()
+        .replace(/\d+/g, '#')
+        .replace(/\s+/g, ' ')
+        .trim();
+      return `${index}:${text}`;
+    })
+    .join('|');
+}
+
+/**
+ * Digits alone are not an identity. "2026" above the header and "2027" in a
+ * year column reduce to the same signature, so a masthead line has to carry at
+ * least one letter before it is allowed to match anything.
+ */
+function hasLetters(signature: string): boolean {
+  return /[a-z]/.test(signature);
+}
+
 /** The cells a row actually carries, with their columns — blanks are not data. */
 function filled(row: readonly unknown[] = []): Array<{ index: number; value: unknown }> {
   return row
@@ -171,6 +216,36 @@ export function applyMapping(workbook: ParsedWorkbook, mapping: FarMapping): Nor
       }
     }
 
+    /**
+     * The lines this sheet is not made of: its title block and its header row.
+     *
+     * A file that was printed rather than exported repeats all of them at the
+     * top of every page, and those repeats land in the middle of the data where
+     * nothing else catches them. They carry no cost, so they foot; they carry a
+     * tag of sorts, so the subtotal rule passes them; they fill several columns,
+     * so the band-label rule passes them too. They arrive as assets — costless,
+     * warning, and counted.
+     *
+     * What identifies them is not that they look like furniture but that they
+     * are furniture *this file already declared*: every one of them is a line
+     * the mapping placed at or above the header row, which is the mapping's own
+     * statement that the line is not data. Matching a data row against that set
+     * is therefore reading the mapping back, not guessing — and a line that
+     * appears once above the header and again forty rows down was put there by a
+     * printer, because nothing else writes the same line twice.
+     *
+     * The set is only consulted when the header row is known. With no header
+     * there is no declaration to read back, and a rule this strong should not
+     * run on an assumption.
+     */
+    const masthead = new Set<string>();
+    if (sheetMapping.headerRow !== null) {
+      for (const row of sheet.matrix.slice(0, sheetMapping.headerRow + 1)) {
+        const signature = pageSignature(row);
+        if (signature !== '' && hasLetters(signature)) masthead.add(signature);
+      }
+    }
+
     // Section labels sit in a column that holds words — which is the
     // description column when there is one, and otherwise the first mapped
     // column. Anchoring on the leftmost mapped column alone was wrong: on the
@@ -217,6 +292,15 @@ export function applyMapping(workbook: ParsedWorkbook, mapping: FarMapping): Nor
       // the subtotal's amount, double-counting the section it closes.
       const filledAll = filled(row);
       if (filledAll.length === 0) continue; // blank row — not worth recording
+
+      // Page furniture, before anything else looks at the row: a repeat of the
+      // title block or the header is the one classification made of proof
+      // rather than of inference, and letting a later rule reach it first would
+      // only ever be a worse answer to a settled question.
+      if (masthead.has(pageSignature(row))) {
+        skipped.push({ sheet: sheet.name, row: r, reason: 'page header repeated inside the data' });
+        continue;
+      }
 
       const acquisition = dateValue(cell('acquisitionDate'));
       const inService = dateValue(cell('inServiceDate'));

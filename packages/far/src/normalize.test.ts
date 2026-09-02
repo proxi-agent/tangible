@@ -156,6 +156,38 @@ describe('value parsers', () => {
     expect(dateValue(43480).date).toBeNull(); // bare serial: refuse to guess
   });
 
+  /**
+   * A spelled-out month is the one date shape that carries its own order, which
+   * is why day-first is safe to read here and nowhere else: "14-Mar-2020" has
+   * no second reading, while "14-03-2020" has two. Printed depreciation
+   * schedules — AssetKeeper, Sage, most of what arrives as a scan — write dates
+   * this way, and before this they read as no date at all on every row.
+   */
+  it('reads a month written out, in whichever order it was written', () => {
+    expect(dateValue('14-Mar-2020')).toEqual({ date: '2020-03-14', year: 2020 });
+    expect(dateValue('Mar 14, 2020')).toEqual({ date: '2020-03-14', year: 2020 });
+    expect(dateValue('14 March 2020')).toEqual({ date: '2020-03-14', year: 2020 });
+    expect(dateValue('2020-Mar-14')).toEqual({ date: '2020-03-14', year: 2020 });
+    expect(dateValue('01-SEP-99')).toEqual({ date: '1999-09-01', year: 1999 });
+    expect(dateValue('Sept. 3, 2021')).toEqual({ date: '2021-09-03', year: 2021 });
+  });
+
+  /**
+   * A month and a year with no day is the same fact "FY20" carries, and gets
+   * the same answer: a year, and no date. "Mar-20" is refused because it is
+   * either March 2020 or the twentieth of March, and nothing in the cell says
+   * which — the ambiguity the m/d/y rule exists to avoid, arriving by another
+   * door.
+   */
+  it('takes a year from a month-and-year, and refuses a month and a bare number', () => {
+    expect(dateValue('Mar-2020')).toEqual({ date: null, year: 2020 });
+    expect(dateValue('March 2020')).toEqual({ date: null, year: 2020 });
+    expect(dateValue('Mar-20')).toEqual({ date: null, year: null });
+    expect(dateValue('Mar')).toEqual({ date: null, year: null });
+    expect(dateValue('31-Feb-2020')).toEqual({ date: null, year: null });
+    expect(dateValue('Machine, 3 ton')).toEqual({ date: null, year: null });
+  });
+
   // An impossible date is either a Postgres insert failure or a JavaScript
   // silent roll-forward to the first of the next month. Neither belongs in a
   // filing, so it reads as no date at all.
@@ -360,5 +392,111 @@ describe('detectHeaderRow', () => {
       ['M-2', 'Vertical mill', 'Machinery', 'Houston Plant', 'Ops', 'Bridgeport', 'SL', 42500],
     ];
     expect(detectHeaderRow(matrix)).toBe(0);
+  });
+});
+
+/**
+ * A report that was printed rather than exported repeats its masthead every
+ * twenty rows, and those repeats land in the middle of the data. Nothing else
+ * in this module catches them: they carry no cost, so the totals still foot;
+ * they carry text in the tag column, so the subtotal rule passes them; they
+ * fill several columns, so the band-label rule passes them too. Before this
+ * they arrived as costless assets — real enough to be counted, empty enough to
+ * be invisible in any check that measures money.
+ */
+describe('page headers repeated inside the data', () => {
+  const PRINTED: unknown[][] = [
+    ['HALCYON LOGISTICS, LLC', null, null, 'PAGE 1'],
+    ['ASSET DEPRECIATION SCHEDULE', null, null, 'RUN 01/09/2027'],
+    ['UNIT', 'DESCRIPTION', 'ACQUIRED', 'COST'],
+    ['0104', 'Yard tractor', '14-Mar-2020', '84,000.00'],
+    ['0105', 'Dock leveller', '02-Jun-2021', '12,500.00'],
+    // The page breaks here, and the whole masthead comes round again — with a
+    // different page number, which is the only thing about it that changes.
+    ['\fHALCYON LOGISTICS, LLC', null, null, 'PAGE 2'],
+    ['\fASSET DEPRECIATION SCHEDULE', null, null, 'RUN 01/09/2027'],
+    ['\fUNIT', 'DESCRIPTION', 'ACQUIRED', 'COST'],
+    ['0106', 'Reach truck', '18-Sep-2022', '31,750.00'],
+  ];
+
+  const PRINTED_MAPPING: FarMapping = {
+    sheets: [
+      {
+        sheetName: 'Sheet1',
+        include: true,
+        headerRow: 2,
+        categoryFromBands: false,
+        columns: [
+          { index: 0, field: 'assetTag' },
+          { index: 1, field: 'description' },
+          { index: 2, field: 'acquisitionDate' },
+          { index: 3, field: 'originalCost' },
+        ],
+      },
+    ],
+  };
+
+  it('reads three assets from a nine-row printout', () => {
+    const output = applyMapping(parseWorkbook(workbookFrom({ Sheet1: PRINTED })), PRINTED_MAPPING);
+    expect(output.assets.map((asset) => asset.assetTag)).toEqual(['0104', '0105', '0106']);
+    expect(output.skipped.filter((row) => row.reason.includes('page header'))).toHaveLength(3);
+  });
+
+  /**
+   * The rule is made of the mapping's own statement about the file: these lines
+   * were placed at or above the header row, which is where a mapping says
+   * "not data". With no header row there is no such statement, and a rule this
+   * strong must not run on an assumption.
+   */
+  it('does not run when the mapping names no header row', () => {
+    const headerless = { ...PRINTED_MAPPING.sheets[0]!, headerRow: null };
+    const output = applyMapping(parseWorkbook(workbookFrom({ Sheet1: PRINTED })), {
+      sheets: [headerless],
+    });
+    expect(output.skipped.filter((row) => row.reason.includes('page header'))).toHaveLength(0);
+  });
+
+  /**
+   * Position is part of the identity. An asset whose description happens to
+   * repeat the report's title is still an asset, because the title sat in the
+   * tag column and this does not.
+   */
+  it('keeps a row that only shares the masthead\u2019s wording', () => {
+    const shifted = [...PRINTED, ['0107', 'ASSET DEPRECIATION SCHEDULE', '01-Feb-2023', '900.00']];
+    const output = applyMapping(parseWorkbook(workbookFrom({ Sheet1: shifted })), PRINTED_MAPPING);
+    expect(output.assets.map((asset) => asset.assetTag)).toEqual(['0104', '0105', '0106', '0107']);
+  });
+
+  /**
+   * Digits are normalized away so that two page numbers match, which would let
+   * a bare year above the header swallow every row of a year column. A masthead
+   * line has to carry a letter before it is allowed to match anything.
+   */
+  it('does not let a numeric title line match a numeric data row', () => {
+    const numeric: unknown[][] = [
+      ['2026', null, null, null],
+      ['Unit', 'Description', 'Year', 'Cost'],
+      ['2027', null, null, null],
+      ['0104', 'Yard tractor', 2020, '84,000.00'],
+    ];
+    const mapping: FarMapping = {
+      sheets: [
+        {
+          sheetName: 'Sheet1',
+          include: true,
+          headerRow: 1,
+          categoryFromBands: false,
+          columns: [
+            { index: 0, field: 'assetTag' },
+            { index: 1, field: 'description' },
+            { index: 2, field: 'acquisitionYear' },
+            { index: 3, field: 'originalCost' },
+          ],
+        },
+      ],
+    };
+    const output = applyMapping(parseWorkbook(workbookFrom({ Sheet1: numeric })), mapping);
+    expect(output.skipped.filter((row) => row.reason.includes('page header'))).toHaveLength(0);
+    expect(output.assets.map((asset) => asset.assetTag)).toContain('0104');
   });
 });

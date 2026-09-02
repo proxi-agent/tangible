@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import type { SheetSummary } from '@tangible/types';
+import { decodeText } from './text.js';
 import { isoDate } from './values.js';
 
 /**
@@ -49,16 +50,17 @@ function startsWith(data: Uint8Array, magic: number[]): boolean {
  * cells as text leaves every interpretation to `values.ts`, which refuses what
  * it cannot read instead of inventing it. Spreadsheets keep `cellDates` because
  * there a date cell is typed as a date rather than guessed at.
+ *
+ * A spreadsheet carries its own encoding inside the container; delimited text
+ * carries nothing but bytes, so {@link decodeText} has to work out what they
+ * are before any of the above can happen.
  */
 export function parseWorkbook(data: Uint8Array): ParsedWorkbook {
   const binary = startsWith(data, ZIP_MAGIC) || startsWith(data, OLE2_MAGIC);
 
   const workbook = binary
     ? XLSX.read(data, { type: 'array', cellDates: true })
-    : XLSX.read(new TextDecoder('utf-8').decode(data).replace(/^﻿/, ''), {
-        type: 'string',
-        raw: true,
-      });
+    : XLSX.read(decodeText(data).text, { type: 'string', raw: true });
 
   const sheets: ParsedSheet[] = workbook.SheetNames.map((name) => {
     const sheet = workbook.Sheets[name];

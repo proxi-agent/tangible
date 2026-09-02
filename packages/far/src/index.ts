@@ -12,6 +12,7 @@ export {
   type NormalizeOutput,
   type SkippedRow,
 } from './normalize.js';
+export { decodeText, type DecodedText, type TextEncodingName } from './text.js';
 export { dateValue, isoDate, numberValue, textValue, yearValue } from './values.js';
 export { verifyMapping, type VerifyResult } from './verify.js';
 export {
