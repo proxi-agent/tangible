@@ -17,10 +17,19 @@ import { Badge, Card, CardHeader, ErrorState, Skeleton } from '@/components/ui/p
  * A client's reply to "send us your register" is a register, a PDF of last
  * year's rendition, a notice, and a photo of a forklift — and the person who
  * receives it spends the first hour deciding which file is which. Triage
- * proposes that sorting; this card is where a person confirms it, file by
- * file, before anything enters a pipeline. The single-file uploads below
- * still work — this card is for the drop that arrives as a pile.
+ * proposes that sorting, and the autopilot acts on the proposals it can stand
+ * behind, so this card is the exception queue: what is left is what a machine
+ * would have had to guess at. The single-file uploads below still work — this
+ * card is for the drop that arrives as a pile.
+ *
+ * It polls while anything recent is still open, because the autopilot works
+ * behind the upload's response. A queue that showed a file as needing a route
+ * for as long as the tab stayed open — while a route was being decided for it
+ * — would send a preparer to click Route and collect a 409.
  */
+/** How long after a drop the autopilot could still be moving rows underneath the queue. */
+const AUTOPILOT_WINDOW_MS = 5 * 60_000;
+
 export function IntakeCard({ clientId, engagementId }: { clientId: string; engagementId: string }) {
   const queryClient = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
@@ -29,6 +38,18 @@ export function IntakeCard({ clientId, engagementId }: { clientId: string; engag
   const { data, isLoading, error } = useQuery({
     queryKey: ['engagement-intake', engagementId],
     queryFn: () => api.intakeFiles(engagementId),
+    // Only while something recent is still undecided. The autopilot's whole
+    // pass is bounded by the intake handler's five minutes; past that window a
+    // file is open because it is genuinely waiting on a person, and polling
+    // for it forever would be a request every five seconds for nothing.
+    refetchInterval: (query) =>
+      (query.state.data?.items ?? []).some(
+        (item) =>
+          item.status === 'triaged' &&
+          Date.now() - Date.parse(item.createdAt) < AUTOPILOT_WINDOW_MS,
+      )
+        ? 5_000
+        : false,
   });
 
   const upload = useMutation({
@@ -51,7 +72,7 @@ export function IntakeCard({ clientId, engagementId }: { clientId: string; engag
       <CardHeader
         title="Client drop"
         description="Drop everything the client sent — the AI proposes which file is the register, which is a prior filing or notice, and which is noise."
-        help="Nothing enters a pipeline until you confirm each route — the proposal is triage, not a decision."
+        help="A file triage is sure of routes itself, and a register whose mapping passes every check against its own rows is imported without waiting for anyone. What lands here is what that bar did not clear."
       />
       <div className="px-5 pt-4">
         <button

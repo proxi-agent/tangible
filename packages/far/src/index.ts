@@ -14,7 +14,19 @@ export {
 } from './normalize.js';
 export { dateValue, isoDate, numberValue, textValue, yearValue } from './values.js';
 export { verifyMapping, type VerifyResult } from './verify.js';
-export { askFingerprint, askLooseFingerprint, planAskSync, type AskSyncPlan, type ExistingAsk } from './asks.js';
+export {
+  mappingClearsBar,
+  UNATTENDED_CONFIDENCE,
+  type UnattendedInput,
+  type UnattendedVerdict,
+} from './unattended.js';
+export {
+  askFingerprint,
+  askLooseFingerprint,
+  planAskSync,
+  type AskSyncPlan,
+  type ExistingAsk,
+} from './asks.js';
 export {
   harvestHeaderDecisions,
   headerFingerprint,

@@ -1,8 +1,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { desc, eq } from 'drizzle-orm';
+import { after } from 'next/server';
 import { isAiConfigured, peekDocument, triageFiles, type TriageFileInput } from '@tangible/ai';
 import { parseWorkbook, summarizeWorkbook } from '@tangible/far';
 import { FAR_REQUEST_MAX_BYTES, FAR_UPLOAD_MAX_BYTES } from '@tangible/types';
+import { autopilotDrop } from '@/lib/autopilot';
 import { mediaTypeFor } from '@/lib/priors';
 import { HttpError, handle } from '@/lib/route';
 import { uploadFarFile } from '@/lib/far-storage';
@@ -13,7 +15,16 @@ import { requireDb, schema } from '@/lib/workspace-db';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 120;
+/**
+ * Long, because the response is not the end of the work. Storing, peeking and
+ * triaging the drop happens before the client hears back; the autopilot then
+ * runs behind that response, and on a register it clears the bar for that
+ * means a mapping proposal, a full import and an analysis run. All of it is
+ * resumable from the outside — a routed file waits on the mapping screen, a
+ * queued run waits on the reaper — so the ceiling bounds the attempt, not the
+ * work.
+ */
+export const maxDuration = 300;
 
 const MAX_FILES = 20;
 
@@ -22,11 +33,17 @@ const MAX_FILES = 20;
  *
  * Every file is stored first — a drop is client evidence whether or not
  * anybody can read it yet — then triaged in one model call over the whole
- * batch, because the files explain each other. Nothing is routed here: the
- * rows come back as proposals, and each one waits for a person to confirm
- * which pipeline it enters. A file the workbook parser chokes on is not a
- * failure at this stage — plenty of legitimate drops are PDFs — it simply
- * carries no sheet evidence into triage.
+ * batch, because the files explain each other. A file the workbook parser
+ * chokes on is not a failure at this stage — plenty of legitimate drops are
+ * PDFs — it simply carries no sheet evidence into triage.
+ *
+ * Nothing is routed *by this handler*: the rows are written as proposals, the
+ * caller is answered, and only then does the autopilot look at them. What it
+ * will and will not carry forward is its own business — see
+ * {@link autopilotDrop} — but the ordering here is the load-bearing part. The
+ * drop is durably recorded before anything acts on it, so a client's files are
+ * never lost to a routing decision that went wrong, and the client's upload
+ * never waits on a model.
  */
 export function POST(
   request: Request,
@@ -181,6 +198,16 @@ export function POST(
         })),
       )
       .returning();
+
+    /**
+     * Behind the response, on purpose. The client has already been told their
+     * files arrived — which is true, and is the only thing this request had to
+     * establish. Everything the autopilot does from here is visible in the
+     * rows it moves: a file it routed leaves the triage queue, a register it
+     * imported shows its assets, and a report it produced sends the mail the
+     * client is actually waiting for.
+     */
+    after(() => autopilotDrop(rows.map((row) => row.id)));
 
     return { items: rows.map(intakeFileDto) };
   });

@@ -45,6 +45,16 @@ export default function PortalDocumentsPage() {
     queryKey: ['engagement-intake', engagementId],
     queryFn: () => api.intakeFiles(engagementId!),
     enabled: Boolean(engagementId),
+    // A file sent a minute ago is usually being read right now, and the
+    // sender is usually still on this page watching. Polling only while
+    // something recent is unresolved is what turns "Received" into "Accepted"
+    // under them instead of on their next visit.
+    refetchInterval: (query) =>
+      (query.state.data?.items ?? []).some(
+        (item) => item.status === 'triaged' && Date.now() - Date.parse(item.createdAt) < 5 * 60_000,
+      )
+        ? 5_000
+        : false,
   });
 
   const upload = useMutation({

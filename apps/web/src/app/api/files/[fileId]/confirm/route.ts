@@ -1,42 +1,32 @@
-import { eq } from 'drizzle-orm';
 import { after } from 'next/server';
-import {
-  applyMapping,
-  harvestHeaderDecisions,
-  headersFromWorkbook,
-  parseWorkbook,
-} from '@tangible/far';
 import { ConfirmMappingRequestSchema, type NormalizationResult } from '@tangible/types';
+import { confirmMapping } from '@/lib/mapping';
 import { handle } from '@/lib/route';
-import { applyImportBatch } from '@/lib/asset-graph';
-import { downloadFarFile } from '@/lib/far-storage';
-import { executeRun, requestRun } from '@/lib/runs';
-import { rememberHeaderDecisions } from '@/lib/mapping-memory';
-import { fetchEngagement, fetchFarFile } from '@/lib/workspace';
-import { requireDb, schema } from '@/lib/workspace-db';
+import { executeRun } from '@/lib/runs';
+import { fetchFarFile } from '@/lib/workspace';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
-
-const SKIPPED_SHOWN = 50;
+/**
+ * Five minutes, not one.
+ *
+ * This handler re-parses the whole workbook, applies the mapping row by row,
+ * and diffs the result against every asset the client's graph already holds —
+ * work that scales with the register rather than with the request. A 4,065-row
+ * register took 52 seconds on the rehearsal, which is inside a sixty-second
+ * ceiling only by accident: the next register that is larger, or the same one
+ * on a colder instance, times out *after* the assets have been written and
+ * leaves the caller staring at a failure that actually succeeded.
+ */
+export const maxDuration = 300;
 
 /**
- * Confirm a mapping and fold the result into the client's asset graph.
+ * A person confirms a mapping.
  *
- * Re-read the stored original, apply the human-confirmed mapping
- * deterministically, then compare the rows against what the client's graph
- * already holds rather than replacing them. Two things follow from that, and
- * both of them are the point of the change.
- *
- * A corrected mapping no longer costs the classification work. The assets those
- * decisions were made about are the same durable rows before and after, so
- * fixing a header row does not send a reviewer back through five hundred lines.
- *
- * And an upload of next year's register produces a history instead of a second
- * copy of the company. What appeared, what stopped appearing, what got cheaper
- * and what moved counties are all recorded as events on assets that have been
- * there the whole time.
+ * The application of it is {@link confirmMapping}, shared with the autopilot;
+ * what belongs to this entrance is the actor — the mapping is recorded as
+ * settled by whoever uploaded the file — and the decision to run the report
+ * after the response rather than making the mapping screen wait on it.
  */
 export function POST(
   request: Request,
@@ -45,92 +35,16 @@ export function POST(
   return handle(async (): Promise<NormalizationResult> => {
     const { fileId } = await params;
     const { mapping } = ConfirmMappingRequestSchema.parse(await request.json());
-    const row = await fetchFarFile(fileId);
-    const { engagement } = await fetchEngagement(row.engagementId);
+    const file = await fetchFarFile(fileId);
 
-    const bytes = await downloadFarFile(row.storagePath);
-    const workbook = parseWorkbook(bytes);
-    const { assets: drafts, skipped } = applyMapping(workbook, mapping);
-
-    const warningCount = drafts.filter((d) => d.warnings.length > 0).length;
-    const totalCost = drafts.reduce((sum, d) => sum + (d.originalCost ?? 0), 0);
-
-    const batch = await applyImportBatch({
-      engagementId: row.engagementId,
-      clientId: engagement.clientId,
-      taxYear: engagement.taxYear,
-      farFileId: fileId,
+    const { normalization, run } = await confirmMapping({
+      file,
       mapping,
-      drafts,
-      skippedCount: skipped.length,
-      actor: row.uploadedBy,
+      actor: file.uploadedBy,
     });
 
-    /**
-     * The confirm is the moment a person settled what these headers mean, and
-     * it is the only moment that is true — the proposal was a guess and the
-     * grid was a draft. So the headers are harvested here, from the workbook
-     * rather than the preview, which is how a column past the preview's
-     * fortieth is learned from at all.
-     *
-     * Best-effort for the same reason the run is: the assets are already in the
-     * graph, and a memory write that failed must not fail an import that
-     * worked. The next confirm of the same header will teach it again.
-     */
-    let learned: { headers: number; conflicts: number } | undefined;
-    try {
-      const remembered = await rememberHeaderDecisions({
-        decisions: harvestHeaderDecisions(headersFromWorkbook(workbook, mapping), mapping),
-        farFileId: fileId,
-        reviewer: row.uploadedBy,
-        now: new Date(),
-      });
-      learned = { headers: remembered.remembered, conflicts: remembered.conflicts };
-    } catch (error) {
-      console.error('[files] imported, but the header memory was not updated', fileId, error);
-    }
+    if (run && run.status === 'queued') after(() => executeRun(run.id));
 
-    const db = requireDb();
-    await db
-      .update(schema.farFiles)
-      .set({
-        confirmedMapping: mapping,
-        status: 'normalized',
-        error: null,
-        assetCount: batch.assetCount,
-        updatedAt: new Date(),
-      })
-      .where(eq(schema.farFiles.id, fileId));
-
-    /**
-     * A confirmed register is the event the client is actually waiting on, so
-     * this is where the report gets made. It runs after the response, and the
-     * mapping screen does not wait on it — the caller gets its normalization
-     * summary immediately and the portal follows the run.
-     *
-     * Best-effort on purpose. A run that could not be queued must not undo an
-     * import that succeeded: the assets are in the graph either way, and the
-     * next request or the reaper will produce the report.
-     */
-    try {
-      const run = await requestRun(row.engagementId, 'upload', row.uploadedBy);
-      if (run.status === 'queued') after(() => executeRun(run.id));
-    } catch (error) {
-      console.error('[files] imported, but the report run could not be queued', fileId, error);
-    }
-
-    return {
-      inserted: batch.assetCount,
-      skipped: skipped.slice(0, SKIPPED_SHOWN),
-      skippedCount: skipped.length,
-      warningCount,
-      totalCost,
-      batchId: batch.batchId,
-      newCount: batch.newCount,
-      matchedCount: batch.matchedCount,
-      changedCount: batch.changedCount,
-      absentCount: batch.absentCount,
-      learned,
-    };
+    return normalization;
   });
 }
