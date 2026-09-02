@@ -3,7 +3,7 @@ import { desc, gte, sql } from 'drizzle-orm';
 import type { HealthCheck, HealthReport, ProbeSummary } from '@tangible/types';
 import { getDb, schema } from '@tangible/db';
 import { recordIncident } from '@/lib/incidents';
-import { firmRecipients } from '@/lib/notify';
+import { appUrl, firmRecipients } from '@/lib/notify';
 import { getWarehouse } from '@/lib/warehouse';
 
 /**
@@ -97,6 +97,33 @@ export async function runHealthChecks(): Promise<HealthReport> {
     timed('scheduler', async () => {
       if (!process.env.CRON_SECRET) throw new Error('CRON_SECRET is unset, so the cron refuses.');
       return 'configured';
+    }),
+    /**
+     * What address the mail points at, which is the other half of `alerting`.
+     * A transport that works and a link that does not is still a client who
+     * cannot read their report, and it is the harder half to notice: the send
+     * succeeds, the `notifications` row says sent, and the failure happens in
+     * somebody else's mail client days later.
+     *
+     * Only the unambiguous case fails. Resolving to localhost from a deployment
+     * means every link already posted is dead, and there is no reading of that
+     * which is fine. Falling back to the deployment's own URL does not fail,
+     * because on a preview build that is correct and marking every preview red
+     * teaches the firm to ignore this row — the detail says which source won
+     * instead, which is the thing worth reading when a link misbehaves.
+     */
+    timed('links', async () => {
+      const resolved = appUrl();
+      const deployed = Boolean(process.env.VERCEL ?? process.env.VERCEL_URL);
+      if (deployed && new URL(resolved).hostname === 'localhost') {
+        throw new Error(
+          `Mailed links resolve to ${resolved}. Set NEXT_PUBLIC_APP_URL to the address clients reach this app at.`,
+        );
+      }
+      if (process.env.NEXT_PUBLIC_APP_URL) return `${resolved} · NEXT_PUBLIC_APP_URL`;
+      return deployed
+        ? `${resolved} · this deployment's own URL, because NEXT_PUBLIC_APP_URL is unset. Sign-in links only work from a host on the Supabase redirect allowlist.`
+        : `${resolved} · the development default`;
     }),
   ]);
 

@@ -85,12 +85,19 @@ export async function sendMail(to: string, message: Message): Promise<string | n
   }
 }
 
-/** Send one message to a client, and record on the season that we tried. */
+/**
+ * Send one message to a client, and record on the season that we tried.
+ *
+ * Returns what went wrong so a caller can escalate. The `notifications` row is
+ * written either way and is the durable record; the return value exists because
+ * a row nobody reads is not an alert, and the one message whose failure the
+ * firm has to *hear* about is the one telling a client their report is ready.
+ */
 async function deliver(
   to: string,
   message: Message,
   record: { engagementId: string; clientId: string; kind: Kind; runId?: string | null },
-): Promise<void> {
+): Promise<string | null> {
   const error = await sendMail(to, message);
 
   const db = requireDb();
@@ -106,6 +113,7 @@ async function deliver(
   });
 
   if (error) console.error('[notify] could not send', record.kind, to, error);
+  return error;
 }
 
 /** Who on the client's side hears about this. */
@@ -160,8 +168,16 @@ async function saidRecently(engagementId: string, kind: Kind, withinMs: number):
  * published report, which during a season is often: a preparer settling a
  * classification would otherwise send the client a fresh "your report is ready"
  * every few minutes, and the third one teaches them to ignore all of them.
+ *
+ * Returns which addresses did not get it. This is the one message in the
+ * product with a person waiting at the other end of it who has no other way to
+ * learn the answer — the run says `published`, the operations screen is green,
+ * and the client sits there believing we are still working. Failing silently
+ * here is indistinguishable from not having done the work.
  */
-export async function notifyReportPublished(runId: string): Promise<void> {
+export async function notifyReportPublished(
+  runId: string,
+): Promise<{ sent: number; failed: { to: string; error: string }[] }> {
   const db = requireDb();
   const [row] = await db
     .select({
@@ -174,11 +190,17 @@ export async function notifyReportPublished(runId: string): Promise<void> {
     .innerJoin(schema.clients, eq(schema.clients.id, schema.engagements.clientId))
     .where(eq(schema.analysisRuns.id, runId));
 
-  if (!row || row.run.status !== 'published') return;
-  if (row.run.trigger === 'refresh') return;
+  const nothingToSay = { sent: 0, failed: [] };
+  if (!row || row.run.status !== 'published') return nothingToSay;
+  if (row.run.trigger === 'refresh') return nothingToSay;
 
   const to = await recipients(row.client.id, false);
-  if (to.length === 0) return;
+  /**
+   * Nobody has been granted access to this business yet, so there is nobody to
+   * tell. Not a failure — a report published before the client was invited is
+   * the ordinary order of things, and the mail goes out with the grant.
+   */
+  if (to.length === 0) return nothingToSay;
 
   const message: Message = {
     subject: `Your ${row.engagement.taxYear} personal property report is ready`,
@@ -198,14 +220,17 @@ export async function notifyReportPublished(runId: string): Promise<void> {
     ].join('\n'),
   };
 
+  const failed: { to: string; error: string }[] = [];
   for (const address of to) {
-    await deliver(address, message, {
+    const error = await deliver(address, message, {
       engagementId: row.engagement.id,
       clientId: row.client.id,
       kind: 'report-published',
       runId: row.run.id,
     });
+    if (error) failed.push({ to: address, error });
   }
+  return { sent: to.length - failed.length, failed };
 }
 
 /**

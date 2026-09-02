@@ -55,6 +55,18 @@ export async function proxy(request: NextRequest) {
    */
   if (request.nextUrl.pathname === '/api/quality/digest/send') return NextResponse.next();
 
+  /**
+   * Where a mailed link lands, and the one route that has to run *before* there
+   * is a session — establishing one is its whole job. Sent through the gate it
+   * would be redirected to the login page it was on its way to replace, which
+   * is how the invitation mail dead-ended before this route existed.
+   *
+   * Letting it past opens nothing: it accepts a Supabase authorization code or
+   * token hash and does nothing at all without one, and the account it signs in
+   * is admitted by the same two lists as every other account.
+   */
+  if (request.nextUrl.pathname === '/auth/callback') return NextResponse.next();
+
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !anonKey) return NextResponse.next();

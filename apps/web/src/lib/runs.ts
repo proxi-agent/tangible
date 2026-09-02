@@ -415,10 +415,34 @@ export async function executeRun(runId: string): Promise<void> {
      * After the row, and never inside the transaction that wrote it. Mail that
      * goes out for a publish that then rolls back cannot be recalled, and a
      * provider timing out is not a reason to lose the report.
+     *
+     * A message that did not land raises an incident, and this is the only
+     * notification in the app that does. The others are recoverable by looking:
+     * an unread question is still sitting on the client's own screen, and the
+     * firm sees an unanswered ask on its board. This one has no second surface.
+     * The run says `published`, every dependency answers, and the client — who
+     * has no reason to open a portal nobody told them about — waits. The failure
+     * is invisible from both ends at once, which is exactly the shape a thing
+     * has to have to be worth waking somebody for.
      */
-    await notifyReportPublished(runId).catch((error) =>
-      console.error('[runs] published, but the notification failed', runId, error),
-    );
+    const mailed = await notifyReportPublished(runId).catch((error: unknown) => {
+      console.error('[runs] published, but the notification failed', runId, error);
+      return { sent: 0, failed: [{ to: 'the client', error: String(error) }] };
+    });
+    if (mailed.failed.length > 0) {
+      await recordIncident({
+        surface: 'run',
+        label: 'notify · report published',
+        error: new Error(
+          `The ${held.engagementId} report published, but ${mailed.failed.length} of ${
+            mailed.failed.length + mailed.sent
+          } recipients were not told: ${mailed.failed
+            .map((f) => `${f.to} (${f.error})`)
+            .join('; ')}`,
+        ),
+        engagementId: held.engagementId,
+      });
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     console.error('[runs] failed', runId, error);

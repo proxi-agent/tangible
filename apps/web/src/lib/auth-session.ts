@@ -27,3 +27,22 @@ export const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;
 export const SESSION_COOKIE_OPTIONS = {
   maxAge: SESSION_MAX_AGE_SECONDS,
 } as const;
+
+/**
+ * Where to land after signing in, when the caller asked for somewhere.
+ *
+ * Two callers now: the login form, which carries `?next=` from the proxy after
+ * a session lapsed mid-task, and the callback that finishes a magic link, which
+ * carries it back around through the mail. Both are places where an attacker
+ * gets to choose the string, so both get the same answer — only same-origin
+ * *paths* are honoured.
+ *
+ * `//elsewhere.example` is rejected alongside the absolute form because a
+ * protocol-relative URL is an absolute one that merely looks like a path, and a
+ * sign-in page that forwards to a host of the sender's choosing is worth
+ * exactly as much to a phisher as a stolen password.
+ */
+export function safeNext(value: string | null | undefined): string | null {
+  if (!value || !value.startsWith('/') || value.startsWith('//')) return null;
+  return value;
+}

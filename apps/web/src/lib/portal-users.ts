@@ -3,6 +3,7 @@ import { asc, eq } from 'drizzle-orm';
 import { getSupabaseAdmin } from '@tangible/db';
 import type { GrantPortalAccessRequest, PortalRole, PortalUser } from '@tangible/types';
 import { HttpError } from '@/lib/http';
+import { appUrl } from '@/lib/notify';
 import { requireDb, schema } from '@/lib/workspace-db';
 
 /**
@@ -130,11 +131,20 @@ export async function revokePortalAccess(clientId: string, grantId: string): Pro
  * the durable half. An address that already has an account comes back as an
  * error here and is the ordinary case for a second grant to the same person's
  * colleague, so it is not worth surfacing either.
+ *
+ * `redirectTo` is the part that makes the mail worth sending. Supabase appends
+ * it to the link it builds, and without it the link comes back to the project's
+ * configured Site URL — which for a long time was a page that could do nothing
+ * with what it had been handed. It names `/auth/callback` explicitly rather
+ * than trusting that default, and the address has to be on the project's
+ * redirect allowlist or Supabase silently substitutes the Site URL again.
  */
 async function invite(email: string): Promise<void> {
   if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) return;
   try {
-    await getSupabaseAdmin().auth.admin.inviteUserByEmail(email);
+    await getSupabaseAdmin().auth.admin.inviteUserByEmail(email, {
+      redirectTo: `${appUrl()}/auth/callback`,
+    });
   } catch (error) {
     console.error('[portal] could not send the invitation', error);
   }
