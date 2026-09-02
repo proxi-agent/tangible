@@ -78,7 +78,17 @@ export default function PortalReportPage() {
       <PortalHeader
         title="Your report"
         description={description}
-        actions={<LinkButton href={href('/portal/documents')}>Send more files</LinkButton>}
+        actions={
+          <>
+            {/* Only once there is something to print. Offered against a season
+                with no published report, it hands the reader a page whose whole
+                answer is that there is nothing yet. */}
+            {published.report && published.report.coverage.assetCount > 0 ? (
+              <LinkButton href={href('/portal/print')}>Save as PDF</LinkButton>
+            ) : null}
+            <LinkButton href={href('/portal/documents')}>Send more files</LinkButton>
+          </>
+        }
       />
 
       {published.isLoading ? (

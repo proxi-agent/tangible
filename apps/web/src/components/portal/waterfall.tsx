@@ -7,6 +7,7 @@ import { cn } from '@/lib/cn';
 import { money, percent } from '@/lib/format';
 import { InfoTip } from '@/components/ui/tooltip';
 import { usePortal } from '@/components/portal/portal-context';
+import { waterfallShape } from '@/lib/waterfall';
 
 /**
  * Reported value on the left, corrected value on the right, and every finding
@@ -24,100 +25,49 @@ import { usePortal } from '@/components/portal/portal-context';
  */
 export function Waterfall({ report }: { report: SavingsReport }) {
   const { href } = usePortal();
-  const steps = report.findings
-    .filter((finding) => finding.valueRemoved !== null && finding.valueRemoved > 0)
-    .sort((a, b) => (b.valueRemoved ?? 0) - (a.valueRemoved ?? 0));
-
-  const exemption = report.exemption.applied;
+  const shape = waterfallShape(report);
+  if (!shape) return null;
+  const { start, fromRoll, end } = shape;
   const rate = report.blendedTaxRate;
 
   /**
-   * Where the chart starts, and the reason this is not simply the register.
-   *
-   * When a district has an account on the roll, *that* is the number the client
-   * is being taxed on, and it is usually well above their own books — an
-   * appraiser with no rendition in hand estimates, and estimates high. Starting
-   * the chart at the register would leave that gap off the page while the
-   * headline saving counts it, which is the one discrepancy a controller is
-   * guaranteed to find. So the roll is the top of the waterfall and the gap is
-   * its first step, named for what it is.
-   *
-   * A roll *below* the register is the opposite situation — exposure, not
-   * saving — and drawing it as a step that removes negative value would be a
-   * lie told with arithmetic. There the chart starts at the register, and the
-   * report's own figures say the district is under it.
+   * The two steps with no assets behind them, and so no click to explain them.
+   * A tooltip is the only way either can say what it is — the roll gap in
+   * particular is the largest bar on most reports and reads as a number we
+   * invented until it says whose estimate it is.
    */
-  const register = report.farImpliedValue + report.totalValueRemoved;
-  const assessed = report.assessed?.assessedValue ?? null;
-  const gap = assessed === null ? 0 : assessed - register;
-  const start = gap > 0 && assessed !== null ? assessed : register;
-  const end = report.proposedTaxableValue;
-  if (start <= 0) return null;
+  const help: Record<string, ReactNode> = {
+    'roll-gap': (
+      <>
+        <p>
+          The district has no line-by-line list of what you own on this account, so the value they
+          carry is an estimate. A rendition puts your own register in front of them, valued on
+          their published schedules.
+        </p>
+        <p className="mt-1.5">
+          They can still disagree with it. That is what the protest deadline after the notice is
+          for.
+        </p>
+      </>
+    ),
+    exemption: report.exemption.basis,
+  };
 
-  const rows: {
-    key: string;
-    label: string;
-    amount: number;
-    href: string | null;
-    help?: ReactNode;
-  }[] = [
-    ...(gap > 0
-      ? [
-          {
-            key: 'roll-gap',
-            label: 'The district’s estimate, above what your books show',
-            amount: gap,
-            href: null,
-            // The largest bar on most reports, and the only one with no assets
-            // behind it to click into. Left unexplained it reads as a number we
-            // invented; it is in fact the district's own estimate, made without
-            // a list of what is actually on site.
-            help: (
-              <>
-                <p>
-                  The district has no line-by-line list of what you own on this account, so the
-                  value they carry is an estimate. A rendition puts your own register in front of
-                  them, valued on their published schedules.
-                </p>
-                <p className="mt-1.5">
-                  They can still disagree with it. That is what the protest deadline after the
-                  notice is for.
-                </p>
-              </>
-            ),
-          },
-        ]
-      : []),
-    ...steps.map((finding) => ({
-      key: finding.key,
-      label: finding.title,
-      amount: finding.valueRemoved ?? 0,
-      href: href(`/portal/report/${encodeURIComponent(finding.key)}`),
-    })),
-    ...(exemption > 0
-      ? [
-          {
-            key: 'exemption',
-            label: report.exemption.label,
-            amount: exemption,
-            href: null,
-            help: report.exemption.basis,
-          },
-        ]
-      : []),
-  ];
+  const rows = shape.steps.map((step) => ({
+    ...step,
+    href: step.findingKey ? href(`/portal/report/${encodeURIComponent(step.findingKey)}`) : null,
+    help: help[step.key],
+  }));
 
   return (
     <div className="space-y-2 px-5 py-4">
       <Bar
-        label={
-          gap > 0 ? 'What the district has you at today' : 'Your register, valued as it stands'
-        }
+        label={fromRoll ? 'What the district has you at today' : 'Your register, valued as it stands'}
         amount={start}
         width={1}
         tone="filed"
         note={
-          gap > 0
+          fromRoll
             ? `${money(start * rate)} a year · account ${report.assessed?.accountId ?? ''}`
             : `${money(start * rate)} a year · every asset still on your books, on the district’s schedules`
         }

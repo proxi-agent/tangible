@@ -414,4 +414,54 @@
     box-shadow: none !important;
     border-color: #ddd !important;
   }
+
+  /* The one page built to be printed rather than merely printable.
+     ------------------------------------------------------------------------
+     The rest of the app tolerates a printer; /portal/print is a document that
+     leaves the building, gets forwarded to a CFO who will never sign in, and
+     is quoted back to us eighteen months later. These rules are what make the
+     paper copy legible on its own. */
+  .print-document {
+    /* Print in ink, not in the theme. The tokens are redeclared rather than
+       the colours overridden one class at a time: every shade on this page
+       comes from one of these four, so a reader whose browser is in dark mode
+       gets a black-on-white document instead of a black page — or, once the
+       printer drops the backgrounds and keeps the text colour, pale grey on
+       white, which is the version that actually reaches a client. */
+    --color-ink: #111111;
+    --color-ink-secondary: #444444;
+    --color-ink-muted: #555555;
+    --color-hairline: rgba(0, 0, 0, 0.2);
+    color: var(--color-ink);
+    font-size: 10.5pt;
+  }
+  .print-document h1 {
+    font-size: 17pt;
+  }
+  .print-document h2 {
+    font-size: 12pt;
+    /* A heading stranded at the foot of a sheet is the most common way a
+       printed report reads as broken. */
+    break-after: avoid;
+  }
+  .print-document table {
+    /* Repeat the column headings on every sheet a long table runs onto. */
+    break-inside: auto;
+  }
+  .print-document thead {
+    display: table-header-group;
+  }
+  .print-document tr {
+    break-inside: avoid;
+  }
+  .print-document section {
+    margin-top: 0.6cm;
+  }
+}
+
+@page {
+  /* Wider than a browser's default half-inch, because the text runs the full
+     width here and a margin that narrow reads as a screenshot rather than as a
+     document. */
+  margin: 1.6cm 1.5cm;
 }
