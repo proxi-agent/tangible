@@ -1,6 +1,12 @@
 import { buildIndex, scoreIndex, type Bm25Index } from './bm25.js';
 import { KNOWLEDGE } from './corpus/index.js';
-import type { KnowledgeArticle, KnowledgeHit, KnowledgeTopic } from './types.js';
+import type {
+  KnowledgeArticle,
+  KnowledgeHit,
+  KnowledgeJurisdiction,
+  KnowledgeTopic,
+} from './types.js';
+import { knowledgeJurisdictionLabel } from './types.js';
 
 /**
  * Retrieval over the curated corpus, done arithmetically rather than by a
@@ -18,6 +24,13 @@ import type { KnowledgeArticle, KnowledgeHit, KnowledgeTopic } from './types.js'
  * It shares this arithmetic and shares nothing else: this corpus is authority
  * and that one is history, and an answer that confused the two would cite a
  * brief as though it were a statute.
+ *
+ * The corpus now holds more than one state, and the `jurisdictions` filter is
+ * the reason that is safe. Filtering is the caller's job rather than the
+ * scorer's: BM25 has no idea that "April 1" and "April 15" answer the same
+ * question differently depending on where the account is, and a Florida
+ * article can outscore the Texas one on a Texas question purely on wording.
+ * A caller who knows the state should always say so.
  *
  * The one thing this must never do is return nothing quietly. A query that
  * clears no article is a real answer — the corpus does not cover it — and the
@@ -66,6 +79,16 @@ export interface KnowledgeSearchOptions {
   /** Narrow to these topics. Empty or omitted searches the whole corpus. */
   topics?: readonly KnowledgeTopic[];
   /**
+   * Narrow to these states. An article with no `jurisdiction` is true
+   * everywhere and passes every filter, so this narrows rather than excludes.
+   *
+   * Empty or omitted returns every state, which is the right default for a
+   * question asked outside an engagement and the wrong one inside it. Where
+   * the account's state is known, pass it: the failure this prevents is not a
+   * missing answer but a confident wrong one.
+   */
+  jurisdictions?: readonly KnowledgeJurisdiction[];
+  /**
    * Score a hit must clear. Tuned so an unrelated question — "what's the
    * weather" — returns nothing rather than the least-bad article, which is the
    * behaviour that lets the caller honestly say the corpus is silent.
@@ -79,13 +102,24 @@ export function searchKnowledge(
 ): KnowledgeHit[] {
   const { bm25, byId } = getIndex();
   const topics = options.topics?.length ? new Set(options.topics) : null;
+  const states = options.jurisdictions?.length ? new Set(options.jurisdictions) : null;
+
+  const where =
+    topics || states
+      ? (id: string) => {
+          const article = byId.get(id);
+          if (!article) return false;
+          if (topics && !article.topics.some((topic) => topics.has(topic))) return false;
+          // An untagged article is jurisdiction-neutral, not unknown.
+          if (states && article.jurisdiction && !states.has(article.jurisdiction)) return false;
+          return true;
+        }
+      : undefined;
 
   return scoreIndex(bm25, query, {
     limit: options.limit,
     minScore: options.minScore,
-    where: topics
-      ? (id) => byId.get(id)?.topics.some((topic) => topics.has(topic)) ?? false
-      : undefined,
+    where,
   }).map((hit) => ({
     article: byId.get(hit.id)!,
     score: hit.score,
@@ -97,10 +131,18 @@ export function getArticle(id: string): KnowledgeArticle | null {
   return getIndex().byId.get(id) ?? null;
 }
 
-export function listArticles(topics?: readonly KnowledgeTopic[]): KnowledgeArticle[] {
-  if (!topics?.length) return [...KNOWLEDGE];
-  const wanted = new Set(topics);
-  return KNOWLEDGE.filter((article) => article.topics.some((topic) => wanted.has(topic)));
+export function listArticles(
+  topics?: readonly KnowledgeTopic[],
+  jurisdictions?: readonly KnowledgeJurisdiction[],
+): KnowledgeArticle[] {
+  const wanted = topics?.length ? new Set(topics) : null;
+  const states = jurisdictions?.length ? new Set(jurisdictions) : null;
+  if (!wanted && !states) return [...KNOWLEDGE];
+  return KNOWLEDGE.filter((article) => {
+    if (wanted && !article.topics.some((topic) => wanted.has(topic))) return false;
+    if (states && article.jurisdiction && !states.has(article.jurisdiction)) return false;
+    return true;
+  });
 }
 
 /**
@@ -111,6 +153,11 @@ export function listArticles(topics?: readonly KnowledgeTopic[]): KnowledgeArtic
  * 22.23(b)", never "knowledge article extensions-what-a-request-buys". The id
  * is still included so a caller can validate a citation afterwards, the same
  * way the engagement ask validates its references.
+ *
+ * The state is printed on its own line rather than left to be inferred from
+ * the authority strings. "s. 193.063, F.S." and "Tax Code 22.23(b)" are both
+ * extension statutes, and a model reading two of them in one prompt with
+ * nothing else to separate them will eventually blend the two deadlines.
  */
 export function renderKnowledge(hits: readonly KnowledgeHit[]): string {
   if (hits.length === 0) return '';
@@ -119,8 +166,11 @@ export function renderKnowledge(hits: readonly KnowledgeHit[]): string {
       const { article } = hit;
       const authority = article.authority.length
         ? `Authority: ${article.authority.join('; ')}`
-        : 'Authority: none — this describes how Tangible works, not what Texas requires.';
-      return [`[${article.id}] ${article.title}`, authority, article.body].join('\n');
+        : 'Authority: none — this describes how Tangible works, not what a state requires.';
+      const scope = article.jurisdiction
+        ? `State: ${knowledgeJurisdictionLabel(article.jurisdiction)}`
+        : 'State: applies regardless of state.';
+      return [`[${article.id}] ${article.title}`, authority, scope, article.body].join('\n');
     })
     .join('\n\n---\n\n');
 }

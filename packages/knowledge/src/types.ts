@@ -3,10 +3,11 @@
  *
  * Everything else the assistant answers from is *this firm's record* — a
  * register, a filing, a notice — fetched at question time and true only of one
- * client. This corpus is the other half: what is true of Texas business
- * personal property regardless of whose engagement is open. Statutory
- * deadlines, what a penalty is charged on, which correction route survives a
- * protest, how a district's schedules arrive at a value.
+ * client. This corpus is the other half: what is true of business personal
+ * property in the states this practice files in, regardless of whose
+ * engagement is open. Statutory deadlines, what a penalty is charged on, which
+ * correction route survives a protest, how a district's schedules arrive at a
+ * value.
  *
  * It is committed data rather than a retrieved document set, and that is a
  * deliberate trade. A curated corpus is reviewable in a diff, cannot drift
@@ -15,6 +16,14 @@
  * also let an unreviewed sentence about a deadline reach a preparer. When the
  * firm has documents worth retrieving, they belong beside this — not instead
  * of it.
+ *
+ * Articles that speak for one state carry a `jurisdiction`. Retrieval without
+ * one searches everything, which was the only possible behaviour while the
+ * corpus was Texas-only and is the wrong default now that it is not: "when is
+ * the return due" has two correct answers two weeks apart, and an assistant
+ * that picks between them by BM25 score will eventually pick the wrong one in
+ * front of a preparer. Articles about the product itself carry no jurisdiction
+ * and are returned to everyone.
  *
  * Every article carries its `authority`. An answer that cites an article is
  * citing the statute through it, and the assistant is instructed to print that
@@ -53,11 +62,35 @@ export const KNOWLEDGE_TOPICS = [
 
 export type KnowledgeTopic = (typeof KNOWLEDGE_TOPICS)[number];
 
+/**
+ * The states the corpus speaks for. Not a list of states this product has data
+ * for — a list of states somebody has written the law of down and checked it.
+ * Adding one means writing its articles, not adding its code here.
+ */
+export const KNOWLEDGE_JURISDICTIONS = ['tx', 'fl'] as const;
+
+export type KnowledgeJurisdiction = (typeof KNOWLEDGE_JURISDICTIONS)[number];
+
+/** The state's name, for prompt text and screens. Never the bare code. */
+export function knowledgeJurisdictionLabel(jurisdiction: KnowledgeJurisdiction): string {
+  return jurisdiction === 'tx' ? 'Texas' : 'Florida';
+}
+
 export interface KnowledgeArticle {
   /** Stable, human-readable, and cited by the assistant. Never renumber one. */
   id: string;
   title: string;
   topics: readonly KnowledgeTopic[];
+  /**
+   * Which state's law this states. Omitted where the article is true
+   * everywhere — the `product` articles, and anything describing how this
+   * repository works rather than what a state requires.
+   *
+   * An omitted jurisdiction means "applies regardless", never "unknown". An
+   * article whose state nobody has established is an article that is not
+   * finished, and it should not be in the corpus.
+   */
+  jurisdiction?: KnowledgeJurisdiction;
   /**
    * The statute, form, or published source this rests on, written the way it
    * should appear in an answer: "Tax Code 22.23(b)", "Form 50-144", "HCAD

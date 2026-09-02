@@ -246,9 +246,16 @@ function validate(answer: AssistantAnswer, state: Executed): AssistantAnswer {
  * The two corpora are printed under separate headings and never interleaved.
  * That separation is load-bearing everywhere the assistant touches precedent,
  * and it matters more here than anywhere else: there is no model in this path
- * to carry the caution, so the prose has to. One section is what Texas
+ * to carry the caution, so the prose has to. One section is what a state
  * requires; the other is what this firm once wrote, which may have been wrong
  * and may have lost.
+ *
+ * The corpus search here is unfiltered by state, and it has to be: there is no
+ * engagement in this path and nothing to infer a state from. So a question
+ * about a deadline can come back with Texas and Florida side by side. Each
+ * article prints the state it states the law of, and where two states answered
+ * at once the limits say so — a reader given April 1 and April 15 with no
+ * label would reasonably take the first one.
  */
 async function fallbackAnswer(question: string): Promise<{
   answer: AssistantAnswer;
@@ -263,7 +270,7 @@ async function fallbackAnswer(question: string): Promise<{
     {
       id: randomUUID(),
       tool: 'search_knowledge',
-      args: { query: question, topics: null, limit: 3 },
+      args: { query: question, topics: null, jurisdiction: null, limit: 3 },
       ok: true,
       summary: `Knowledge: ${hits.length} article(s) matched.`,
       data: hits.map((hit) => ({ id: hit.article.id, title: hit.article.title })),
@@ -279,6 +286,7 @@ async function fallbackAnswer(question: string): Promise<{
     ...(prior?.call.citations ?? []),
   ];
   const clientIds = prior?.clientIds ?? [];
+  const states = new Set(hits.flatMap((hit) => hit.article.jurisdiction ?? []));
 
   if (hits.length === 0 && prior === null) {
     return {
@@ -309,6 +317,11 @@ async function fallbackAnswer(question: string): Promise<{
       citations,
       limits: [
         'No model is configured, so nothing in the client record or the county data was read — this is the two corpora only.',
+        ...(states.size > 1
+          ? [
+              'The corpus was searched across every state, because nothing in this question said which one applies. More than one state answered below, and their rules differ — read the state named on each article before relying on a date.',
+            ]
+          : []),
         ...(prior === null
           ? []
           : [

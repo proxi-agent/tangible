@@ -43,12 +43,16 @@ export function observedDate(iso: string): string {
  * Texas stays the default because every existing caller meant Texas and none of
  * them should silently change answer. What Florida proves is that a calendar is
  * not a set of dates with the state's name swapped in: the *shape* differs.
- * Texas gives a rendition an extension the appraiser must grant on request;
- * Florida gives an extension the appraiser may grant and caps at 45 days.
+ * The extension is the trap rather than the example: Texas must grant one on
+ * request and so must Florida, because s. 193.063's first sentence is a "shall"
+ * exactly like 22.23(b)'s. Where the shape really differs is everywhere else.
  * Texas prices lateness at a flat 10%; Florida runs 5% a month to 25% and adds
- * a separate 15% on property never disclosed. And the Florida protest clock
- * does not start on a calendar date at all — it runs 25 days from the TRIM
- * notice, which the county mails when it mails.
+ * a separate 15% on property never disclosed. The Florida protest clock does
+ * not start on a calendar date at all — it runs 25 days from the TRIM notice,
+ * which the county mails when it mails. And a Florida return filed late
+ * forfeits the appeal itself under s. 194.034(1)(j), which Texas has no
+ * analogue for: a Texas non-filer protests from a worse position, a Florida
+ * one does not protest at all.
  *
  * A state nobody has researched gets an empty calendar rather than Texas's. An
  * empty list reads on screen as "no dates loaded"; a wrong list reads as April
@@ -67,9 +71,9 @@ export function deadlinesFor(
  * Florida's tangible personal property season.
  *
  * Three dates and one that cannot be computed. April 1 is the return deadline
- * under s. 193.062; the extension under s. 193.063 is discretionary and capped,
- * unlike the Texas one; s. 193.072 penalties compound monthly rather than
- * landing flat. The TRIM notice is the one that matters most to a protest and
+ * under s. 193.062; the extension under s. 193.063 is mandatory for its first
+ * 30 days and discretionary for a further 15, the same two-part shape as the
+ * Texas one; s. 193.072 penalties compound monthly rather than landing flat. The TRIM notice is the one that matters most to a protest and
  * the one this calendar cannot print, because the mailing date is the county's
  * and the 25 days run from it — so it appears as a dated-when-it-arrives entry
  * rather than as a guess, and the notice intake is what fills it in.
@@ -95,7 +99,7 @@ function floridaDeadlines(taxYear: number): FilingDeadline[] {
       label: 'Last day to request an extension',
       date: observed(taxYear, 4, 1),
       basis:
-        's. 193.063, F.S.: the property appraiser *may* grant up to 45 days, and it is discretionary throughout. Nothing moves until it is granted — unlike Texas, where a timely request moves the deadline on its own.',
+        's. 193.063, F.S. makes two promises, not one: the property appraiser *shall* grant 30 days, and *may* grant up to 15 more at discretion. The first is not a favour and cannot be refused, so a granted request lands the return on May 1. The difference from Texas is not discretion but timing — the statute requires the request to reach the appraiser in time to be considered and acted on *before* April 1, and a county may require it up to 10 days ahead, so a request sent on the deadline itself may be too late to act on.',
     },
     {
       key: 'trim-notice',

@@ -30,6 +30,13 @@
  * short: "property", "tax" and "value" are *not* here, because although they
  * appear everywhere, IDF already discounts them, and dropping them outright
  * would break a query that is genuinely about one of them.
+ *
+ * "get" is the one light verb on the list, and it is here because IDF works
+ * against us on it: it is rare enough in a corpus written in statutory prose
+ * to score like a real term, so "how do we get an extension" ranked an article
+ * that happened to contain "does not get in through this door" above the
+ * extension article itself. Rare and meaningless is the worst combination a
+ * term can have.
  */
 const STOPWORDS = new Set([
   'a',
@@ -47,6 +54,7 @@ const STOPWORDS = new Set([
   'does',
   'for',
   'from',
+  'get',
   'had',
   'has',
   'have',

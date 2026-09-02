@@ -13,6 +13,7 @@ export const VALUE_ARTICLES: readonly KnowledgeArticle[] = [
   {
     id: 'valuation-how-a-district-values',
     title: 'Cost, index factor, percent good',
+    jurisdiction: 'tx',
     topics: ['valuation'],
     authority: ['Tax Code 23.01', 'Tax Code 23.12', 'HCAD Personal Property Valuation Guide'],
     keywords: [
@@ -37,6 +38,7 @@ Two consequences follow. First, an asset with no acquisition year cannot be valu
   {
     id: 'valuation-sic-and-life',
     title: 'Why the same asset gets a different life at a different business',
+    jurisdiction: 'tx',
     topics: ['valuation', 'classification'],
     authority: ['HCAD Personal Property Valuation Guide'],
     keywords: [
@@ -58,6 +60,7 @@ The practical implication for intake is that a client's SIC code is not optional
   {
     id: 'classification-what-is-not-bpp',
     title: 'What sits on a fixed asset register that is not business personal property',
+    jurisdiction: 'tx',
     topics: ['classification'],
     authority: ['Tax Code 1.04', 'Tax Code 11.01', 'Tax Code 23.24'],
     keywords: [
@@ -92,6 +95,7 @@ Every one of these is a claim that has to survive a district's questions, so eac
   {
     id: 'exemptions-bpp-threshold',
     title: 'The Texas business personal property exemption',
+    jurisdiction: 'tx',
     topics: ['exemptions'],
     authority: [
       'Tax Code 11.145',
@@ -120,6 +124,7 @@ The exemption does not remove the obligation to render. Rendering and owing are 
   {
     id: 'exemptions-freeport-and-allocation',
     title: 'Freeport and interstate allocation',
+    jurisdiction: 'tx',
     topics: ['exemptions', 'deadlines'],
     authority: [
       'Tax Code 11.251',

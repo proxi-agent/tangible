@@ -15,6 +15,7 @@ export const FILING_ARTICLES: readonly KnowledgeArticle[] = [
   {
     id: 'rendition-what-must-be-rendered',
     title: 'What has to go on a rendition',
+    jurisdiction: 'tx',
     topics: ['rendition', 'classification'],
     authority: ['Tax Code 22.01', 'Tax Code 22.24', 'Form 50-144'],
     keywords: [
@@ -37,6 +38,7 @@ Rendering is not optional for income-producing property, and the January 1 rule 
   {
     id: 'rendition-cost-vs-value',
     title: 'Reporting cost versus reporting an opinion of value',
+    jurisdiction: 'tx',
     topics: ['rendition', 'valuation'],
     authority: ['Tax Code 22.01', 'Tax Code 22.24(c)', 'Tax Code 41.41', 'Form 50-144'],
     keywords: [
@@ -58,6 +60,7 @@ Zero is never a substitute for an unknown. A line whose value could not be compu
   {
     id: 'deadlines-season',
     title: 'The Texas rendition calendar',
+    jurisdiction: 'tx',
     topics: ['deadlines', 'rendition'],
     authority: [
       'Tax Code 1.06',
@@ -93,6 +96,7 @@ Every one of these moves under Tax Code 1.06: where the last day of an act falls
   {
     id: 'extensions-what-a-request-buys',
     title: 'What a rendition extension actually moves',
+    jurisdiction: 'tx',
     topics: ['extensions', 'deadlines'],
     authority: ['Tax Code 22.23(b)'],
     keywords: [
@@ -117,6 +121,7 @@ A standard request sent after April 15 is a third case: it obliges nobody. It is
   {
     id: 'penalties-late-and-fraudulent',
     title: 'The rendition penalties, and the window to ask for a waiver',
+    jurisdiction: 'tx',
     topics: ['penalties', 'rendition'],
     authority: ['Tax Code 22.28', 'Tax Code 22.29', 'Tax Code 22.30'],
     keywords: [
@@ -140,6 +145,7 @@ Tax Code 22.30 lets the chief appraiser waive the 22.28 penalty. The request mus
   {
     id: 'rendition-one-form-per-location',
     title: 'One rendition per location, not one per client',
+    jurisdiction: 'tx',
     topics: ['rendition', 'product'],
     authority: ['Tax Code 21.02', 'Tax Code 22.01', 'Form 50-144'],
     keywords: [
@@ -161,6 +167,7 @@ The account number belongs to the site, not to the client. When a client's accou
   {
     id: 'rendition-who-signs',
     title: 'Who may sign a rendition, and what notarization turns on',
+    jurisdiction: 'tx',
     topics: ['rendition', 'agents'],
     authority: ['Tax Code 22.24(e)', 'Tax Code 22.26', 'Form 50-144'],
     keywords: [

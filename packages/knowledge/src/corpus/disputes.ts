@@ -12,6 +12,7 @@ export const DISPUTE_ARTICLES: readonly KnowledgeArticle[] = [
   {
     id: 'protest-three-clocks',
     title: 'One notice, three clocks',
+    jurisdiction: 'tx',
     topics: ['protest', 'deadlines', 'penalties'],
     authority: ['Tax Code 41.44', 'Tax Code 1.07', 'Tax Code 22.30(b)'],
     keywords: [
@@ -37,6 +38,7 @@ Where the printed date and the statute disagree, the working rule is one rule in
   {
     id: 'protest-what-can-be-protested',
     title: 'What Chapter 41 lets an owner protest',
+    jurisdiction: 'tx',
     topics: ['protest'],
     authority: ['Tax Code 41.41', 'Tax Code 41.43', 'Tax Code 41.44', 'Tax Code 41.45'],
     keywords: [
@@ -61,6 +63,7 @@ Under 41.43, in a protest of excessive or unequal appraisal, the appraisal distr
   {
     id: 'protest-four-endings',
     title: 'The four ways a protest year ends',
+    jurisdiction: 'tx',
     topics: ['protest'],
     authority: ['Tax Code 41.44', 'Tax Code 41.45', 'Tax Code 1.111(e)', 'Tax Code 42.01'],
     keywords: [
@@ -89,6 +92,7 @@ The distinction that costs money later is between withdrawn and settled. Both lo
   {
     id: 'corrections-25-25-routes',
     title: 'Tax Code 25.25: getting back into a year the protest window closed on',
+    jurisdiction: 'tx',
     topics: ['corrections'],
     authority: [
       'Tax Code 25.25(a)',
@@ -122,6 +126,7 @@ Order matters when presenting these. (c) and (c-1) cost nothing, so (d) is a las
   {
     id: 'corrections-what-bars-each-route',
     title: 'What bars a 25.25 motion',
+    jurisdiction: 'tx',
     topics: ['corrections'],
     authority: [
       'Tax Code 25.25(c)',
@@ -155,6 +160,7 @@ One drafting note: the (c) bar text says "section," not "subsection," in the pla
   {
     id: 'corrections-deadlines',
     title: 'How long each correction route stays open',
+    jurisdiction: 'tx',
     topics: ['corrections', 'deadlines'],
     authority: [
       'Tax Code 25.25(c)',

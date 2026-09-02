@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { KNOWLEDGE } from './corpus/index.js';
-import { KNOWLEDGE_TOPICS } from './types.js';
+import { KNOWLEDGE_JURISDICTIONS, KNOWLEDGE_TOPICS } from './types.js';
 import { getArticle, listArticles, renderKnowledge, searchKnowledge } from './search.js';
 
 /**
@@ -8,9 +8,11 @@ import { getArticle, listArticles, renderKnowledge, searchKnowledge } from './se
  *
  * The integrity tests hold the corpus to its own contract — unique ids, real
  * topics, a `related` link that points at something, an authority line on
- * every article that speaks in the voice of Texas law. A broken cross-link or
- * an invented statute cite would otherwise reach a client through an answer,
- * and nothing else in the build would catch it.
+ * every article that speaks in the voice of a state's law, and a state tag
+ * that agrees with the statutes the article actually cites. A broken
+ * cross-link, an invented statute cite, or a Florida rule wearing a Texas tag
+ * would otherwise reach a client through an answer, and nothing else in the
+ * build would catch it.
  *
  * The retrieval tests pin the queries a preparer actually types. They are
  * written against article ids rather than scores, because the scoring
@@ -48,6 +50,48 @@ describe('corpus integrity', () => {
     }
   });
 
+  it('tags a jurisdiction that agrees with the statutes cited', () => {
+    const declared = new Set<string>(KNOWLEDGE_JURISDICTIONS);
+    for (const article of KNOWLEDGE) {
+      if (!article.jurisdiction) continue;
+      expect(declared.has(article.jurisdiction), article.id).toBe(true);
+      const cites = article.authority.join(' ');
+      // The check is on `authority` and deliberately not on `body`. Authority
+      // is what becomes a citation, so a Texas section listed there under a
+      // Florida tag is the failure this whole facet exists to prevent. The
+      // bodies cite Texas sections on purpose — half of what the Florida
+      // articles are for is telling a Texas-trained preparer which of their
+      // instincts does not travel — and a test that banned that would delete
+      // the most useful sentences in the file.
+      if (article.jurisdiction === 'tx') expect(cites, article.id).not.toContain('F.S.');
+      if (article.jurisdiction === 'fl') expect(cites, article.id).not.toContain('Tax Code');
+    }
+  });
+
+  it('leaves a jurisdiction off only where the article is genuinely state-agnostic', () => {
+    /**
+     * An allowlist rather than a rule, because no rule fits. The three
+     * `product` articles describe this repository and would read the same in
+     * any state; the roll article is about what publishers do across several
+     * states at once and cites a Texas section only for the confidentiality
+     * that makes the point. Nothing else earns the omission.
+     *
+     * The test is here to make adding an untagged article a deliberate act. An
+     * article whose state nobody established is not state-agnostic, it is
+     * unfinished, and it is returned to every engagement.
+     */
+    const agnostic = new Set([
+      'county-data-what-the-roll-holds',
+      'product-two-wings',
+      'product-findings-and-dispositions',
+      'product-ready-and-blockers',
+    ]);
+    const untagged = KNOWLEDGE.filter((article) => !article.jurisdiction).map(
+      (article) => article.id,
+    );
+    expect(new Set(untagged)).toEqual(agnostic);
+  });
+
   it('carries keywords and a body on every article', () => {
     for (const article of KNOWLEDGE) {
       expect(article.keywords.length, article.id).toBeGreaterThan(0);
@@ -64,6 +108,12 @@ describe('searchKnowledge', () => {
     expect(topFor('can we get more time to file the rendition')).toBe(
       'extensions-what-a-request-buys',
     );
+  });
+
+  it('is not misled by a light verb that happens to be rare', () => {
+    expect(
+      searchKnowledge('how do we get an extension', { jurisdictions: ['fl'] })[0]?.article.id,
+    ).toBe('fl-extensions-what-a-request-buys');
   });
 
   it('finds the penalty article from a percentage', () => {
@@ -93,6 +143,46 @@ describe('searchKnowledge', () => {
     const hits = searchKnowledge('deadline', { topics: ['corrections'] });
     expect(hits.length).toBeGreaterThan(0);
     for (const hit of hits) expect(hit.article.topics).toContain('corrections');
+  });
+
+  it('keeps Florida out of a Texas answer', () => {
+    const hits = searchKnowledge('when is the return due and can we extend it', {
+      jurisdictions: ['tx'],
+    });
+    expect(hits.length).toBeGreaterThan(0);
+    for (const hit of hits) expect(hit.article.jurisdiction ?? 'tx').toBe('tx');
+    expect(hits.map((hit) => hit.article.id)).toContain('deadlines-season');
+  });
+
+  it('keeps Texas out of a Florida answer', () => {
+    const hits = searchKnowledge('when is the return due and can we extend it', {
+      jurisdictions: ['fl'],
+    });
+    expect(hits.length).toBeGreaterThan(0);
+    for (const hit of hits) expect(hit.article.jurisdiction ?? 'fl').toBe('fl');
+    expect(hits.map((hit) => hit.article.id)).toContain('fl-deadlines-season');
+  });
+
+  it('returns state-agnostic articles under either filter', () => {
+    const question = 'why is this return blocked and not ready';
+    for (const state of KNOWLEDGE_JURISDICTIONS) {
+      const ids = searchKnowledge(question, { jurisdictions: [state] }).map(
+        (hit) => hit.article.id,
+      );
+      expect(ids, state).toContain('product-ready-and-blockers');
+    }
+  });
+
+  it('combines the topic and jurisdiction filters rather than choosing one', () => {
+    const hits = searchKnowledge('penalty for filing a return late', {
+      topics: ['penalties'],
+      jurisdictions: ['fl'],
+    });
+    expect(hits.length).toBeGreaterThan(0);
+    for (const hit of hits) {
+      expect(hit.article.topics).toContain('penalties');
+      expect(hit.article.jurisdiction ?? 'fl').toBe('fl');
+    }
   });
 
   it('honours the limit', () => {
@@ -130,6 +220,14 @@ describe('getArticle and listArticles', () => {
     expect(protest.length).toBeGreaterThan(0);
     for (const article of protest) expect(article.topics).toContain('protest');
   });
+
+  it('filters by jurisdiction, keeping the state-agnostic articles', () => {
+    const florida = listArticles(undefined, ['fl']);
+    expect(florida.length).toBeGreaterThan(0);
+    for (const article of florida) expect(article.jurisdiction ?? 'fl').toBe('fl');
+    expect(florida.map((article) => article.id)).toContain('product-two-wings');
+    expect(florida.map((article) => article.id)).not.toContain('deadlines-season');
+  });
 });
 
 describe('renderKnowledge', () => {
@@ -141,13 +239,22 @@ describe('renderKnowledge', () => {
     const rendered = renderKnowledge(searchKnowledge('rendition penalty waiver', { limit: 1 }));
     expect(rendered).toMatch(/^\[penalties-late-and-fraudulent\]/);
     expect(rendered).toContain('Authority: Tax Code 22.28');
+    expect(rendered).toContain('State: Texas');
+  });
+
+  it('names the state on a Florida article', () => {
+    const rendered = renderKnowledge(
+      searchKnowledge('tangible personal property tax return', { jurisdictions: ['fl'], limit: 1 }),
+    );
+    expect(rendered).toContain('State: Florida');
   });
 
   it('says plainly when an article rests on no statute', () => {
     const hits = searchKnowledge('workspace and market navigation', { limit: 1 });
     const rendered = renderKnowledge(hits);
     if (hits[0]?.article.authority.length === 0) {
-      expect(rendered).toContain('not what Texas requires');
+      expect(rendered).toContain('not what a state requires');
+      expect(rendered).toContain('applies regardless of state');
     }
   });
 });

@@ -1,5 +1,14 @@
-export type { KnowledgeArticle, KnowledgeHit, KnowledgeTopic } from './types.js';
-export { KNOWLEDGE_TOPICS } from './types.js';
+export type {
+  KnowledgeArticle,
+  KnowledgeHit,
+  KnowledgeJurisdiction,
+  KnowledgeTopic,
+} from './types.js';
+export {
+  KNOWLEDGE_JURISDICTIONS,
+  KNOWLEDGE_TOPICS,
+  knowledgeJurisdictionLabel,
+} from './types.js';
 
 export {
   KNOWLEDGE,
@@ -7,6 +16,7 @@ export {
   DISPUTE_ARTICLES,
   VALUE_ARTICLES,
   PRACTICE_ARTICLES,
+  FLORIDA_ARTICLES,
 } from './corpus/index.js';
 
 export type { KnowledgeSearchOptions } from './search.js';

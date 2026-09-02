@@ -8,13 +8,15 @@ import type { KnowledgeArticle } from '../types.js';
  * The `product` articles are the ones that keep the assistant from explaining
  * the app wrongly. They rest on this repo rather than on a statute, and their
  * `authority` is empty for that reason — an answer that leans on one is
- * telling the reader how Tangible works, not what Texas requires, and the two
- * should never be quoted in the same voice.
+ * telling the reader how Tangible works, not what a state requires, and the
+ * two should never be quoted in the same voice. They carry no `jurisdiction`
+ * for the same reason: the app behaves the same way in every state.
  */
 export const PRACTICE_ARTICLES: readonly KnowledgeArticle[] = [
   {
     id: 'agents-form-50-162',
     title: 'Form 50-162 and when an agent may act',
+    jurisdiction: 'tx',
     topics: ['agents'],
     authority: ['Tax Code 1.111', 'Tax Code 1.111(d)', 'Form 50-162'],
     keywords: [
@@ -41,6 +43,7 @@ An appointment can also be scoped — to a district, or to particular locations.
   {
     id: 'confidentiality-22-27',
     title: 'Rendition confidentiality, and what the district may disclose',
+    jurisdiction: 'tx',
     topics: ['confidentiality'],
     authority: ['Tax Code 22.27', 'Tax Code 22.27(b)'],
     keywords: [
