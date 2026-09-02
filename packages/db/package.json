@@ -24,7 +24,8 @@
     "db:studio": "drizzle-kit studio",
     "clean": "rm -rf dist .turbo",
     "tenancy:apply": "node scripts/apply-tenancy.mjs",
-    "tenancy:verify": "node scripts/verify-tenancy.mjs"
+    "tenancy:verify": "node scripts/verify-tenancy.mjs",
+    "scheduler:apply": "node scripts/apply-scheduler.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.4",

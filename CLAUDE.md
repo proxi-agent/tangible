@@ -100,3 +100,55 @@ Two things are _not_ in CI and are not oversights:
 The valuation gate needs no separate job: `packages/eval` runs its golden suites
 as ordinary vitest files, so a schedule that stopped reproducing a district's
 published numbers fails the `test` job like anything else.
+
+## Scheduled work
+
+**The crons in `vercel.json` do not run, and never have.** The account is on
+Vercel's hobby plan, which limits both how many cron jobs a project may have and
+how often each may fire. Nothing about this is loud: the build is green, the
+deployment is READY, the three routes are reachable, and no invocation is ever
+made. It was found by reading production runtime logs over a six-hour window and
+finding only hand-made requests in them, then over a further fifteen hours and
+finding nothing at all — `health_probes` had stood empty since the table was
+created.
+
+The schedule now lives in Postgres, via `pg_cron` and `pg_net`. Apply it with
+
+```
+cd packages/db && set -a && . ../../.env && set +a && node scripts/apply-scheduler.mjs
+```
+
+which seeds the bearer token into Supabase's vault and then runs
+`packages/db/sql/scheduler.sql`. Both are idempotent; re-run after either
+changes. The reasoning is all in the SQL file's header — read it before changing
+a cadence.
+
+Four things worth knowing before touching any of it:
+
+- **`vercel.json` keeps its `crons` block on purpose.** It is the record of what
+  the cadences are meant to be, so moving to a plan whose crons run means
+  deleting three rows from `cron.job`, not reconstructing a schedule from
+  memory. Change a cadence in both places or in neither.
+- **The endpoints were never coupled to Vercel's scheduler.** They authenticate
+  on `Authorization: Bearer $CRON_SECRET`, checked in the handler, not on the
+  `x-vercel-cron` header. That is the whole reason this substitution costs
+  nothing, and it is worth preserving for any future scheduled route.
+- **The health probe now runs on the database it partly watches.** A Postgres
+  outage makes it go quiet rather than fail. Read `health_probes` falling silent
+  as an outage; the missing row is the alarm. This was accepted knowingly, and
+  it is the one real cost of doing it this way.
+- **Use the production alias, `tangible-two.vercel.app`.** Vercel
+  Authentication is enabled for `all_except_custom_domains`, so
+  `tangible-kajmeris-projects.vercel.app` answers a 302 to the SSO wall and
+  never reaches the app. If the alias changes, `ops.call_scheduled` is the one
+  line to edit — and the check is that the reply is our own 401, not a redirect
+  to vercel.com.
+
+`ops.recent_runs` says whether a schedule fired; `ops.recent_calls` says what the
+endpoint replied, which is the one that matters, since a job can succeed at
+making a request the far end refused. pg_net expires those rows after about six
+hours, so empty is not the same as calm.
+
+None of this is visible to `drizzle-kit push` or to `tenancy:verify` — it lives
+in `ops`, `cron` and `net`, and both of those tools look only at `public`. That
+is deliberate, and it is also why nothing here will warn you if it breaks.
