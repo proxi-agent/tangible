@@ -137,12 +137,16 @@ Four things worth knowing before touching any of it:
   outage makes it go quiet rather than fail. Read `health_probes` falling silent
   as an outage; the missing row is the alarm. This was accepted knowingly, and
   it is the one real cost of doing it this way.
-- **Use the production alias, `tangible-two.vercel.app`.** Vercel
+- **Use the production alias, `tangible-proxi.vercel.app`.** Vercel
   Authentication is enabled for `all_except_custom_domains`, so
   `tangible-kajmeris-projects.vercel.app` answers a 302 to the SSO wall and
   never reaches the app. If the alias changes, `ops.call_scheduled` is the one
   line to edit — and the check is that the reply is our own 401, not a redirect
-  to vercel.com.
+  to vercel.com. It has changed once already: the alias was
+  `tangible-two.vercel.app` until 2026-09-02, and renaming it in Vercel broke
+  nothing loudly — every job went on succeeding at a request the far end had
+  started 404ing. Renaming the alias means editing that line, `NEXT_PUBLIC_APP_URL`,
+  and the Supabase Site URL and redirect allowlist, in that order.
 
 `ops.recent_runs` says whether a schedule fired; `ops.recent_calls` says what the
 endpoint replied, which is the one that matters, since a job can succeed at

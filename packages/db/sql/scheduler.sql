@@ -108,11 +108,17 @@ begin
     -- The production alias, and it has to be this one. Vercel Authentication
     -- is enabled for `all_except_custom_domains` on this project, so
     -- `tangible-kajmeris-projects.vercel.app` answers a 302 to the SSO wall
-    -- and never reaches the app. `tangible-two.vercel.app` is the production
+    -- and never reaches the app. `tangible-proxi.vercel.app` is the production
     -- domain and reaches the handler. If that alias ever changes, this line is
     -- the single place to change it — and the thing to verify is that the
     -- reply is our own 401, not a redirect to vercel.com.
-    url := 'https://tangible-two.vercel.app' || path,
+    --
+    -- It has changed once: `tangible-two.vercel.app` was the alias until
+    -- 2026-09-02 and now answers 404. Renaming the alias in Vercel does not
+    -- fail anything here loudly — the jobs go on succeeding at making a
+    -- request the far end no longer serves, which is exactly what
+    -- `ops.recent_calls` exists to show.
+    url := 'https://tangible-proxi.vercel.app' || path,
     headers := jsonb_build_object(
       'Authorization', 'Bearer ' || secret,
       'Content-Type', 'application/json'
