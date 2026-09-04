@@ -85,6 +85,14 @@ function LoginForm() {
          * firm allowlist or holding a grant, and answers `none` for everything
          * else — an account made this way by a stranger reaches a login page
          * with a sign-out button and not one row of anybody's data.
+         *
+         * **It is a fallback, not the path, and it only works if the project
+         * allows signups.** With "Allow new users to sign up" off — which is
+         * the safer setting and the one this project is on — an address with no
+         * account gets `Signups not allowed for this instance` from here, no
+         * matter how good its grant is. The account is meant to come from the
+         * admin invite `grantPortalAccess` sends, which is not subject to that
+         * toggle; skip the invite and the grant alone cannot let anybody in.
          */
         shouldCreateUser: true,
       },
