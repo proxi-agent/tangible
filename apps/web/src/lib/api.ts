@@ -15,6 +15,7 @@ import type {
   EngineDigestView,
   GrantPortalAccessRequest,
   IntakeFile,
+  PortalStage,
   PortalUser,
   RunProgress,
   UpdatePortalAccessRequest,
@@ -422,6 +423,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ trigger: 'manual' }),
     }),
+
+  /**
+   * How far along a season is: the counts the client wing opens itself against.
+   *
+   * Asked by the shell rather than by a page, so it is deliberately the
+   * cheapest call in the wing — see `portalStage`.
+   */
+  portalStage: (engagementId: string) => request<PortalStage>(`/engagements/${engagementId}/stage`),
 
   /** The published report a client reads, and whatever run is in flight. */
   publishedReport: (engagementId: string) =>

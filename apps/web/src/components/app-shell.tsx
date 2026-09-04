@@ -1,9 +1,11 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
+import type { PortalStage } from '@tangible/types';
 import {
   Activity,
   AlertTriangle,
+  ArrowLeft,
   BadgeCheck,
   BarChart3,
   Briefcase,
@@ -23,12 +25,12 @@ import {
   X,
 } from 'lucide-react';
 import Link from 'next/link';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
 import { cn } from '@/lib/cn';
 import { useScope } from '@/hooks/use-scope';
 import { authConfigured, getSupabaseBrowser } from '@/lib/supabase-browser';
-import { Segmented, Select } from '@/components/ui/controls';
+import { Select } from '@/components/ui/controls';
 import { Skeleton } from '@/components/ui/primitives';
 import { api } from '@/lib/api';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -36,6 +38,7 @@ import { ThemeToggle } from '@/components/theme-toggle';
 import { CoverageGuideButton } from '@/components/coverage-guide';
 import { AssistantProvider, AssistantTrigger } from '@/components/assistant/assistant-provider';
 import { useViewer } from '@/components/viewer-context';
+import { usePortalScope, usePortalStage } from '@/components/portal/portal-scope';
 
 /**
  * Two wings, one shell. The Workspace is client engagements — FAR intake,
@@ -85,13 +88,39 @@ const ASSISTANT_NAV = {
  * list of every business in the county, which is our analysis and not their
  * portal; and a firm user with the client's four items always on screen has
  * eleven nav items for a job that needs seven.
+ *
+ * How many of the six are drawn depends on the season. `show` is that rule, one
+ * per item, and the principle is that a link exists once the page behind it has
+ * something to say. A business signing in an hour after we opened their file
+ * was previously handed all six: a report with nothing in it, a ranked queue
+ * with nothing to rank, questions nobody has asked, a return with no dates, and
+ * a results page whose whole content is that nothing has come back. Five dead
+ * ends around the one thing they can do reads as a product that lost their
+ * upload, and it is the first thing they ever see.
+ *
+ * This is a menu, not a gate. Every hidden page is still addressable and still
+ * answers honestly when it is empty; what decides whether a business may read
+ * any of it is the proxy allowlist and `requireEngagementScope`, neither of
+ * which knows this array exists. Hiding a link for safety would be the one
+ * reading of this that is wrong.
  */
-const PORTAL_NAV = [
+const PORTAL_NAV: {
+  href: string;
+  label: string;
+  icon: typeof TrendingDown;
+  hint: string;
+  show: (stage: PortalStage) => boolean;
+}[] = [
   {
     href: '/portal',
     label: 'Your report',
     icon: TrendingDown,
     hint: 'What we found in your register, and what it is worth.',
+    // Not while there is nothing to report on. The page would introduce
+    // itself as "what we found in your register" above a sentence saying no
+    // register has been read, which is a report that came back empty rather
+    // than one nobody has made yet.
+    show: (stage) => stage.stage !== 'documents',
   },
   {
     // Second, not first. The report is what a business asks for; this is what
@@ -101,18 +130,28 @@ const PORTAL_NAV = [
     label: 'What to do first',
     icon: ListOrdered,
     hint: 'Every finding as one ranked list, worth the most first.',
+    show: (stage) => stage.reportPublished,
   },
   {
     href: '/portal/documents',
     label: 'Documents',
     icon: FolderUp,
     hint: 'Send us your register and prior-year tax documents.',
+    // Always. It is the one thing a business can do at every stage, and at the
+    // first stage it is the only thing — a wing of one item, which is the
+    // honest width of a file with nothing in it yet.
+    show: () => true,
   },
   {
     href: '/portal/questions',
     label: 'Questions',
     icon: MessageCircleQuestion,
     hint: 'Things only you can answer about your own property.',
+    // On its own clock rather than the report's: a mapping ask can be the very
+    // first thing a drop produces, and it is exactly what a client should be
+    // shown early. Gone again once every question has an answer, because a
+    // Questions page with no questions is the dead end this work is about.
+    show: (stage) => stage.openQuestions > 0,
   },
   {
     // The third question. It sits after Questions rather than before because
@@ -123,6 +162,11 @@ const PORTAL_NAV = [
     label: 'Your return',
     icon: FileCheck2,
     hint: 'What has to be filed for you, by when, and what the district said back.',
+    // Needs both: a report to have placed the property, and a site for it to
+    // have been placed on. A register whose every row is unsited owes no
+    // return anybody can name yet, and the page would print a deadline against
+    // nothing.
+    show: (stage) => stage.reportPublished && stage.returnsOwed > 0,
   },
   {
     // The fourth question, and the last one to have an answer. Everything above
@@ -132,6 +176,10 @@ const PORTAL_NAV = [
     label: 'What it saved',
     icon: BadgeCheck,
     hint: 'What we claimed on your behalf, and what the district allowed.',
+    // The nav comment above says this page stays empty until something has
+    // actually come back. Now the link does too — a claim has to exist before
+    // there is an answer to it, pending or otherwise.
+    show: (stage) => stage.claimsMade > 0,
   },
 ];
 
@@ -247,17 +295,12 @@ export function AppShell({ children }: { children: ReactNode }) {
    *
    * The portal takes its scope from `?client=`, so the rail has to carry it the
    * same way the pages do — six links that drop it would empty the wing on the
-   * first click. Off the portal it is read from the path instead, which is what
-   * makes the wing switcher work from a client page: a preparer looking at Acme
-   * who flips to Client means Acme's portal, and every other page in the
-   * workspace means no client at all, which the wing says out loud rather than
-   * guessing at.
+   * first click. It is read from the address and nowhere else: a preview is
+   * entered by following a link that names the business, so there is no page
+   * outside the portal from which one could be inferred.
    */
-  const previewClient = isClient
-    ? null
-    : pathname.startsWith('/portal')
-      ? searchParams.get('client')
-      : (/^\/clients\/([^/]+)/.exec(pathname)?.[1] ?? null);
+  const previewClient =
+    !isClient && pathname.startsWith('/portal') ? searchParams.get('client') : null;
 
   const notes = onMarket ? (scope.current?.dataNotes ?? []) : [];
 
@@ -460,14 +503,36 @@ function NavRail({
   previewClient: string | null;
   onNavigate: () => void;
 }) {
-  const router = useRouter();
   const { viewer } = useViewer();
-  // A client signs in to one product. There is no second wing behind the
-  // toggle for them — every link it would offer answers 404 — so the control
-  // is absent rather than disabled: a disabled control still advertises that
-  // something is there.
+  /**
+   * Each audience signs in to one product, and the rail draws that one.
+   *
+   * There used to be a switcher here, and it was wrong in both directions. For
+   * a client it offered a wing whose every link answers 404, which is why it
+   * was already hidden from them. For the firm it framed the client portal as a
+   * second point of view of their own, when it is somebody else's screen: a
+   * preview belongs to a named business, and the honest way in is the "View
+   * their portal" link on that business's client page, which says whose portal
+   * it is. So the control is gone rather than disabled — a disabled control
+   * still advertises that something is there.
+   */
   const isClient = viewer?.audience === 'client';
   const wing = isClient ? 'client' : wingOf(pathname);
+  // Firm, standing inside a client's wing. The rail it draws is the client's,
+  // so it carries the one link back that the switcher used to be — without it
+  // the preview is a room with no door.
+  const previewing = !isClient && wing === 'client';
+
+  /**
+   * The same season resolution the pages use, from the same store.
+   *
+   * The rail sits above `PortalProvider` and cannot read its context, so this
+   * is a second caller rather than a second copy — which is the whole reason
+   * the resolution moved out of the provider into `usePortalScope`. Off the
+   * portal it costs nothing: with no client in scope the queries never run.
+   */
+  const scope = usePortalScope();
+  const { stage } = usePortalStage(wing === 'client' ? scope.engagementId : null);
   // A client's own links carry nothing: their scope is the session, and the
   // parameter is ignored for them anyway.
   const portalSuffix = previewClient ? `?client=${encodeURIComponent(previewClient)}` : '';
@@ -487,41 +552,22 @@ function NavRail({
         </Link>
       </div>
 
-      {/* Which side of the engagement you are looking from. It sits above the
-        nav rather than inside it because it does not select a page — it
-        selects which pages exist. */}
-      {isClient ? null : (
-        <div className="px-3 pb-3">
-          <Segmented
-            ariaLabel="Point of view"
-            grow
-            size="sm"
-            className="w-full"
-            value={wing}
-            options={[
-              {
-                value: 'proxi',
-                label: 'Proxi',
-                title: 'The firm\u2019s workspace and county analysis.',
-              },
-              {
-                value: 'client',
-                label: 'Client',
-                title: 'The portal a client sees: send files, answer questions, watch the return.',
-              },
-            ]}
-            onChange={(next) => {
-              onNavigate();
-              router.push(next === 'client' ? `/portal${portalSuffix}` : '/season');
-            }}
-          />
-        </div>
-      )}
-
       <nav className="flex-1 space-y-5 overflow-y-auto px-3 pb-4">
+        {previewing ? (
+          <div className="space-y-0.5">
+            <NavLink
+              href="/season"
+              label="Back to workspace"
+              icon={ArrowLeft}
+              hint="Leave this preview and go back to the firm's own wing."
+              onNavigate={onNavigate}
+              active={false}
+            />
+          </div>
+        ) : null}
         {wing === 'client' ? (
-          <NavGroup label="Your account">
-            {PORTAL_NAV.map((item) => (
+          <NavGroup label={previewing ? 'Their account' : 'Your account'}>
+            {PORTAL_NAV.filter((item) => item.show(stage)).map(({ show: _show, ...item }) => (
               <NavLink
                 key={item.href}
                 {...item}
@@ -650,6 +696,7 @@ function NavLink({
  * is the page's own <h1> two lines below, and printing it twice buys nothing.
  */
 function Breadcrumb({ pathname, onMarket }: { pathname: string; onMarket: boolean }) {
+  const { viewer } = useViewer();
   // Longest href first: '/portal' is a prefix of every other portal route, so
   // unsorted the overview would win the match on every page in the wing.
   const all = [ASSISTANT_NAV, ...WORKSPACE_NAV, ...MARKET_NAV, ...PORTAL_NAV].sort(
@@ -696,7 +743,16 @@ function Breadcrumb({ pathname, onMarket }: { pathname: string; onMarket: boolea
   return (
     <nav aria-label="Breadcrumb" className="flex min-w-0 flex-1 items-center gap-1.5 text-sm">
       <span className="hidden shrink-0 text-[var(--color-ink-muted)] sm:inline">
-        {wingOf(pathname) === 'client' ? 'Your account' : onMarket ? 'Market' : 'Workspace'}
+        {wingOf(pathname) === 'client'
+          ? // "Your" is a word about the reader, so it has to follow who the
+            // reader is: a preparer previewing a business's portal is looking at
+            // theirs, and the rail beside this says so too.
+            viewer?.audience === 'client'
+            ? 'Your account'
+            : 'Their account'
+          : onMarket
+            ? 'Market'
+            : 'Workspace'}
       </span>
       {trail.map((crumb, index) => {
         const isCurrent = index === trail.length - 1 && pathname === crumb.href;

@@ -201,6 +201,8 @@ const CLIENT_ROUTES: RegExp[] = [
   /^\/api\/viewer$/,
   // The business itself, and its seasons. The handler checks it is their own.
   new RegExp(`^/api/clients/${UUID}$`),
+  // How far along the season is — what the shell asks before it draws the rail.
+  new RegExp(`^/api/engagements/${UUID}/stage$`),
   // The report, and the run that published it.
   new RegExp(`^/api/engagements/${UUID}/savings$`),
   new RegExp(`^/api/engagements/${UUID}/report$`),

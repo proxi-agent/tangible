@@ -3,19 +3,11 @@
 import { useQuery } from '@tanstack/react-query';
 import { Building2, ChevronRight } from 'lucide-react';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react';
-import type { ClientDetail, Engagement } from '@tangible/types';
+import { createContext, useContext, useState, type ReactNode } from 'react';
+import type { ClientDetail, Engagement, PortalStage } from '@tangible/types';
 import { api } from '@/lib/api';
 import { useViewer } from '@/components/viewer-context';
+import { usePortalScope, usePortalStage } from '@/components/portal/portal-scope';
 import { TextInput } from '@/components/ui/controls';
 import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components/ui/primitives';
 
@@ -45,8 +37,6 @@ import { Card, CardHeader, EmptyState, ErrorState, Skeleton } from '@/components
  * never added, because a client is already their own scope.
  */
 
-const SEASON_KEY = 'tangible-portal-season';
-
 interface PortalValue {
   clientId: string;
   detail: ClientDetail;
@@ -62,6 +52,17 @@ interface PortalValue {
   href: (path: string) => string;
   /** Whether this reader may send files and answer questions. */
   canAct: boolean;
+  /**
+   * How far along this season is — the same measurement the rail draws itself
+   * against, so a page and the nav beside it can never disagree about whether
+   * there is a report.
+   */
+  stage: PortalStage;
+  /**
+   * Whether `stage` has come back from the server yet. A page that navigates on
+   * the stage has to wait for this; a page that only draws does not.
+   */
+  stageSettled: boolean;
 }
 
 const PortalContext = createContext<PortalValue | null>(null);
@@ -72,110 +73,24 @@ export function usePortal(): PortalValue {
   return value;
 }
 
-function read(key: string): string | null {
-  try {
-    return localStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function write(key: string, value: string | null) {
-  try {
-    if (value === null) localStorage.removeItem(key);
-    else localStorage.setItem(key, value);
-  } catch {
-    /* A browser refusing storage is not a reason to break the page. */
-  }
-}
-
 export function PortalProvider({ children }: { children: ReactNode }) {
-  const { viewer, isLoading } = useViewer();
-  const params = useSearchParams();
-  const previewed = params.get('client');
+  const { viewer } = useViewer();
+  const {
+    clientId,
+    previewing,
+    ready,
+    detail,
+    seasons,
+    engagement,
+    engagementId,
+    setEngagementId,
+    href,
+  } = usePortalScope();
+  const { stage, settled: stageSettled } = usePortalStage(engagementId);
 
-  // A client is their own scope and the parameter is ignored — the same rule
-  // the server applies in `portalScope`, so the two cannot disagree about who
-  // is on screen.
-  const clientId = viewer?.audience === 'client' ? viewer.clientId : (previewed ?? null);
-  const previewing = viewer?.audience === 'firm' && clientId !== null;
   const canAct = viewer?.audience === 'firm' || viewer?.role === 'admin';
 
-  // Which year is on screen is a preference, not an identity: it survives a
-  // reload for convenience and grants nothing. Read on mount rather than during
-  // render, because the server has no localStorage and seeding state from it
-  // hydrates a different tree than it rendered.
-  const [seasonReady, setSeasonReady] = useState(false);
-  const [pickedSeason, setPickedSeason] = useState<string | null>(null);
-
-  useEffect(() => {
-    // Seeding this state during render would read localStorage on the server,
-    // where it does not exist, and hydrate a different tree than was sent.
-    // oxlint-disable-next-line react/set-state-in-effect
-    setPickedSeason(read(SEASON_KEY));
-    setSeasonReady(true);
-  }, []);
-
-  const setEngagementId = useCallback((id: string) => {
-    setPickedSeason(id);
-    write(SEASON_KEY, id);
-  }, []);
-
-  // Every link inside the wing, written once. A client gets the path untouched:
-  // adding `?client=` to their own links would put an id in front of a reader
-  // the server ignores it for, and invite the edit it is designed to defeat.
-  const href = useCallback(
-    (path: string) => {
-      if (!previewing || clientId === null) return path;
-      return `${path}${path.includes('?') ? '&' : '?'}client=${encodeURIComponent(clientId)}`;
-    },
-    [previewing, clientId],
-  );
-
-  const detail = useQuery({
-    queryKey: ['client', clientId],
-    queryFn: () => api.client(clientId!),
-    enabled: clientId !== null,
-    staleTime: 60_000,
-  });
-
-  /**
-   * One season per tax year.
-   *
-   * The firm can hold several engagements for the same year — a second one
-   * opened by mistake, a rebuild after a bad import — and they are told apart
-   * by an id nobody types. A client has no notion of an engagement at all: they
-   * have a 2027, and a picker offering three identical "2027"s is a coin toss
-   * over which report they see. So a year collapses to its most recently
-   * touched engagement, which is the one the firm is actually working in.
-   */
-  const seasons = useMemo(() => {
-    const byYear = new Map<number, Engagement>();
-    for (const engagement of detail.data?.engagements ?? []) {
-      const held = byYear.get(engagement.taxYear);
-      if (!held || engagement.updatedAt > held.updatedAt)
-        byYear.set(engagement.taxYear, engagement);
-    }
-    return [...byYear.values()].sort((a, b) => b.taxYear - a.taxYear);
-  }, [detail.data]);
-
-  const engagement = useMemo(() => {
-    if (seasons.length === 0) return null;
-    const picked = seasons.find((e) => e.id === pickedSeason);
-    if (picked) return picked;
-    // A stored id can name a season that has since been collapsed away or
-    // deleted. Keep the year the reader chose where that year still exists,
-    // rather than silently dropping them back to the newest one.
-    const stored = detail.data?.engagements.find((e) => e.id === pickedSeason);
-    if (stored) {
-      const sameYear = seasons.find((e) => e.taxYear === stored.taxYear);
-      if (sameYear) return sameYear;
-    }
-    // Newest season first — the one a business asking "where are we?" means.
-    return seasons[0] ?? null;
-  }, [detail.data, pickedSeason, seasons]);
-
-  if (isLoading || !seasonReady) return <Skeleton className="h-40 w-full" />;
+  if (!ready) return <Skeleton className="h-40 w-full" />;
 
   if (viewer === null) {
     return (
@@ -187,8 +102,8 @@ export function PortalProvider({ children }: { children: ReactNode }) {
     );
   }
 
-  // The firm arrived without naming a client — from the wing switcher, or from
-  // a bookmark. There is still nothing to guess at: opening the newest client,
+  // The firm arrived without naming a client — a bare /portal, from a bookmark
+  // or typed. There is still nothing to guess at: opening the newest client,
   // or the first alphabetically, would be a portal that shows a preparer one
   // business while they believe they are looking at another. So the page asks
   // rather than assumes, and asks with the list in hand — a sentence telling a
@@ -214,11 +129,13 @@ export function PortalProvider({ children }: { children: ReactNode }) {
         detail: detail.data,
         seasons,
         engagement,
-        engagementId: engagement?.id ?? null,
+        engagementId,
         setEngagementId,
         previewing,
         href,
         canAct,
+        stage,
+        stageSettled,
       }}
     >
       {previewing ? <PreviewBanner name={detail.data.client.name} /> : null}

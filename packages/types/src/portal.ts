@@ -266,3 +266,84 @@ export const ClientFilingStatementSchema = z.object({
 });
 
 export type ClientFilingStatement = z.infer<typeof ClientFilingStatementSchema>;
+
+/**
+ * How far along a business is, and therefore how much of the portal exists.
+ *
+ * The client wing has always drawn all six of its pages at once, which is right
+ * for a business mid-season and wrong for the one that signed in an hour after
+ * we opened their file. That reader is shown a report with nothing in it, a
+ * ranked queue with nothing to rank, a return with no dates and a results page
+ * whose whole content is that nothing has come back — five dead ends around the
+ * one thing they can actually do, which is send us their books. The five are not
+ * broken; each says honestly that it is empty. But a product whose first
+ * impression is five honest emptinesses reads as a product that lost something.
+ *
+ * So the wing opens at the width of the record. This is that measurement, and it
+ * is deliberately counts rather than a verdict: the same numbers decide which
+ * nav items exist and can be read on screen, and a boolean that turned out wrong
+ * would be undebuggable from the outside.
+ *
+ * **It is not an access control.** Every page it hides is a page the reader may
+ * still address directly, and every one of them is scoped by
+ * `requireEngagementScope` exactly as before. Hiding a link narrows a menu; the
+ * gate that decides what a business may read is the proxy allowlist and the
+ * handlers, and neither is consulted here.
+ */
+export const PORTAL_STAGES = [
+  /** Nothing has arrived. The only thing that can happen is a drop. */
+  'documents',
+  /** Files are in and being read; no report has been published yet. */
+  'processing',
+  /** A report exists, so the rest of the wing has something to be about. */
+  'ready',
+] as const;
+export const PortalStageNameSchema = z.enum(PORTAL_STAGES);
+export type PortalStageName = (typeof PORTAL_STAGES)[number];
+
+export const PortalStageSchema = z.object({
+  engagementId: z.string(),
+  stage: PortalStageNameSchema,
+  /** Files the business has sent for this season, whatever became of them. */
+  documentsReceived: z.number().int().nonnegative(),
+  /** Property actually read out of them. Zero with files present means a drop nobody could parse. */
+  assetsRead: z.number().int().nonnegative(),
+  /** A run has been published — the report page has a report to show. */
+  reportPublished: z.boolean(),
+  /** A run is queued or running, which is what the progress card is for. */
+  runInFlight: z.boolean(),
+  /**
+   * Questions waiting on this business. Gates the Questions page on its own,
+   * at any stage: a mapping ask can be the very first thing that happens to a
+   * drop, and it is exactly the thing a client must be shown early.
+   */
+  openQuestions: z.number().int().nonnegative(),
+  /** Sites with property on them, which is what a return is per. */
+  returnsOwed: z.number().int().nonnegative(),
+  /** Positions claimed with a district. Until one exists nothing can have come back. */
+  claimsMade: z.number().int().nonnegative(),
+});
+
+export type PortalStage = z.infer<typeof PortalStageSchema>;
+
+/**
+ * The stage of a business with no season open at all.
+ *
+ * Not an error and not a loading state: a client can be granted access before
+ * the firm opens their year, and the honest answer for them is the same as for
+ * a season with nothing in it — there is one thing to do, and it is to send us
+ * something.
+ */
+export function emptyPortalStage(engagementId: string): PortalStage {
+  return {
+    engagementId,
+    stage: 'documents',
+    documentsReceived: 0,
+    assetsRead: 0,
+    reportPublished: false,
+    runInFlight: false,
+    openQuestions: 0,
+    returnsOwed: 0,
+    claimsMade: 0,
+  };
+}

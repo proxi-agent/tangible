@@ -2,6 +2,8 @@
 
 import { useQuery } from '@tanstack/react-query';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useEffect } from 'react';
 import type { EngagementSite, SavingsFinding, SavingsReport } from '@tangible/types';
 import { api } from '@/lib/api';
 import { count, money, percent, plural } from '@/lib/format';
@@ -42,7 +44,8 @@ import { RunProgressCard } from '@/components/portal/run-progress';
  *     links, not decoration.
  */
 export default function PortalReportPage() {
-  const { engagementId, href } = usePortal();
+  const { engagementId, href, stage, stageSettled } = usePortal();
+  const router = useRouter();
 
   const published = usePublishedReport(engagementId);
   const sites = useQuery({
@@ -50,6 +53,29 @@ export default function PortalReportPage() {
     queryFn: () => api.sites(engagementId!),
     enabled: engagementId !== null,
   });
+
+  /**
+   * A business with nothing on file does not have a report page; it has a drop
+   * zone. Sign-in lands everyone here — that is the wing's root and the proxy
+   * sends clients to it — so this is where that has to be answered, and the
+   * rail beside it is a single item pointing at the same place.
+   *
+   * `replace`, not `push`: the back button should leave the wing, not bounce
+   * off a page the reader was never shown.
+   *
+   * It waits for `stageSettled`, and that is not caution. The standing-in stage
+   * is `documents` — deliberately, so the rail starts narrow rather than
+   * flashing dead ends — which means acting on it before the server answers
+   * redirects *everyone* to the drop box, including a client whose report is
+   * finished. The rail may draw on the default; only the address may not move
+   * on it.
+   */
+  const sendFirst = stageSettled && stage.stage === 'documents';
+  useEffect(() => {
+    if (sendFirst) router.replace(href('/portal/documents'));
+  }, [sendFirst, router, href]);
+
+  if (sendFirst) return <Skeleton className="h-40 w-full" />;
 
   if (engagementId === null) {
     return (
