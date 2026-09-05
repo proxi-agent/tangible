@@ -32,7 +32,7 @@ export function rateTableFor(jurisdictionId: string, taxYear: number): RateTable
  *
  * Nothing here decides whether that substitution is acceptable — the caller can
  * see which year came back and has to say so on the page. Harris County's own
- * rate moved from 0.385290 to 0.380960 between 2025 and 2026, so a prior year's
+ * rate moved from 0.385290 to 0.380960 between 2024 and 2025, so a prior year's
  * table is a good approximation and is not the adopted rate.
  */
 export function latestAdoptedYear(jurisdictionId: string, notAfter: number): number | undefined {

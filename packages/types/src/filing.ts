@@ -1742,9 +1742,12 @@ export const SiteOutcomeSchema = z.object({
    */
   blendedTaxRate: z.number().nullable(),
   /**
-   * The reduction × the blended rate: roughly what the season's work is worth
-   * in tax dollars. An estimate by construction — the blend flattens per-unit
-   * rates — and always presented as one, never as the bill.
+   * The reduction in *taxable* value × the blended rate: roughly what the
+   * season's work is worth in tax dollars. The statutory exemption comes off
+   * both the noticed and the standing value first, so a site that ends the
+   * year under the threshold is not credited with tax it never owed. An
+   * estimate by construction — the blend flattens per-unit rates — and always
+   * presented as one, never as the bill.
    */
   estimatedTaxReduction: z.number().nullable(),
 

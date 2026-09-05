@@ -611,8 +611,11 @@ export function bookLife(raw: string | null | undefined): number | null {
   if (!match) return null;
   let years = Number(match[1]);
   if (!Number.isFinite(years) || years <= 0) return null;
-  // Months, where the wording says so or the magnitude gives it away.
-  if (/month/i.test(text) || years > 60) years = years / 12;
+  // Months, where the wording says so or the magnitude gives it away. Nothing
+  // over forty is accepted as years below, so a bare "60" is sixty months —
+  // the five-year life registers write more than any other — not a life no
+  // schedule carries.
+  if (/month/i.test(text) || years > 40) years = years / 12;
   return years >= 1 && years <= 40 ? Math.round(years) : null;
 }
 
@@ -904,7 +907,7 @@ export function deMinimisGroups(
           ),
           signal(
             'exemption-must-be-claimed',
-            'The exemption is granted per taxing unit and has to be applied for',
+            'The exemption is per taxing unit, and the district decides whether the total falls under it',
             -0.1,
             null,
           ),

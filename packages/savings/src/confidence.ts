@@ -134,10 +134,13 @@ export function confidenceFor(
   // position cannot be wrong, and nothing about a register supports that.
   const ruled = Math.min(0.97, Math.max(0.03, raw));
   const learned = fitted ? fitted(findingKey, signals) : null;
-  const score = learned ?? ruled;
+  // Rounded before the tier is read off it, so the number a reviewer sees and
+  // the band it is filed under never disagree: a raw 0.7496 printed as 0.75
+  // must be high, not medium.
+  const score = Math.round((learned ?? ruled) * 100) / 100;
   return {
     tier: tierFor(score),
-    score: Math.round(score * 100) / 100,
+    score,
     signals,
     // The sentence is built from the signals either way, and stays true either
     // way: the signals are what the row was flagged for, and the fit changes

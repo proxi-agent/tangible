@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { accountRate, TX_HARRIS_2026 as S, type AccountRate } from '@tangible/valuation';
+import { accountRate, taxForAccount, TX_HARRIS_2026 as S, type AccountRate } from '@tangible/valuation';
 import { analyzeSavings, type SavingsAsset, type SavingsInput } from './analyze.js';
 import { exemptionFor, exemptionForSites, FL_EXEMPTION, TX_EXEMPTION_2026 } from './exemptions.js';
 
@@ -257,7 +257,7 @@ describe('the bottom line', () => {
     expect(report.estimatedAnnualSaving).toBeNull();
   });
 
-  it('measures the reduction against the assessed value once it is', () => {
+  it('measures the reduction against the assessed value, net of the same exemption', () => {
     const report = run([asset({ originalCost: 1_000_000 })], {
       assessed: {
         accountId: '1234567',
@@ -268,8 +268,46 @@ describe('the bottom line', () => {
         ownerName: 'Acme',
       },
     });
-    expect(report.valueReduction).toBeCloseTo(900_000 - report.proposedTaxableValue, 6);
+    // The district grants the $125,000 whether or not the register is corrected,
+    // so the "before" is $775,000 of taxable value, not $900,000 of appraised.
+    expect(report.valueReduction).toBeCloseTo(
+      900_000 - TX_EXEMPTION_2026 - report.proposedTaxableValue,
+      6,
+    );
     expect(report.estimatedAnnualSaving).toBeCloseTo(report.valueReduction! * 0.025, 6);
+  });
+
+  it('claims no saving from the exemption alone', () => {
+    // Register and roll agree; the only thing between the two sides is the
+    // exemption, which the district applies to both.
+    const report = run([asset({ originalCost: 1_000_000 })], {
+      assessed: {
+        accountId: '1234567',
+        taxYear: 2026,
+        appraisedValue: 714_220,
+        assessedValue: 714_220,
+        renditionFiled: true,
+        ownerName: 'Acme',
+      },
+    });
+    expect(report.valueReduction).toBeCloseTo(0, 0);
+    expect(report.estimatedAnnualSaving).toBeCloseTo(0, 0);
+  });
+
+  it('measures nothing below the threshold on either side', () => {
+    const report = run([asset({ originalCost: 10_000 })], {
+      assessed: {
+        accountId: '1234567',
+        taxYear: 2026,
+        appraisedValue: 100_000,
+        assessedValue: 100_000,
+        renditionFiled: true,
+        ownerName: 'Acme',
+      },
+    });
+    expect(report.proposedTaxableValue).toBe(0);
+    expect(report.valueReduction).toBe(0);
+    expect(report.estimatedAnnualSaving).toBe(0);
   });
 
   it('degrades to a coverage report when no schedule is published', () => {
@@ -483,8 +521,13 @@ describe('which rate the report says it used', () => {
       accountRate: HOUSTON_2026,
     });
     expect(report.blendedTaxRate).toBeCloseTo(0.0212522, 9);
-    const reduction = assessed.appraisedValue - report.proposedTaxableValue;
-    expect(report.estimatedAnnualSaving).toBeCloseTo(reduction * 0.0212522, 6);
+    const before = taxForAccount({
+      rate: HOUSTON_2026,
+      marketValue: assessed.appraisedValue,
+      exemptionPerUnit: TX_EXEMPTION_2026,
+    }).tax;
+    expect(report.estimatedAnnualSaving).toBeCloseTo(before - report.proposedTax, 6);
+    expect(report.valueReduction).toBeCloseTo(before / 0.0212522 - report.proposedTaxableValue, 3);
     expect(report.proposedTax).toBeCloseTo(report.proposedTaxableValue * 0.0212522, 6);
   });
 });

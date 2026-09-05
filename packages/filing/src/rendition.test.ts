@@ -583,3 +583,39 @@ describe('the certification election', () => {
     expect(blocker(auto([asset()]), 'certification-headroom')).toBeUndefined();
   });
 });
+
+describe('the estimate total is the value of the whole form or nothing', () => {
+  // A total printed on Schedule A, or at the foot of Schedule E, is sworn to as
+  // the value of everything rendered. A sum over only the lines the schedule
+  // could price is not that figure, and stating it would understate under oath.
+  it('withholds the total when any asset has no year to value it from', () => {
+    const rendition = build([asset(), asset({ acquisitionYear: null })], {
+      basis: 'estimate',
+    });
+    expect(rendition.scheduleValue).toBeGreaterThan(0);
+    expect(rendition.totalGoodFaithEstimate).toBeNull();
+    expect(scheduleFor(rendition, 'E')!.totalEstimate).toBeNull();
+    expect(blocker(rendition, 'no-year-acquired')?.severity).toBe('blocking');
+  });
+
+  it('withholds the total, rather than printing zero, when no schedule is loaded', () => {
+    const rendition = build([asset()], { basis: 'estimate', schedule: null });
+    expect(rendition.scheduleValue).toBe(0);
+    expect(rendition.totalGoodFaithEstimate).toBeNull();
+    expect(scheduleFor(rendition, 'E')!.totalEstimate).toBeNull();
+    expect(scheduleFor(rendition, 'E')!.lines[0]!.goodFaithEstimate).toBeNull();
+  });
+
+  it('does not collapse onto Schedule A on the strength of a partial value', () => {
+    // Priced alone, the one dated asset sits under the $20,000 line. The undated
+    // one is worth an unknown amount, so the form cannot claim the total is.
+    const rendition = build([
+      asset({ originalCost: 8_000, acquisitionYear: 2020 }),
+      asset({ originalCost: 8_000, acquisitionYear: null }),
+    ]);
+    expect(rendition.qualifiesForScheduleA).toBe(false);
+    expect(build([asset({ originalCost: 8_000 })], { schedule: null }).qualifiesForScheduleA).toBe(
+      false,
+    );
+  });
+});

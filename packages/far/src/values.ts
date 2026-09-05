@@ -97,6 +97,9 @@ export function numberValue(value: unknown): number | null {
   // parenthesis test as "(1,200.00)", and a space may itself be the separator
   // in "1 200,50".
   s = s.replace(/[$£€¥]|\s| /g, '');
+  // A typographic minus (U+2212) or a dash is a sign, not a symbol to refuse:
+  // spreadsheets and PDF exports write negatives with it.
+  s = s.replace(/[\u2212\u2013\u2014]/g, '-');
 
   let negative = false;
   if (/^\(.*\)$/.test(s)) {

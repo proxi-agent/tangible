@@ -29,7 +29,7 @@ export const LetterSiteSchema = z.object({
   settledVia: SettledViaSchema.nullable(),
   /** Noticed minus standing — appraised value, never tax dollars. */
   reduction: z.number().nullable(),
-  /** The reduction dollarized at the blended rate — an estimate, never the bill. */
+  /** The reduction in taxable value, after the exemption, at the blended rate — an estimate, never the bill. */
   estimatedTaxReduction: z.number().nullable(),
   nextDeadline: z.string().nullable(),
   /** The row in prose, computed by code. The drafter's authority per site. */

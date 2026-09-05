@@ -1428,7 +1428,7 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
       basis:
         'Tax Code 11.145 exempts a person’s income-producing tangible personal property where the total value of that property in the taxing unit is under the threshold — $125,000 from 2026 under HB 9 and Proposition 9, $2,500 before it.',
       assumption:
-        'The exemption is granted per taxing unit and has to be applied for; it is not automatic. Values here are the schedule values this report computes, and the district’s own view of them governs.',
+        'The exemption is granted per taxing unit and applies without an application under Tax Code 11.43(a); the district still has to agree the total falls under it. Values here are the schedule values this report computes, and the district’s own view of them governs.',
       question: null,
       ...perAsset(deMinimisRows),
     });
@@ -1609,8 +1609,31 @@ export function analyzeSavings(input: SavingsInput): SavingsReport {
     ),
   };
 
+  /**
+   * The "before" is the district's appraised value with the same exemption
+   * taken off it. The roll publishes the account gross of 11.145 — an account
+   * at $900,000 appraised is taxed on $775,000 — and the proposed side is
+   * already net of it, so subtracting one from the other would count the
+   * exemption as a saving this engagement produced. It is not: the district
+   * grants it either way. Taken the same way on both sides — per unit where
+   * the account's units are known, a single subtraction where they are not —
+   * so that the reduction is a difference of taxable values and the saving is
+   * the difference of the two tax bills.
+   */
   const assessedValue = input.assessed?.appraisedValue ?? input.assessed?.assessedValue ?? null;
-  const valueReduction = assessedValue === null ? null : assessedValue - proposedTaxableValue;
+  const assessedTaxableValue =
+    assessedValue === null
+      ? null
+      : perUnitExemption
+        ? taxForAccount({
+            rate: input.accountRate!,
+            marketValue: assessedValue,
+            exemptionPerUnit: input.exemptionAmount,
+            grants: input.exemptionGrants,
+          }).tax / effectiveRate
+        : Math.max(0, assessedValue - Math.min(input.exemptionAmount, assessedValue));
+  const valueReduction =
+    assessedTaxableValue === null ? null : assessedTaxableValue - proposedTaxableValue;
   const estimatedAnnualSaving = valueReduction === null ? null : valueReduction * effectiveRate;
 
   return {

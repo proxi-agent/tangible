@@ -6,6 +6,7 @@ import type {
   SeasonReturn,
   SiteOutcome,
 } from '@tangible/types';
+import { exemptionFor } from '@tangible/savings';
 import { DEFAULT_BLENDED_TAX_RATE } from '@tangible/types';
 import { clientMotions } from '@/lib/motions';
 import { filingSeason } from '@/lib/season';
@@ -77,6 +78,9 @@ export function seasonOutcomes(
         entry.jurisdictionId !== null
           ? (rates.get(entry.jurisdictionId) ?? DEFAULT_BLENDED_TAX_RATE)
           : null,
+      // The same exemption the proposal took off the corrected position, so the
+      // two estimates are differences of tax bills computed the same way.
+      exemptionAmount: exemptionFor(entry.jurisdictionId, taxYear),
       locationId: entry.locationId,
       label: entry.label,
       accountId: entry.accountId,

@@ -575,7 +575,7 @@ export const SavingsReportSchema = z.object({
     /**
      * `prior-year` is its own kind rather than a species of `adopted` because
      * the rates move. Harris County's own levy went from 0.385290 to 0.380960
-     * between 2025 and 2026, and every unit in the county sets its rate
+     * between 2024 and 2025, and every unit in the county sets its rate
      * separately each autumn — months after the spring in which the rendition
      * for that year is prepared. A report drafted for the coming season
      * therefore prices at the last table that exists, which is a good
@@ -632,8 +632,10 @@ export const SavingsReportSchema = z.object({
   /** Tax on the proposed position. */
   proposedTax: z.number(),
   /**
-   * Assessed value less the proposed taxable value — the reduction being
-   * argued for. Null until an account is linked, because without the roll
+   * The district's taxable value less the proposed taxable value — the
+   * reduction being argued for, with the statutory exemption taken off both
+   * sides, since the district grants it whether or not the register is
+   * corrected. Null until an account is linked, because without the roll
    * there is no "before" and a saving cannot be claimed against nothing.
    */
   valueReduction: z.number().nullable(),

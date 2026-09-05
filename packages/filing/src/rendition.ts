@@ -326,7 +326,16 @@ export function buildRendition(input: RenditionInput): Rendition {
   }
 
   const totalHistoricalCost = [...buckets.values()].reduce((sum, b) => sum + b.cost, 0);
-  const qualifiesForScheduleA = scheduleValue > 0 && scheduleValue < SCHEDULE_A_THRESHOLD;
+
+  // Whether `scheduleValue` is the value of everything on the form, or only of
+  // the part the schedule could price. It is a running sum of what appraised,
+  // so with no schedule it is zero and with an undated or unvaluable asset it
+  // is short by that asset — and neither is a figure to swear to, to hold
+  // against the $20,000 Schedule A line, or to print as a total. The same test
+  // `certificationFor` applies before holding it against the exemption.
+  const valuedInFull = schedule !== null && unvaluable === 0 && undated === 0;
+  const qualifiesForScheduleA =
+    valuedInFull && scheduleValue > 0 && scheduleValue < SCHEDULE_A_THRESHOLD;
 
   const schedules: RenditionSchedule[] = qualifiesForScheduleA
     ? [
@@ -338,20 +347,21 @@ export function buildRendition(input: RenditionInput): Rendition {
               type: 'All business personal property at this location',
               yearAcquired: null,
               historicalCost: totalHistoricalCost,
-              goodFaithEstimate: usingEstimate && unvaluable === 0 ? scheduleValue : null,
+              goodFaithEstimate: usingEstimate && valuedInFull ? scheduleValue : null,
               assetCount: [...buckets.values()].reduce((sum, b) => sum + b.count, 0),
               categoryKeys: [...new Set([...buckets.values()].flatMap((b) => [...b.categories]))],
             },
           ],
           totalCost: totalHistoricalCost,
-          totalEstimate: usingEstimate && unvaluable === 0 ? scheduleValue : null,
+          totalEstimate: usingEstimate && valuedInFull ? scheduleValue : null,
         },
       ]
     : assemble(buckets, usingEstimate);
 
-  // Withheld entirely when any asset could not be valued: a total that
-  // silently treats an unpriced asset as zero understates a sworn figure.
-  const totalGoodFaithEstimate = usingEstimate && unvaluable === 0 ? scheduleValue : null;
+  // Withheld entirely when any asset could not be valued — undated, unpriced,
+  // or with no schedule loaded at all: a total that silently treats an
+  // unpriced asset as zero understates a sworn figure.
+  const totalGoodFaithEstimate = usingEstimate && valuedInFull ? scheduleValue : null;
 
   // 22.24(e) turns on the estimate, not on the value. Saying so is the point:
   // it is the reason the cost basis is the default, and a reader who does not

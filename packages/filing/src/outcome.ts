@@ -67,6 +67,15 @@ export interface OutcomeInput {
    * answer convert value the same way. Omitted or null, no estimate is made.
    */
   blendedTaxRate?: number | null;
+  /**
+   * The statutory exemption the district takes off this site's value before
+   * taxing it — 11.145 in Texas, s. 196.183 in Florida — so the estimate is a
+   * difference of two tax bills rather than a reduction in appraised value
+   * priced as if every dollar of it were taxed. Omitted or null, none is
+   * applied, which overstates the estimate for a site that ends the year under
+   * the threshold.
+   */
+  exemptionAmount?: number | null;
 }
 
 export function siteOutcome(input: OutcomeInput): SiteOutcome {
@@ -99,7 +108,15 @@ export function siteOutcome(input: OutcomeInput): SiteOutcome {
   // below never states this figure: the standing sentence speaks in the
   // district's units, and the estimate is presented as one wherever it shows.
   const rate = input.blendedTaxRate ?? null;
-  const estimatedTaxReduction = reduction !== null && rate !== null ? reduction * rate : null;
+  // Taxable value on each side, not the appraised value: the exemption comes
+  // off both, so a site noticed at $130,000 and settled at $100,000 saves the
+  // tax on $5,000, not on $30,000.
+  const exemption = Math.max(0, input.exemptionAmount ?? 0);
+  const taxable = (v: number) => Math.max(0, v - exemption);
+  const estimatedTaxReduction =
+    base.noticedValue !== null && value !== null && rate !== null
+      ? (taxable(base.noticedValue) - taxable(value)) * rate
+      : null;
 
   return {
     ...base,

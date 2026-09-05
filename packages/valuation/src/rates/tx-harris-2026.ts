@@ -8,7 +8,7 @@ import type { RateTable } from './types.js';
  * and autumn (Tex. Tax Code 26.05) and the archive was pulled before that. The
  * column beside it holds 2025's adopted rates, which is the trap: reading it as
  * 2026's would price the year against last year's rates. Harris County's own
- * rate fell from 0.385290 to 0.380960 between those two years, and a rate that
+ * rate fell from 0.385290 in 2024 to 0.380960 in 2025, and a rate that
  * is too high overstates the client's overpayment — the one direction this
  * product must never err in.
  *

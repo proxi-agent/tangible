@@ -56,9 +56,21 @@ export function count(value: number | null | undefined): string {
   return integer.format(value);
 }
 
+/**
+ * 12.5% — a share, rounded half up at the digit asked for.
+ *
+ * Not `toFixed` on the raw product: `0.285 * 100` is 28.499999999999996 in
+ * binary, and `toFixed(0)` prints it as 28%, where anybody with a calculator
+ * writes 29%. The product is first read at fifteen significant figures, which
+ * is where the float noise lives and the number does not, and rounded from
+ * there.
+ */
 export function percent(value: number | null | undefined, digits = 1): string {
   if (value === null || value === undefined || !Number.isFinite(value)) return '—';
-  return `${(value * 100).toFixed(digits)}%`;
+  const scale = 10 ** digits;
+  const hundredths = Number((value * 100).toPrecision(15));
+  const rounded = Math.round(hundredths * scale) / scale;
+  return `${rounded.toFixed(digits)}%`;
 }
 
 export function plural(n: number, singular: string, pluralForm = `${singular}s`): string {

@@ -198,6 +198,46 @@ describe('dollarizing the reduction', () => {
     expect(out.estimatedTaxReduction).toBeCloseTo(4_300);
   });
 
+  it('takes the exemption off both sides before pricing the difference', () => {
+    // Noticed at $812,000, settled at $640,000, with $125,000 exempt on each
+    // side: the same $172,000 of appraised value, and the same $4,300 of tax.
+    const above = siteOutcome(
+      input({
+        blendedTaxRate: 0.025,
+        exemptionAmount: 125_000,
+        notice: { ...NOTICE, protestFiledOn: '2027-05-20' },
+        resolution: {
+          stage: 'informal',
+          resolvedOn: '2027-06-15',
+          finalValue: 640_000,
+          appealOpen: false,
+          appealDeadline: null,
+        },
+      }),
+    );
+    expect(above.reduction).toBe(172_000);
+    expect(above.estimatedTaxReduction).toBeCloseTo(4_300);
+
+    // Settled under the threshold, the tax saved is the tax that was owed —
+    // on $687,000 — not the tax on the whole $712,000 the value moved.
+    const under = siteOutcome(
+      input({
+        blendedTaxRate: 0.025,
+        exemptionAmount: 125_000,
+        notice: { ...NOTICE, protestFiledOn: '2027-05-20' },
+        resolution: {
+          stage: 'informal',
+          resolvedOn: '2027-06-15',
+          finalValue: 100_000,
+          appealOpen: false,
+          appealDeadline: null,
+        },
+      }),
+    );
+    expect(under.reduction).toBe(712_000);
+    expect(under.estimatedTaxReduction).toBeCloseTo(687_000 * 0.025);
+  });
+
   it('makes no estimate without a rate, and none without a reduction', () => {
     expect(settled(null).estimatedTaxReduction).toBeNull();
     const moving = siteOutcome(input({ blendedTaxRate: 0.025 }));

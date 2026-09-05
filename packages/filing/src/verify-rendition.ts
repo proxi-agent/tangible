@@ -103,8 +103,11 @@ export function verifyRendition(
 
   let derivedTotal = 0;
   let lineCount = 0;
-  let statedScheduleSum = 0;
-  let statedScheduleCount = 0;
+  // What the schedules add to as a whole, taking each one at its printed total
+  // where it has one and at the sum of its lines where it does not. Mixing the
+  // two per schedule is what keeps a return with a printed total on Schedule A
+  // and none on Schedule E from being checked against Schedule A alone.
+  let scheduleSum = 0;
 
   for (const schedule of rendition.schedules) {
     const { total, unreadable } = sumLines(schedule);
@@ -122,8 +125,7 @@ export function verifyRendition(
 
     // The footing check proper.
     if (schedule.statedTotal !== null) {
-      statedScheduleSum += schedule.statedTotal;
-      statedScheduleCount += 1;
+      scheduleSum += schedule.statedTotal;
       const drift = Math.abs(schedule.statedTotal - total);
       if (drift > toleranceFor(schedule.lines.length)) {
         push(
@@ -133,13 +135,16 @@ export function verifyRendition(
           { schedule: schedule.key, expected: schedule.statedTotal, actual: total },
         );
       }
-    } else if (schedule.lines.length > 0) {
-      push(
-        'warning',
-        'no-stated-total',
-        `Schedule ${schedule.key} has lines but no printed total to check them against, so nothing corroborates how they were read.`,
-        { schedule: schedule.key },
-      );
+    } else {
+      scheduleSum += total;
+      if (schedule.lines.length > 0) {
+        push(
+          'warning',
+          'no-stated-total',
+          `Schedule ${schedule.key} has lines but no printed total to check them against, so nothing corroborates how they were read.`,
+          { schedule: schedule.key },
+        );
+      }
     }
 
     // Schedule E is the one filed by year acquired, and a line without a year
@@ -173,7 +178,7 @@ export function verifyRendition(
   // isolates which of the two sums is wrong instead of collapsing both errors
   // into one number.
   if (rendition.statedFormTotal !== null) {
-    const basis = statedScheduleCount > 0 ? statedScheduleSum : derivedTotal;
+    const basis = scheduleSum;
     const drift = Math.abs(rendition.statedFormTotal - basis);
     if (drift > toleranceFor(Math.max(lineCount, rendition.schedules.length))) {
       push(

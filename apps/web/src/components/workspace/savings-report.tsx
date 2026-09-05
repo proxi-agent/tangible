@@ -170,7 +170,7 @@ function Headline({ report, asks }: { report: SavingsReport; asks: AskRecord[] }
                   the method strip below — a reader who takes one number off
                   this page takes this one. */}
               <p className="text-xs text-[var(--color-ink-muted)]">
-                {money(valueReduction)} of value at{' '}
+                {money(valueReduction)} of taxable value at{' '}
                 <Tooltip title={rateSourceTitle(report)} content={report.rateSource.detail}>
                   {percent(report.blendedTaxRate, 2)}
                 </Tooltip>

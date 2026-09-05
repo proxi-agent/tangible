@@ -147,6 +147,8 @@ describe('value parsers', () => {
     expect(numberValue('$ (1,200.00)')).toBe(-1200);
     expect(numberValue('1200-')).toBe(-1200); // SAP trailing minus
     expect(numberValue('-1,200.00')).toBe(-1200);
+    expect(numberValue('\u22121,200.00')).toBe(-1200); // typographic minus
+    expect(numberValue('\u2013500')).toBe(-500); // en dash
   });
 
   it('reads the date shapes registers use', () => {
